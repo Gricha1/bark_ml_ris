@@ -29,20 +29,20 @@ if VALIDATE_ENV:
   run_number = 1
   run_name = "run_" + f"{run_number}"
   working_dir_name = str(pathlib.Path().resolve())
-  video_name = working_dir_name + "/pngs/" + f"{run_name}"
-  gif_name = working_dir_name + "/gifs/" + f"{run_name}"
+  video_name = working_dir_name + "/video_validation/pngs/" + f"{run_name}"
+  #gif_name = working_dir_name + "/video_validation/gifs/" + f"{run_name}"
 
   if os.path.isdir(video_name):
     shutil.rmtree(video_name)
   path = Path(video_name)
   path.mkdir(parents=True, exist_ok=True)
 
-  if os.path.isdir(gif_name):
-    shutil.rmtree(gif_name)
-  path = Path(gif_name)
-  path.mkdir(parents=True, exist_ok=True)
+  #if os.path.isdir(gif_name):
+  #  shutil.rmtree(gif_name)
+  #path = Path(gif_name)
+  #path.mkdir(parents=True, exist_ok=True)
 
-  assert os.path.isdir(video_name) and os.path.isdir(gif_name),\
+  assert os.path.isdir(video_name),\
         "folder for pngs or gifs wasnt created"
 
 

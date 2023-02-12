@@ -18,14 +18,6 @@ from pathlib import Path
 import shutil
 import pathlib
 
-working_dir_name = str(pathlib.Path().resolve())
-observation_dir_name = working_dir_name + "/obs_pngs"
-if os.path.isdir(observation_dir_name):
-    shutil.rmtree(observation_dir_name)
-path = Path(observation_dir_name)
-path.mkdir(parents=True, exist_ok=True)
-
-
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
     parser.add_argument("--env",                default="Image84SawyerPushAndReachArenaTrainEnvBig-v0")
@@ -56,6 +48,14 @@ if __name__ == "__main__":
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
     print(args)
+
+    # set path for experement video
+    working_dir_name = str(pathlib.Path().resolve())
+    observation_dir_name = working_dir_name + f"/video_validation/obs_pngs"
+    if os.path.isdir(observation_dir_name):
+        shutil.rmtree(observation_dir_name)
+    path = Path(observation_dir_name)
+    path.mkdir(parents=True, exist_ok=True)
 
     #register_mujoco_envs()
     train_env_name = "parking-v0"
