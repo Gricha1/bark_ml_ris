@@ -1,4 +1,8 @@
 bark-simulator==1.4.6
 bark-ml==0.4.32
-matplotlib==3.1.3
+#matplotlib==3.1.3
+matplotlib
 wandb
+opencv-python
+#torch
+#gym
