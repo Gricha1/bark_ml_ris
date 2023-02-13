@@ -10,7 +10,6 @@ from utils.data_aug import random_translate
 import torch.nn as nn
 
 def get_img_feat_from_rollout(state, c_count=2, batch_size=1):
-	#x = state[-1, :-5]
 	x = state[:, :-5]
 	x_f = state[:, -5:]
 	x = x.view(batch_size, c_count, 120, 120)
@@ -96,7 +95,6 @@ class RIS(object):
 			state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
 			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
 			if self.image_env:
-
 				x, x_f = get_img_feat_from_rollout(state, c_count=2)
 				state = self.obs_Encoder(x, x_f)
 
@@ -159,6 +157,10 @@ class RIS(object):
 
 			adv = - (v - policy_v)
 			weight = F.softmax(adv/self.Lambda, dim=0)
+		
+		# debug
+		#print("subgoal v_1(state-sub): ", v_1)
+		#print("gen subgoal v_1(state-sub):", policy_v_1)
 
 		log_prob = subgoal_distribution.log_prob(subgoal).sum(-1)
 		subgoal_loss = - (log_prob * weight).mean()
@@ -191,12 +193,23 @@ class RIS(object):
 			#goal = random_translate(goal, pad=8)
 			#subgoal = random_translate(subgoal, pad=8)
 
+			# debug
+			#print("state shape x_state", x_state.shape)
+			#print("debug translate state shape: ", random_translate(x_state, pad=8).shape)
+
 			# Stop gradient for subgoal goal and next state
 			state = self.obs_Encoder(x_state, x_f_state)
 			with torch.no_grad():
 				goal = self.goal_Encoder(x_goal, x_f_goal)
 				next_state = self.obs_Encoder(x_next_state, x_f_next_state)
 				subgoal = self.obs_Encoder(x_sub_goal, x_f_sub_goal)
+
+
+		# debug
+		#print("state:", state[0])
+		#print("next_state:", next_state[0])
+		#print("goal:", goal[0])
+		#print("subgoal:", subgoal[0])
 
 		""" Critic """
 		# Compute target Q
@@ -209,6 +222,19 @@ class RIS(object):
 		# Compute critic loss
 		Q = self.critic(state, action, goal)
 		critic_loss = 0.5 * (Q - target_Q).pow(2).sum(-1).mean()
+
+		# debug
+		#print("reward batch:", reward)
+
+
+		# debug
+		if self.logger is not None:
+			self.logger.store(
+				critic_value   = Q.mean().item(),
+				target_value  = target_Q.mean().item()
+			)
+		#print("critic mean value:", Q.mean().item())
+		#print("target mean value:", Q.mean().item())
 
 		# Optimize the critic
 		if self.image_env:

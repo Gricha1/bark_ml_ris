@@ -612,6 +612,10 @@ class TestEvaluator:
     self._bark_eval_fns = bark_eval_fns
     self._bark_ml_eval_fns = bark_ml_eval_fns
 
+  # TODO: create compute reward correct (for RIS algorithm)
+  def compute_rewards(self, new_actions, new_next_obs_dict):
+    return np.zeros((new_actions.shape[0], 1))
+
   def Evaluate(self, observed_world, action):
     """Returns information about the current world state."""
     # evaluate geometric
@@ -674,6 +678,8 @@ class TestEvaluator:
 
     eval_results["kinematic_goal_reached"] = kinematic_goal_reached
     eval_results["dist_to_goal"] = dl
+
+    # TODO: set correct reward, not in env.step() change
 
     return reward, scheduleTerminate, eval_results
 
@@ -1259,7 +1265,8 @@ class GCContinuousParkingGym(ContinuousParkingGym):
 
   # TODO: create compute_rewards function
   def compute_rewards(self, new_actions, new_next_obs_dict):
-    return np.zeros(new_actions.shape)
+    #return np.zeros(new_actions.shape)
+    return self._evaluator.compute_rewards(new_actions, new_next_obs_dict)
 
   def reset(self):
 

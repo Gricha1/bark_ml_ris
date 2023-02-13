@@ -62,8 +62,20 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     reward_batch        = batch["rewards"]
     done_batch          = batch["terminals"] 
 
+
+    # debug
+    #print("reward batch:", reward_batch[0:10])
+    #print("done batch:", done_batch[0:10])
+
+
     # Compute sparse rewards: -1 for all actions until the goal is reached
-    reward_batch = - np.ones_like(done_batch)
+    #reward_batch = - np.ones_like(done_batch)
+    #reward_batch = np.ones_like(done_batch)
+    reward_batch = np.ones_like(done_batch) * (-1)
+
+
+    # debug
+    #print("changed reward batch:", reward_batch[0:10])
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
@@ -245,6 +257,8 @@ if __name__ == "__main__":
             )
             print("RIS t={} | {}".format(t+1, logger))
             run.log({'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq, 
+                     'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,  
+                     'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,  
                      'train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
                      'steps': logger.data["t"][-1],
