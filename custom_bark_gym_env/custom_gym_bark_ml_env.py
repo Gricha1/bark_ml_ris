@@ -30,17 +30,11 @@ if VALIDATE_ENV:
   run_name = "run_" + f"{run_number}"
   working_dir_name = str(pathlib.Path().resolve())
   video_name = working_dir_name + "/video_validation/pngs/" + f"{run_name}"
-  #gif_name = working_dir_name + "/video_validation/gifs/" + f"{run_name}"
 
   if os.path.isdir(video_name):
     shutil.rmtree(video_name)
   path = Path(video_name)
   path.mkdir(parents=True, exist_ok=True)
-
-  #if os.path.isdir(gif_name):
-  #  shutil.rmtree(gif_name)
-  #path = Path(gif_name)
-  #path.mkdir(parents=True, exist_ok=True)
 
   assert os.path.isdir(video_name),\
         "folder for pngs or gifs wasnt created"
@@ -64,6 +58,30 @@ class CustomBox:
         return -(np.pi / 2)
     tg = dy / dx
     return np.arctan(tg)
+
+
+    
+from bark.core.world import World
+from bark.core.world.map import MapInterface
+from bark.runtime.commons.parameters import ParameterServer
+from bark.runtime.commons.xodr_parser import XodrParser
+import copy
+import os
+from pathlib import Path
+
+# Module variable to maintain map directory
+__MAPFILE_DIRECTORY = None
+
+
+def SetMapfileDirectory(dir):
+    global __MAPFILE_DIRECTORY
+    __MAPFILE_DIRECTORY = dir
+
+
+def GetMapfileDirectory():
+    global __MAPFILE_DIRECTORY
+    return __MAPFILE_DIRECTORY
+
 
 class AgentLaneCorridorConfig:
   """This class enables the configuration of a single LaneCorridor
@@ -212,6 +230,9 @@ class AgentLaneCorridorConfig:
     #right_top = Point2d(89, -7)
     #right_bottom = Point2d(89, -13)
 
+    # debug
+    #wheel_base = self.dynamic_model().GetWheelBase()
+
     agent_x = -30
     agent_y = -3
    
@@ -312,6 +333,9 @@ class CustomConfigWithEase(ScenarioGeneration):
     Returns:
         Scenario -- Returns a BARK scenario
     """
+    #scenario = Scenario(map_file_name=self._map_file_name,
+    #                    json_params=self._params.ConvertToDict(),
+    #                    observer_model=self._observer_model)
     scenario = Scenario(map_file_name=self._map_file_name,
                         json_params=self._params.ConvertToDict(),
                         observer_model=self._observer_model)
@@ -544,21 +568,33 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
     self._upper_bounds = [5, 5]
 
     # TODO: implement get steer angle in behavior model
-    self.steer_angle = 0
+    self.prev_steer = 0
     self.max_acc = 5
-    self.max_ang_acc = self._upper_bounds[1]
-    self.max_ang_vel = 1
+    self.max_steer_acc = self._upper_bounds[1]
+    self.max_steer_vel = 1
+    self.max_steer = 28 * np.pi / 180
+
+  def GetCarSteer(self, wheel_base):
+    return self.prev_steer
 
   # change behavior module to produce 
   # action: [linear accleration, steering acceleration]
   # origin action: [linear acceleration, steering rate] 
   def ActionToBehavior(self, action):
     
-    a, w = action
+    a, v_s = action
     # clip actions
     a = np.clip(a, -self.max_acc, self.max_acc)
-    w = np.clip(w, -self.max_ang_vel, self.max_ang_vel)
-    action = [a, w]
+    v_s = np.clip(v_s, -self.max_steer_vel, self.max_steer_vel)
+
+    # manually change car steer angle
+    if (self.prev_steer == -self.max_steer or self.prev_steer == self.max_steer):
+      v_s = 0
+    self.prev_steer = np.clip(self.prev_steer + v_s * self.custom_time, 
+                              -self.max_steer,
+                              self.max_steer)
+
+    action = [a, v_s]
 
     """
     a = np.clip(a, -self.max_acc, self.max_acc)
@@ -616,7 +652,7 @@ class TestEvaluator:
   def compute_rewards(self, new_actions, new_next_obs_dict):
     return np.zeros((new_actions.shape[0], 1))
 
-  def Evaluate(self, observed_world, action):
+  def Evaluate(self, observed_world, action, ego_agent=None):
     """Returns information about the current world state."""
     # evaluate geometric
     eval_results = observed_world.Evaluate()
@@ -631,7 +667,7 @@ class TestEvaluator:
         scheduleTerminate = True
 
     # evaluate kinematic
-    ego_agent = observed_world.ego_agent
+    #ego_agent = observed_world.ego_agent
     goal_definition = ego_agent.goal_definition
     goal = goal_definition.goal_shape.ToArray()
     right_top = Point(goal[1][0], goal[1][1])
@@ -656,7 +692,7 @@ class TestEvaluator:
 
     # TODO: get correct agent steer angle
     agent_kinematic_state = ego_agent.state[1:].tolist()
-    agent_steer = 0
+    agent_steer = ego_agent.behavior_model.GetCarSteer(ego_agent.dynamic_model.GetWheelBase())
     agent_kinematic_state.append(agent_steer)
     agent_kinematic_state = np.array(agent_kinematic_state)
     
@@ -756,190 +792,10 @@ class ImageObserver(BaseObserver):
     self.first_obs = True
     return super().Reset(world)
 
-  def Observe(self, observed_world):
-    # obs params
-    adding_ego_features = self.adding_ego_features
-    adding_dynamic_features = self.adding_dynamic_features
-    gridCount = self.gridCount
+  def get_cv_index_boxes(self, all_normilized_boxes):
+    #x_shape, y_shape = grid_static_obst.shape
+    x_shape, y_shape = self.grid_shape
     grid_resolution = self.grid_resolution
-    grid_shape = self.grid_shape
-    fake_static_obstacles = False
-    frame_stack = 1
-    assert grid_shape[0] % grid_resolution == 0 \
-                   and grid_shape[1] % grid_resolution == 0, \
-                   "incorrect grid shape"
-
-    # get agent and its goal
-    ego_agent = observed_world.ego_agent
-    goal_definition = ego_agent.goal_definition
-    goal_shape = goal_definition.goal_shape.ToArray()
-    right_top = Point(goal_shape[1][0], goal_shape[1][1])
-    right_bottom = Point(goal_shape[2][0], goal_shape[2][1])
-    left_bottom = Point(goal_shape[3][0], goal_shape[3][1])
-    left_top = Point(goal_shape[4][0], goal_shape[4][1])
-    goal = CustomBox(left_top, left_bottom, right_bottom, right_top)
-
-    """
-    # get static obsts
-    obstacle_segments = []
-    # bottom left
-    obst = []
-    right_top = Point(goal.left_top.x, goal.left_top.y)
-    right_bottom = Point(goal.left_bottom.x, goal.left_bottom.y)
-    left_bottom = Point(goal.left_bottom.x - 12, goal.left_bottom.y)
-    left_top = Point(goal.left_top.x - 12, goal.left_top.y)
-    obst.append(left_top)
-    obst.append(left_bottom)
-    obst.append(right_bottom)
-    obst.append(right_top)
-    obstacle_segments.append(obst)
-    # bottom right
-    obst = []
-    right_top = Point(goal.right_top.x + 12, goal.right_top.y)
-    right_bottom = Point(goal.right_bottom.x + 12, goal.right_bottom.y)
-    left_bottom = Point(goal.right_bottom.x, goal.right_bottom.y)
-    left_top = Point(goal.right_top.x, goal.right_top.y)
-    obst.append(left_top)
-    obst.append(left_bottom)
-    obst.append(right_bottom)
-    obst.append(right_top)
-    obstacle_segments.append(obst)
-    # bottom (under parking place)
-    obst = []
-    right_top = Point(goal.right_bottom.x, goal.right_bottom.y)
-    right_bottom = Point(goal.right_bottom.x, goal.right_bottom.y - 2)
-    left_bottom = Point(goal.left_bottom.x, goal.left_bottom.y - 2)
-    left_top = Point(goal.left_bottom.x, goal.left_bottom.y)
-    obst.append(left_top)
-    obst.append(left_bottom)
-    obst.append(right_bottom)
-    obst.append(right_top)
-    obstacle_segments.append(obst)
-    # top
-    obst = []
-    right_top = Point(goal.right_top.x + 12, goal.right_top.y + 8 + 4)
-    right_bottom = Point(goal.right_top.x + 12, goal.right_top.y + 8)
-    left_bottom = Point(goal.left_top.x - 12, goal.left_top.y + 8)
-    left_top = Point(goal.left_top.x - 12, goal.left_top.y + 8 + 4)
-    obst.append(left_top)
-    obst.append(left_bottom)
-    obst.append(right_bottom)
-    obst.append(right_top)
-    obstacle_segments.append(obst)
-    """
-
-    # debug
-    #print("stats obsts:")
-    #for box_ in obstacle_segments:
-    #  print("box:")
-    #  for point_ in box_:
-    #    print("x:", point_.x, "y:", point_.y,)
-
-
-    # get lane from observation
-    #lane_corridor = observed_world.lane_corridor
-    #x_s = [p[0] for p in lane_corridor.polygon.ToArray()]
-    #y_s = [p[1] for p in lane_corridor.polygon.ToArray()]
-    #obstacle_segments = []
-    #obst = []    
-    #left_bottom = Point(x_s[0], y_s[0])
-    #left_top = Point(x_s[0], y_s[0])
-    #obst.append((Point(x_s[3], y_s[3]), Point(0, 0)))
-    #obst.append((Point(x_s[2], y_s[2]), Point(0, 0)))
-    #obst.append((Point(x_s[1], y_s[1]), Point(0, 0)))
-    #obst.append((Point(x_s[0], y_s[0]), Point(0, 0)))
-    #obstacle_segments.append(obst)
-
-    # TODO: get correct goal box
-    grid_resolution = grid_resolution
-    grid_static_obst = np.zeros(grid_shape)
-    grid_dynamic_obst = np.zeros(grid_shape)
-    grid_agent = np.zeros(grid_shape)
-    grid_goal = np.zeros(grid_shape)
-    grid_with_adding_features = np.zeros(grid_shape)
-    
-    agent_kinematic_state = ego_agent.state[1:].tolist()
-    agent_steer = 0
-    agent_kinematic_state.append(agent_steer)
-    agent_kinematic_state = np.array(agent_kinematic_state)
-
-    x_min = agent_kinematic_state[0] - self.grid_shape[0] / (2 * self.grid_resolution) 
-    y_min = agent_kinematic_state[1] - self.grid_shape[1] / (2 * self.grid_resolution)
-
-    normalized_x_init = x_min
-    normalized_y_init = y_min
-
-    
-    # get normalized static boxes    
-    normalized_static_boxes = []
-    """
-    for obstacle in obstacle_segments:
-        #normalized_static_boxes.append(
-        #    [Point(pair_[0].x - normalized_x_init, 
-        #      pair_[0].y - normalized_y_init) 
-        #      for pair_ in obstacle])
-        normalized_static_boxes.append(
-            [Point(point_.x - normalized_x_init, 
-              point_.y - normalized_y_init) 
-              for point_ in obstacle])
-    """
-
-    # get normalized dynamic boxes
-    vehicles = []
-    for agent_id, agent in observed_world.other_agents.items():
-      vehicle = []
-      vehicle_nparray = agent.GetPolygonFromState(agent.state).ToArray()
-      x_s = [p[0] for p in vehicle_nparray]
-      y_s = [p[1] for p in vehicle_nparray]
-      vehicle.append((Point(x_s[3], y_s[3]), Point(0, 0)))
-      vehicle.append((Point(x_s[2], y_s[2]), Point(0, 0)))
-      vehicle.append((Point(x_s[1], y_s[1]), Point(0, 0)))
-      vehicle.append((Point(x_s[0], y_s[0]), Point(0, 0)))
-      vehicles.append(vehicle)
-
-    normalized_dynamic_boxes = []
-    for vehicle in vehicles:
-        vertices = vehicle
-        normalized_dynamic_boxes.append(
-                [Point(max(0, pair_[0].x - normalized_x_init), 
-                  max(0, pair_[0].y - normalized_y_init)) 
-                  for pair_ in vertices])
-
-    # get normalized agent box
-    vehicle = []
-    vehicle_nparray = ego_agent.GetPolygonFromState(ego_agent.state).ToArray()
-    x_s = [p[0] for p in vehicle_nparray]
-    y_s = [p[1] for p in vehicle_nparray]
-    vehicle.append((Point(x_s[1], y_s[1]), Point(0, 0)))
-    vehicle.append((Point(x_s[0], y_s[0]), Point(0, 0)))
-    vehicle.append((Point(x_s[3], y_s[3]), Point(0, 0)))
-    vehicle.append((Point(x_s[2], y_s[2]), Point(0, 0)))
-    vertices = vehicle
-
-    normalized_agent_box = [Point(max(0, pair_[0].x - normalized_x_init), 
-                                  max(0, pair_[0].y - normalized_y_init)) 
-                                  for pair_ in vertices]
-    
-    # get normalized goal box
-    vertices = []
-    vertices.append(goal.left_bottom)
-    vertices.append(goal.left_top)
-    vertices.append(goal.right_top)
-    vertices.append(goal.right_bottom)
-    normalized_goal_box = [Point(max(0, vert.x - normalized_x_init), 
-                                 max(0, vert.y - normalized_y_init)) 
-                                 for vert in vertices]
-
-    
-    # choice grid indexes
-    all_normilized_boxes = normalized_static_boxes.copy()
-    all_normilized_boxes.extend(normalized_dynamic_boxes)
-    all_normilized_boxes.append(normalized_agent_box)
-
-    # debug 
-    all_normilized_boxes.append(normalized_goal_box)
-
-    x_shape, y_shape = grid_static_obst.shape
     cv_index_boxes = []
     for box_ in all_normilized_boxes:
         box_cv_indexes = []
@@ -989,11 +845,170 @@ class ImageObserver(BaseObserver):
             box_cv_indexes.append(Point(cv_index_x, cv_index_y))
         cv_index_boxes.append(box_cv_indexes)
 
-    # get cv index boxes in reverse order (static, dynamic, agent, goal)
-    cv_index_goal_box = cv_index_boxes.pop(-1)
+    return cv_index_boxes
+
+
+  #def Observe(self, observed_world):
+  def Observe(self, observed_world, ego_agent=None):
+
+
+    #print("observe agent:", ego_agent)
+
+    # obs params
+    adding_ego_features = self.adding_ego_features
+    adding_dynamic_features = self.adding_dynamic_features
+    gridCount = self.gridCount
+    grid_resolution = self.grid_resolution
+    grid_shape = self.grid_shape
+    fake_static_obstacles = False
+    frame_stack = 1
+    assert grid_shape[0] % grid_resolution == 0 \
+                   and grid_shape[1] % grid_resolution == 0, \
+                   "incorrect grid shape"
+
+    
+    #print("obs agent behavior model type:", type(ego_agent.behavior_model))
+
+    # get agent and its goal
+    #ego_agent = observed_world.ego_agent
+    goal_definition = ego_agent.goal_definition
+    goal_shape = goal_definition.goal_shape.ToArray()
+    right_top = Point(goal_shape[1][0], goal_shape[1][1])
+    right_bottom = Point(goal_shape[2][0], goal_shape[2][1])
+    left_bottom = Point(goal_shape[3][0], goal_shape[3][1])
+    left_top = Point(goal_shape[4][0], goal_shape[4][1])
+    goal = CustomBox(left_top, left_bottom, right_bottom, right_top)
+
+    # TODO: get correct goal box
+    grid_resolution = grid_resolution
+    grid_static_obst = np.zeros(grid_shape)
+    grid_dynamic_obst = np.zeros(grid_shape)
+    grid_agent = np.zeros(grid_shape)
+    grid_goal = np.zeros(grid_shape)
+    grid_with_adding_features = np.zeros(grid_shape)
+    
+    agent_kinematic_state = ego_agent.state[1:].tolist()
+    agent_steer = ego_agent.behavior_model.GetCarSteer(ego_agent.dynamic_model.GetWheelBase())
+    agent_kinematic_state.append(agent_steer)
+    agent_kinematic_state = np.array(agent_kinematic_state)
+
+    x_min = agent_kinematic_state[0] - self.grid_shape[0] / (2 * self.grid_resolution) 
+    y_min = agent_kinematic_state[1] - self.grid_shape[1] / (2 * self.grid_resolution)
+
+    normalized_x_init = x_min
+    normalized_y_init = y_min
+    
+    # get normalized static boxes  
+    """  
+    normalized_static_boxes = []
+    for obstacle in obstacle_segments:
+        #normalized_static_boxes.append(
+        #    [Point(pair_[0].x - normalized_x_init, 
+        #      pair_[0].y - normalized_y_init) 
+        #      for pair_ in obstacle])
+        normalized_static_boxes.append(
+            [Point(point_.x - normalized_x_init, 
+              point_.y - normalized_y_init) 
+              for point_ in obstacle])
+    """
+
+    # get normalized dynamic boxes
+    """
+    normalized_dynamic_boxes = []
+    vehicles = []
+    for agent_id, agent in observed_world.other_agents.items():
+      vehicle = []
+      vehicle_nparray = agent.GetPolygonFromState(agent.state).ToArray()
+      x_s = [p[0] for p in vehicle_nparray]
+      y_s = [p[1] for p in vehicle_nparray]
+      vehicle.append((Point(x_s[3], y_s[3]), Point(0, 0)))
+      vehicle.append((Point(x_s[2], y_s[2]), Point(0, 0)))
+      vehicle.append((Point(x_s[1], y_s[1]), Point(0, 0)))
+      vehicle.append((Point(x_s[0], y_s[0]), Point(0, 0)))
+      vehicles.append(vehicle)
+    """
+    """
+    for vehicle in vehicles:
+        vertices = vehicle
+        normalized_dynamic_boxes.append(
+                [Point(max(0, pair_[0].x - normalized_x_init), 
+                  max(0, pair_[0].y - normalized_y_init)) 
+                  for pair_ in vertices])
+    """
+
+    # get normalized agent box
+    vehicle = []
+    vehicle_nparray = ego_agent.GetPolygonFromState(ego_agent.state).ToArray()
+    x_s = [p[0] for p in vehicle_nparray]
+    y_s = [p[1] for p in vehicle_nparray]
+    vehicle.append((Point(x_s[1], y_s[1]), Point(0, 0)))
+    vehicle.append((Point(x_s[0], y_s[0]), Point(0, 0)))
+    vehicle.append((Point(x_s[3], y_s[3]), Point(0, 0)))
+    vehicle.append((Point(x_s[2], y_s[2]), Point(0, 0)))
+    vertices = vehicle
+    normalized_agent_box = [Point(max(0, pair_[0].x - normalized_x_init), 
+                                  max(0, pair_[0].y - normalized_y_init)) 
+                                  for pair_ in vertices]
+    
+    # choice grid indexes
+    all_normilized_boxes = []
+    all_normilized_boxes.append(normalized_agent_box)
+    #all_normilized_boxes = normalized_static_boxes.copy()
+    #all_normilized_boxes.extend(normalized_static_boxes)
+    #all_normilized_boxes.extend(normalized_dynamic_boxes)
+    #all_normilized_boxes.append(normalized_goal_box)
+
+    cv_index_boxes = self.get_cv_index_boxes(all_normilized_boxes)
+
+    #cv_index_goal_box = cv_index_boxes.pop(-1)
     cv_index_agent_box = cv_index_boxes.pop(-1)
     
+    cv_box = cv_index_agent_box
+    contours = np.array([[cv_box[3].x, cv_box[3].y], [cv_box[2].x, cv_box[2].y], 
+                        [cv_box[1].x, cv_box[1].y], [cv_box[0].x, cv_box[0].y]])
+    grid_agent = cv.fillPoly(grid_agent, pts = [contours], color=1)
+
+
+    # get goal numpy
+    goal_x = (goal.left_top.x + goal.right_bottom.x) / 2
+    goal_y = (goal.left_top.y + goal.right_bottom.y) / 2
+    goal_theta = goal.heading()
+    goal_v = 0
+    goal_steer = 0
+    goal_kinematic_state = np.array([goal_x, goal_y, goal_theta, goal_v, goal_steer])
+
+    x_min = goal_kinematic_state[0] - self.grid_shape[0] / (2 * self.grid_resolution) 
+    y_min = goal_kinematic_state[1] - self.grid_shape[1] / (2 * self.grid_resolution)
+
+    normalized_x_init = x_min
+    normalized_y_init = y_min
+
+
+    # get normalized goal box
+    vertices = []
+    vertices.append(goal.left_bottom)
+    vertices.append(goal.left_top)
+    vertices.append(goal.right_top)
+    vertices.append(goal.right_bottom)
+    normalized_goal_box = [Point(max(0, vert.x - normalized_x_init), 
+                                 max(0, vert.y - normalized_y_init)) 
+                                 for vert in vertices]
+
+    all_normilized_boxes = []
+    all_normilized_boxes.append(normalized_goal_box)
+
+    cv_index_boxes = self.get_cv_index_boxes(all_normilized_boxes)
+
+    cv_index_goal_box = cv_index_boxes.pop(-1)
+
+    cv_box = cv_index_goal_box
+    contours = np.array([[cv_box[3].x, cv_box[3].y], [cv_box[2].x, cv_box[2].y], 
+                        [cv_box[1].x, cv_box[1].y], [cv_box[0].x, cv_box[0].y]])
+    grid_goal = cv.fillPoly(grid_goal, pts = [contours], color=1)
+
+
     # draw on numpy matrices
+    """
     for ind_box, cv_box in enumerate(cv_index_boxes):
         contours = np.array([[cv_box[3].x, cv_box[3].y], 
                              [cv_box[2].x, cv_box[2].y], 
@@ -1005,16 +1020,7 @@ class ImageObserver(BaseObserver):
                                                   pts = [contours], color=color)    
         grid_static_obst = cv.fillPoly(grid_static_obst, 
                                             pts = [contours], color=color)
-
-    cv_box = cv_index_agent_box
-    contours = np.array([[cv_box[3].x, cv_box[3].y], [cv_box[2].x, cv_box[2].y], 
-                        [cv_box[1].x, cv_box[1].y], [cv_box[0].x, cv_box[0].y]])
-    grid_agent = cv.fillPoly(grid_agent, pts = [contours], color=1)
-
-    cv_box = cv_index_goal_box
-    contours = np.array([[cv_box[3].x, cv_box[3].y], [cv_box[2].x, cv_box[2].y], 
-                        [cv_box[1].x, cv_box[1].y], [cv_box[0].x, cv_box[0].y]])
-    grid_goal = cv.fillPoly(grid_goal, pts = [contours], color=1)
+    """
 
     # TODO: set correct adding ego features, - make the row from image and features
     if not adding_ego_features:
@@ -1034,7 +1040,7 @@ class ImageObserver(BaseObserver):
         
         # TODO: get correct agent steer angle
         agent_kinematic_state = ego_agent.state[1:].tolist()
-        agent_steer = 0
+        agent_steer = ego_agent.behavior_model.GetCarSteer(ego_agent.dynamic_model.GetWheelBase())
         agent_kinematic_state.append(agent_steer)
         agent_kinematic_state = np.array(agent_kinematic_state)
 
@@ -1089,7 +1095,8 @@ class ImageObserver(BaseObserver):
     proprio_observation = Box(-0.20000000298023224, 0.699999988079071, (2,), np.float32) 
     proprio_desired_goal = Box(-0.20000000298023224, 0.699999988079071, (2,), np.float32) 
     proprio_achieved_goal = Box(-0.20000000298023224, 0.699999988079071, (2,), np.float32) 
-    image_observation = Box(-np.inf, np.inf, (28805,), np.float32) 
+    #image_observation = Box(-np.inf, np.inf, (28805,), np.float32) 
+    image_observation = Box(-np.inf, np.inf, (14405,), np.float32) 
     image_desired_goal = Box(-np.inf, np.inf, (14405,), np.float32) 
     image_achieved_goal = Box(-np.inf, np.inf, (14405,), np.float32) 
     image_proprio_observation = Box(-0.20000000298023224, 1.0, (21170,), np.float32) 
@@ -1202,7 +1209,117 @@ params["ML"]["BehaviorContinuousML"][
       [5, 1]]
 
 
-class ContinuousParkingGym(SingleAgentRuntime, gym.Env):
+
+from bark.runtime.runtime import Runtime
+
+
+class CustomSingleAgentRuntime(Runtime):
+  """Single agent runtime where action is passed to the
+  ego agent.
+  Can either be initialized using a blueprint or by passing the
+  `evaluator`, `observer`, `scenario_generation`, `step_time`, `viewer`
+  and ml_behavior.
+  """
+
+  def __init__(self,
+               blueprint=None,
+               ml_behavior=None,
+               observer=None,
+               evaluator=None,
+               step_time=None,
+               viewer=None,
+               scenario_generator=None,
+               render=False):
+
+    if blueprint is not None:
+      self._scenario_generator = blueprint._scenario_generation
+      self._viewer = blueprint._viewer
+      self._ml_behavior = blueprint._ml_behavior
+      self._step_time = blueprint._dt
+      self._evaluator = blueprint._evaluator
+      self._observer = blueprint._observer
+    Runtime.__init__(self,
+                     step_time=step_time or self._step_time,
+                     viewer=viewer or self._viewer,
+                     scenario_generator=scenario_generator or self._scenario_generator,
+                     render=render)
+    self._ml_behavior = ml_behavior or self._ml_behavior
+    self._observer = observer or self._observer
+    self._evaluator = evaluator or self._evaluator
+    self._world = None
+
+  def reset(self, scenario=None):
+    """Resets the runtime and its objects."""
+    super().reset(scenario=scenario)
+    assert len(self._scenario._eval_agent_ids) == 1, \
+      "This runtime only supports a single agent!"
+    eval_id = self._scenario._eval_agent_ids[0]
+    self._world.UpdateAgentRTree()
+    self._world = self._observer.Reset(self._world)
+    self._world = self._evaluator.Reset(self._world)
+    self._world.agents[eval_id].behavior_model = self._ml_behavior
+
+    # render
+    if self._render:
+      self.render()
+
+    # observe
+    observed_world = self._world.Observe([eval_id])[0]
+    #return self._observer.Observe(observed_world)
+    return self._observer.Observe(observed_world, 
+              ego_agent=self._world.agents[eval_id])
+
+  def step(self, action):
+
+    # set actions
+    eval_id = self._scenario._eval_agent_ids[0]
+    if eval_id in self._world.agents:
+      self._world.agents[eval_id].behavior_model.ActionToBehavior(action)
+
+    # step and observe
+    self._world.Step(self._step_time)
+    observed_world = self._world.Observe([eval_id])
+
+    if len(observed_world) > 0:
+      observed_world = observed_world[0]
+    else:
+      raise Exception('No world instance available.')
+
+    # observe and evaluate
+    #observed_next_state = self._observer.Observe(observed_world)
+    observed_next_state = self._observer.Observe(observed_world, 
+                            ego_agent=self._world.agents[eval_id])
+
+    reward, done, info = self._evaluator.Evaluate(
+      observed_world=observed_world,
+      action=action,
+      ego_agent=self._world.agents[eval_id])
+
+    # render
+    if self._render:
+      self.render()
+
+    return observed_next_state, reward, done, info
+
+  @property
+  def action_space(self):
+    """Action space of the agent."""
+    return self._ml_behavior.action_space
+
+  @property
+  def observation_space(self):
+    """Observation space of the agent."""
+    return self._observer.observation_space
+
+  @property
+  def ml_behavior(self):
+    return self._ml_behavior
+
+  @ml_behavior.setter
+  def ml_behavior(self, ml_behavior):
+    self._ml_behavior = ml_behavior
+
+class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
 
   def __init__(self):
     #params = ParameterServer(filename=
@@ -1228,7 +1345,7 @@ class ContinuousParkingGym(SingleAgentRuntime, gym.Env):
     viewer = VideoRenderer(renderer=renderer, 
                            world_step_time=cont_parking_bp._dt, 
                            video_name=video_name)
-    SingleAgentRuntime.__init__(self,
+    CustomSingleAgentRuntime.__init__(self,
                                 blueprint=cont_parking_bp,
                                 observer=observer,
                                 viewer=viewer if VALIDATE_ENV else False,
@@ -1239,13 +1356,13 @@ class ContinuousParkingGym(SingleAgentRuntime, gym.Env):
   def reset(self, seed=None):
     info = {}
     # reset eval agent behavior model. Cuz it containes agent steer angle 
-    reset_runtime = SingleAgentRuntime.reset(self)
+    reset_runtime = CustomSingleAgentRuntime.reset(self)
 
     return reset_runtime, info
   
   def step(self, action):
 
-    observed_state, reward, done, info = SingleAgentRuntime.step(self, action)
+    observed_state, reward, done, info = CustomSingleAgentRuntime.step(self, action)
 
     # TODO: implement goal check function (kinematic characteristic)
     if info["goal_reached"]:
@@ -1283,7 +1400,8 @@ class GCContinuousParkingGym(ContinuousParkingGym):
     proprio_desired_goal = np.zeros(2)
     proprio_achieved_goal = np.zeros(2)
 
-    image_observation = observed_state[:2, :, :].reshape(2 * observed_state.shape[1] * observed_state.shape[2])
+    #image_observation = observed_state[:2, :, :].reshape(2 * observed_state.shape[1] * observed_state.shape[2])
+    image_observation = observed_state[2:3, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
     image_observation = np.concatenate((image_observation, observed_state[3, 0, :5]), axis=0)
 
     image_desired_goal = observed_state[-1, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
@@ -1330,10 +1448,10 @@ class GCContinuousParkingGym(ContinuousParkingGym):
     proprio_desired_goal = np.zeros(2)
     proprio_achieved_goal = np.zeros(2)
 
-    image_observation = observed_state[:2, :, :].reshape(2 * observed_state.shape[1] * observed_state.shape[2])
+    #image_observation = observed_state[:2, :, :].reshape(2 * observed_state.shape[1] * observed_state.shape[2])
+    image_observation = observed_state[2:3, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
     image_observation = np.concatenate((image_observation, observed_state[3, 0, :5]), axis=0)
 
-    # TODO: get correct goal box
     image_desired_goal = observed_state[4:5, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
     image_desired_goal = np.zeros_like(image_desired_goal)
     image_desired_goal = np.concatenate((image_desired_goal, observed_state[3, 1, :5]), axis=0)

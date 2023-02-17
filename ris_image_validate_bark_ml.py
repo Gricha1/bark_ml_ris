@@ -57,7 +57,6 @@ if __name__ == "__main__":
     path = Path(observation_dir_name)
     path.mkdir(parents=True, exist_ok=True)
 
-    #register_mujoco_envs()
     train_env_name = "parking-v0"
     test_env_name = train_env_name
 
