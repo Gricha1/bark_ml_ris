@@ -93,46 +93,58 @@ if __name__ == "__main__":
         policy.load(folder)
         print("weights is loaded")
 
-    # Initialize environment
-    obs = env.reset()
-    done = False
-    state = obs["image_observation"]
-    goal = obs["image_desired_goal"]
-    episode_timesteps = 0
-    episode_num = 0 
 
-    for t in range(int(args.max_timesteps)):
-        episode_timesteps += 1
+    epoches = 10
+    # debug
+    for epoch in range(epoches):
+        # Initialize environment
+        obs = env.reset()
+        done = False
+        state = obs["image_observation"]
+        goal = obs["image_desired_goal"]
+        episode_timesteps = 0
+        episode_num = 0 
 
-        # debug
-        print("step:", t, end=" ")
-        
-        # Select action
-        if t < args.start_timesteps:
-            action = env.action_space.sample()
-        else:
-            action = policy.select_action(state, goal)
+        for t in range(int(args.max_timesteps)):
+            episode_timesteps += 1
 
-        # Perform action
-        next_obs, reward, done, info = env.step(action) 
-        print("reward:", reward, "episode ends:", done)
+            # debug
+            print("step:", t, end=" ")
+            
+            # Select action
+            if t < args.start_timesteps:
+                action = env.action_space.sample()
+            else:
+                action = policy.select_action(state, goal)
 
-        next_state = next_obs["image_observation"]
+            # debug
+            print("action:", action, end=" ")
+            action = [1, 0.1]
 
-        state = next_state
-        obs = next_obs
+            # Perform action
+            next_obs, reward, done, info = env.step(action) 
+            print("reward:", reward, 
+                "dist to goal:", info["dist_to_goal"], 
+                "episode ends:", done)
 
-        # save observation 
-        observed_next_state = info["obs_to_validation"]
-        observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
-                                              observed_next_state[2:3, :, :],   
-                                              observed_next_state[4:5, :, :]], axis=0)
-        observed_next_state = np.moveaxis(observed_next_state, 0, -1)
-        plt.imshow(observed_next_state)
-        plt.savefig(observation_dir_name + '/' + f'fig{episode_timesteps}.png')
+            next_state = next_obs["image_observation"]
 
-        if done:
-            print("episode is finished")
-            break
+            state = next_state
+            obs = next_obs
+
+            # save observation 
+            save_obs = False
+            if save_obs:
+                observed_next_state = info["obs_to_validation"]
+                observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
+                                                    observed_next_state[2:3, :, :],   
+                                                    observed_next_state[4:5, :, :]], axis=0)
+                observed_next_state = np.moveaxis(observed_next_state, 0, -1)
+                plt.imshow(observed_next_state)
+                plt.savefig(observation_dir_name + '/' + f'fig{episode_timesteps}.png')
+
+            if done:
+                print("episode is finished")
+                break
 
 

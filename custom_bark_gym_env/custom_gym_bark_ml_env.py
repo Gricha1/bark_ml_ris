@@ -68,6 +68,7 @@ from bark.runtime.commons.xodr_parser import XodrParser
 import copy
 import os
 from pathlib import Path
+import json
 
 # Module variable to maintain map directory
 __MAPFILE_DIRECTORY = None
@@ -148,7 +149,7 @@ class AgentLaneCorridorConfig:
     # return np.array([0, 80, -3, 0, 2])
     agent_x = -30
     agent_y = -3
-    return np.array([0, agent_x, agent_y, 0, 2])
+    return np.array([0, agent_x, agent_y, 0, 0])
 
   def ds(self):
     """Increment for placing the agents
@@ -223,30 +224,10 @@ class AgentLaneCorridorConfig:
   def goal(self, world):
     # TODO: create correct goal definition 
     # for the agent which has geometric and kinematic goals
-                                     
-    #old agent pose: np.array([0, 80, -3, 0, 2])
-    #left_bottom = Point2d(85, -13)
-    #left_top = Point2d(85, -7)
-    #right_top = Point2d(89, -7)
-    #right_bottom = Point2d(89, -13)
-
-    # debug
-    #wheel_base = self.dynamic_model().GetWheelBase()
-
     agent_x = -30
     agent_y = -3
-   
-    # test
-    #left_bottom = Point2d(agent_x + 8, agent_y - 10)
-    #left_top = Point2d(agent_x + 8, agent_y - 4)
-    #right_top = Point2d(agent_x + 12, agent_y - 4)
-    #right_bottom = Point2d(agent_x + 12, agent_y - 10)
 
-    #left_bottom = Point2d(agent_x + 8, agent_y - 10)
-    #left_top = Point2d(agent_x + 8, agent_y + 5)
-    #right_top = Point2d(agent_x + 15, agent_y + 5)
-    #right_bottom = Point2d(agent_x + 15, agent_y - 10)
-
+    """
     left_bottom = Point2d(agent_x + 25, agent_y + 2)
     left_top = Point2d(agent_x + 25, agent_y + 7)
     right_top = Point2d(agent_x + 32, agent_y + 7)
@@ -257,14 +238,20 @@ class AgentLaneCorridorConfig:
                               left_bottom,
                               right_bottom,
                               right_top])
-
+    """
+    # sample goal from distribution
+    goal_polygon = GenerateCarRectangle(self._wb, self._crad)
+    translate_point = Point2d(agent_x + np.random.choice(np.linspace(-25, 25, 20)), 
+                              agent_y + np.random.choice(np.linspace(-7, 7, 20)))
+    goal_polygon = goal_polygon.Translate(translate_point)
+    
     return GoalDefinitionPolygon(goal_polygon)
+
     #goal_x = (left_top.x() + right_bottom.x()) / 2
     #goal_y = (left_top.y() + right_bottom.y()) / 2
     #goal_theta = 0
     #goal_v = 0
     #goal_steer = 0
-
     #return CustomGoalDefinition(goal_polygon, goal_x, goal_y, goal_theta, goal_v, goal_steer)
 
   def controlled_ids(self, agent_list):
@@ -333,9 +320,6 @@ class CustomConfigWithEase(ScenarioGeneration):
     Returns:
         Scenario -- Returns a BARK scenario
     """
-    #scenario = Scenario(map_file_name=self._map_file_name,
-    #                    json_params=self._params.ConvertToDict(),
-    #                    observer_model=self._observer_model)
     scenario = Scenario(map_file_name=self._map_file_name,
                         json_params=self._params.ConvertToDict(),
                         observer_model=self._observer_model)
@@ -448,6 +432,15 @@ from bark_ml.behaviors.discrete_behavior import BehaviorDiscreteMacroActionsML
 from bark_ml.observers.nearest_state_observer import NearestAgentsObserver
 from gym.spaces import *
 
+class CustomPoint2d():
+  def __init__(self, x, y):
+    self.x = x
+    self.y = y
+
+  def shift(self, angle, dist):
+    self.x = self.x + dist * np.cos(angle)
+    self.y = self.y + dist * np.sin(angle)
+    return self
 
 class CustomGoalDefinition(GoalDefinitionPolygon):
 
@@ -522,19 +515,20 @@ class TestBlueprint(Blueprint):
 
     lane_corridors.append(
       AgentLaneCorridorConfig(params=params,
-                        #road_ids = [1],
-                        #lane_corridor_id=1,
-                        #source_pos=[30,-3],
-                        source_pos=[13.63924827385749,-1.7491607197737886],
-                        sink_pos=[103,70],
-                        s_min=0,
-                        s_max=30,
-                        ds_min=0,
-                        ds_max=10,
-                        min_vel=0,
-                        max_vel=6,
-                        controlled_ids=True
-                        ))
+                              #road_ids = [1],
+                              #lane_corridor_id=1,
+                              #source_pos=[30,-3],
+                              source_pos=[13.63924827385749,-1.7491607197737886],
+                              sink_pos=[103,70],
+                              s_min=0,
+                              s_max=30,
+                              ds_min=0,
+                              ds_max=10,
+                              min_vel=0,
+                              max_vel=6,
+                              controlled_ids=True,
+                              wb=params["DynamicModel"]["wheel_base"],
+                              ))
     scenario_generation = \
       CustomConfigWithEase(
           num_scenarios=num_scenarios,
@@ -566,8 +560,6 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
     #  [1, 1]]
     #self._upper_bounds = [1, 1]
     self._upper_bounds = [5, 5]
-
-    # TODO: implement get steer angle in behavior model
     self.prev_steer = 0
     self.max_acc = 5
     self.max_steer_acc = self._upper_bounds[1]
@@ -576,6 +568,10 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
 
   def GetCarSteer(self, wheel_base):
     return self.prev_steer
+
+  def reset(self):
+    self.prev_steer = 0
+    return self
 
   # change behavior module to produce 
   # action: [linear accleration, steering acceleration]
@@ -683,14 +679,17 @@ class TestEvaluator:
     V_EPS = 0.05
     STEER_EPS = 20
 
+    # TODO: set correct wheel base in param
+    wheel_base = ego_agent.dynamic_model.GetWheelBase()
     goal_x = (goal.left_top.x + goal.right_bottom.x) / 2
     goal_y = (goal.left_top.y + goal.right_bottom.y) / 2
     goal_theta = goal.heading()
     goal_v = 0
     goal_steer = 0
-    goal_kinematic_state = np.array([goal_x, goal_y, goal_theta, goal_v, goal_steer])
+    shifted_goal_point = CustomPoint2d(goal_x, goal_y).shift(goal_theta + np.pi, wheel_base/2)
+    shifted_goal_x, shifted_goal_y = shifted_goal_point.x, shifted_goal_point.y
+    goal_kinematic_state = np.array([shifted_goal_x, shifted_goal_y, goal_theta, goal_v, goal_steer])
 
-    # TODO: get correct agent steer angle
     agent_kinematic_state = ego_agent.state[1:].tolist()
     agent_steer = ego_agent.behavior_model.GetCarSteer(ego_agent.dynamic_model.GetWheelBase())
     agent_kinematic_state.append(agent_steer)
@@ -703,10 +702,10 @@ class TestEvaluator:
     dv = goal_kinematic_state[3] - agent_kinematic_state[3]
     dsteer = goal_kinematic_state[4] - agent_kinematic_state[4]
     
-    dl = 1 if abs(dl) <= L_EPS else 0
-    dtheta = 1 if abs(dtheta) <= (180 / np.pi) * THETA_EPS else 0
-    dv = 1 if abs(dv) <= V_EPS else 0
-    dsteer = 1 if abs(dsteer) <= (180 / np.pi) * STEER_EPS else 0
+    dl_achieved = 1 if abs(dl) <= L_EPS else 0
+    dtheta_achieved = 1 if abs(dtheta) <= (180 / np.pi) * THETA_EPS else 0
+    dv_achieved = 1 if abs(dv) <= V_EPS else 0
+    dsteer_achieved = 1 if abs(dsteer) <= (180 / np.pi) * STEER_EPS else 0
 
     kinematic_goal_reached = False
     if dl + dtheta + dv + dsteer == 4:
@@ -714,6 +713,7 @@ class TestEvaluator:
 
     eval_results["kinematic_goal_reached"] = kinematic_goal_reached
     eval_results["dist_to_goal"] = dl
+    eval_results["geometirc_goal_achieved"] = dl_achieved
 
     # TODO: set correct reward, not in env.step() change
 
@@ -850,9 +850,6 @@ class ImageObserver(BaseObserver):
 
   #def Observe(self, observed_world):
   def Observe(self, observed_world, ego_agent=None):
-
-
-    #print("observe agent:", ego_agent)
 
     # obs params
     adding_ego_features = self.adding_ego_features
@@ -1038,7 +1035,6 @@ class ImageObserver(BaseObserver):
         goal_steer = 0
         goal_kinematic_state = np.array([goal_x, goal_y, goal_theta, goal_v, goal_steer])
         
-        # TODO: get correct agent steer angle
         agent_kinematic_state = ego_agent.state[1:].tolist()
         agent_steer = ego_agent.behavior_model.GetCarSteer(ego_agent.dynamic_model.GetWheelBase())
         agent_kinematic_state.append(agent_steer)
@@ -1208,6 +1204,10 @@ params["ML"]["BehaviorContinuousML"][
       "Upper-bound for actions.",
       [5, 1]]
 
+# set vehicle params
+# TODO: set correct wheel base in param ( only on LaneCorridor correct )
+params["DynamicModel"]["wheel_base"] = 2.7
+
 
 
 from bark.runtime.runtime import Runtime
@@ -1248,6 +1248,10 @@ class CustomSingleAgentRuntime(Runtime):
     self._evaluator = evaluator or self._evaluator
     self._world = None
 
+
+    # debug
+    print("debug count of scenarios:" , self._scenario_generator.get_num_scenarios())
+
   def reset(self, scenario=None):
     """Resets the runtime and its objects."""
     super().reset(scenario=scenario)
@@ -1257,7 +1261,8 @@ class CustomSingleAgentRuntime(Runtime):
     self._world.UpdateAgentRTree()
     self._world = self._observer.Reset(self._world)
     self._world = self._evaluator.Reset(self._world)
-    self._world.agents[eval_id].behavior_model = self._ml_behavior
+    #self._world.agents[eval_id].behavior_model = self._ml_behavior
+    self._world.agents[eval_id].behavior_model = self._ml_behavior.reset()
 
     # render
     if self._render:
@@ -1265,7 +1270,6 @@ class CustomSingleAgentRuntime(Runtime):
 
     # observe
     observed_world = self._world.Observe([eval_id])[0]
-    #return self._observer.Observe(observed_world)
     return self._observer.Observe(observed_world, 
               ego_agent=self._world.agents[eval_id])
 
@@ -1319,6 +1323,8 @@ class CustomSingleAgentRuntime(Runtime):
   def ml_behavior(self, ml_behavior):
     self._ml_behavior = ml_behavior
 
+
+# INIT POINT TO ENV(RUNTIME)
 class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
 
   def __init__(self):
@@ -1326,9 +1332,9 @@ class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
     #  os.path.join(os.path.dirname(__file__),
     #  "../environments/blueprints/visualization_params.json"))
     cont_parking_bp = ContinuousParkingBlueprint(params,
-                                              num_scenarios=1,
-                                              dt=0.1,
-                                              random_seed=0)
+                                                 num_scenarios=250,
+                                                 dt=0.1,
+                                                 random_seed=0)
 
     #observer = NearestAgentsObserver(params)
     observer = ImageObserver(params)
@@ -1365,7 +1371,8 @@ class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
     observed_state, reward, done, info = CustomSingleAgentRuntime.step(self, action)
 
     # TODO: implement goal check function (kinematic characteristic)
-    if info["goal_reached"]:
+    #if info["goal_reached"]:
+    if info["geometirc_goal_achieved"]:
       done = True
       reward = 0
     else:
@@ -1483,7 +1490,7 @@ class GCContinuousParkingGym(ContinuousParkingGym):
     status = {}
 
     # TODO: implemet get correct xy-distance (terminal distance)
-    status["xy-distance"] = [info["dist_to_goal"]]
+    #status["xy-distance"] = [info["dist_to_goal"]]
     status["done"] = done
 
     # TODO: implement correct reward 
@@ -1493,5 +1500,5 @@ class GCContinuousParkingGym(ContinuousParkingGym):
 
     # debug
     info["obs_to_validation"] = observed_state
-
+    
     return next_obs, reward, done, info
