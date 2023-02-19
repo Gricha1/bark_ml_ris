@@ -139,7 +139,7 @@ if __name__ == "__main__":
             obs = next_obs
 
             # save observation 
-            save_obs = True
+            save_obs = False
             if save_obs:
                 observed_next_state = info["obs_to_validation"]
                 observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
@@ -156,6 +156,8 @@ if __name__ == "__main__":
                     from utilite_video_generator import generate_video
                     generate_video(env=False, obs=True, name=epoch)
                     print('save video', end=" ")
+                    shutil.rmtree(observation_dir_name)
+                    path.mkdir(parents=True, exist_ok=True)
                 print("episode is finished")
                 break
 

@@ -213,13 +213,6 @@ class RIS(object):
 				subgoal = self.goal_Encoder(x_sub_goal, x_f_sub_goal)
 				
 
-
-		# debug
-		#print("state:", state[0])
-		#print("next_state:", next_state[0])
-		#print("goal:", goal[0])
-		#print("subgoal:", subgoal[0])
-
 		""" Critic """
 		# Compute target Q
 		with torch.no_grad():
@@ -232,28 +225,17 @@ class RIS(object):
 		Q = self.critic(state, action, goal)
 		critic_loss = 0.5 * (Q - target_Q).pow(2).sum(-1).mean()
 
-		# debug
-		#print("reward batch:", reward)
-
-
-		# debug
 		if self.logger is not None:
 			self.logger.store(
 				critic_value   = Q.mean().item(),
 				target_value  = target_Q.mean().item()
 			)
-		#print("critic mean value:", Q.mean().item())
-		#print("target mean value:", Q.mean().item())
 
 		# Optimize the critic
-		if self.image_env:
-			#self.obs_encoder_optimizer.zero_grad()
-			self.goal_encoder_optimizer.zero_grad()
+		if self.image_env: self.goal_encoder_optimizer.zero_grad()
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
-		if self.image_env:
-			#self.obs_encoder_optimizer.zero_grad()
-			self.goal_encoder_optimizer.zero_grad()
+		if self.image_env: self.goal_encoder_optimizer.step()
 		self.critic_optimizer.step()
 
 		# Stop backpropagation to encoder
