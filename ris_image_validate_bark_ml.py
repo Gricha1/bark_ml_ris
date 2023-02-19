@@ -52,6 +52,8 @@ if __name__ == "__main__":
 
     # set path for experement video
     working_dir_name = str(pathlib.Path().resolve())
+    if os.path.isdir(working_dir_name + "/video_validation/"):
+        shutil.rmtree(working_dir_name + "/video_validation/")
     observation_dir_name = working_dir_name + f"/video_validation/obs_pngs"
     if os.path.isdir(observation_dir_name):
         shutil.rmtree(observation_dir_name)
@@ -104,11 +106,10 @@ if __name__ == "__main__":
         done = False
         state = obs["image_observation"]
         goal = obs["image_desired_goal"]
-        episode_timesteps = 0
-        episode_num = 0 
+        t = 0
 
-        for t in range(int(args.max_timesteps)):
-            episode_timesteps += 1
+        while not done:
+            t += 1
 
             # debug
             print("step:", t, end=" ")
@@ -130,6 +131,7 @@ if __name__ == "__main__":
                 "agent theta:", info["agent_state"][2],
                 "agent steer:", info["agent_state"][4],
                 "episode ends:", done)
+            done = done or t >= int(args.max_timesteps)
 
             next_state = next_obs["image_observation"]
 
@@ -137,7 +139,7 @@ if __name__ == "__main__":
             obs = next_obs
 
             # save observation 
-            save_obs = False
+            save_obs = True
             if save_obs:
                 observed_next_state = info["obs_to_validation"]
                 observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
@@ -145,9 +147,15 @@ if __name__ == "__main__":
                                                     observed_next_state[4:5, :, :]], axis=0)
                 observed_next_state = np.moveaxis(observed_next_state, 0, -1)
                 plt.imshow(observed_next_state)
-                plt.savefig(observation_dir_name + '/' + f'fig{episode_timesteps}.png')
+                plt.savefig(observation_dir_name + '/' + f'fig{t}.png')
 
+                #wandb.log({"example": wandb.Video("myvideo.mp4")})
+        
             if done:
+                if save_obs:
+                    from utilite_video_generator import generate_video
+                    generate_video(env=False, obs=True, name=epoch)
+                    print('save video', end=" ")
                 print("episode is finished")
                 break
 
