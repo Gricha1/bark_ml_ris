@@ -13,9 +13,11 @@ apt-get install -y xvfb
 
 
 ## Train
-python ris_image_train_bark_ml.py --exp_name bark_ml_ex_8 --replay_buffer_size 10000 --start_timesteps 10000 --eval_freq 2000 --batch_size 256 --max_episode_length 250 --state_dim 16
+#python ris_image_train_bark_ml.py --exp_name bark_ml_ex_8 --replay_buffer_size 10000 --start_timesteps 10000 #--eval_freq 2000 --batch_size 256 --max_episode_length 250 --state_dim 16
+
+python ris_image_train_bark_ml.py --exp_name bark_ml_ex_9 --replay_buffer_size 50000 --start_timesteps 20000 --eval_freq 2000 --batch_size 256 --max_episode_length 250 --state_dim 64
 
 ## Validate
-python ris_image_validate_bark_ml.py --exp_name bark_ml_ex_1 --start_timesteps 0 --state_dim 16
+python ris_image_validate_bark_ml.py --exp_name bark_ml_ex_1 --start_timesteps 0 --state_dim 64
 
 python utilite_video_generator.py 

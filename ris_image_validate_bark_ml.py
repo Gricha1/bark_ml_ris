@@ -13,6 +13,7 @@ from gym.envs.registration import register
 from utils.logger import Logger
 from custom_RIS import RIS
 from HER import HERReplayBuffer, PathBuilder
+import wandb
 
 from pathlib import Path
 import shutil
@@ -81,6 +82,7 @@ if __name__ == "__main__":
     # Create logger
     # TODO: save_git_head_hash = True by default, change it if neccesary
     logger = None
+    run = wandb.init(project='RIS_bark_ml_validate')
     
     # Initialize policy
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
@@ -118,13 +120,15 @@ if __name__ == "__main__":
                 action = policy.select_action(state, goal)
 
             # debug
+            #action = [1, 1]
             print("action:", action, end=" ")
-            action = [1, 0.1]
 
             # Perform action
             next_obs, reward, done, info = env.step(action) 
             print("reward:", reward, 
                 "dist to goal:", info["dist_to_goal"], 
+                "agent theta:", info["agent_state"][2],
+                "agent steer:", info["agent_state"][4],
                 "episode ends:", done)
 
             next_state = next_obs["image_observation"]

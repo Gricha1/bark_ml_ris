@@ -564,7 +564,8 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
     self.max_acc = 5
     self.max_steer_acc = self._upper_bounds[1]
     self.max_steer_vel = 1
-    self.max_steer = 28 * np.pi / 180
+    #self.max_steer = 28 * np.pi / 180
+    self.max_steer = 0.2
 
   def GetCarSteer(self, wheel_base):
     return self.prev_steer
@@ -579,18 +580,24 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
   def ActionToBehavior(self, action):
     
     a, v_s = action
+
     # clip actions
     a = np.clip(a, -self.max_acc, self.max_acc)
     v_s = np.clip(v_s, -self.max_steer_vel, self.max_steer_vel)
-
     # manually change car steer angle
-    if (self.prev_steer == -self.max_steer or self.prev_steer == self.max_steer):
+    if self.prev_steer == -self.max_steer \
+        and v_s < 0:
+      v_s = 0
+    if self.prev_steer == self.max_steer \
+        and v_s > 0:
       v_s = 0
     self.prev_steer = np.clip(self.prev_steer + v_s * self.custom_time, 
                               -self.max_steer,
                               self.max_steer)
-
     action = [a, v_s]
+
+    steer = self.prev_steer
+    action = [a, steer]
 
     """
     a = np.clip(a, -self.max_acc, self.max_acc)
@@ -603,6 +610,7 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
     self.steer_angle = last_steer_angle + v_s * self.custom_time
     """
 
+    # action is: linear acc, steer angle
     BehaviorContinuousML.ActionToBehavior(self, action)
 
 
@@ -714,6 +722,7 @@ class TestEvaluator:
     eval_results["kinematic_goal_reached"] = kinematic_goal_reached
     eval_results["dist_to_goal"] = dl
     eval_results["geometirc_goal_achieved"] = dl_achieved
+    eval_results["agent_state"] = agent_kinematic_state
 
     # TODO: set correct reward, not in env.step() change
 

@@ -155,22 +155,26 @@ class goal_Encoder(nn.Module):
 			nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
 			nn.Conv2d(32, 32, 3, 1), nn.ReLU()
 		)
-		# for img_size = 120
+
 		conv_output_size = 4608
 
-		self.encoder_features_1 = nn.Linear(adding_features_size, 256)
-		self.encoder_features_2 = nn.Linear(256, 512)
+		#self.encoder_features_1 = nn.Linear(adding_features_size, 256)
+		#self.encoder_features_2 = nn.Linear(256, 512)
 
-		self.fc_connect = nn.Linear(conv_output_size + 512, conv_output_size + 512)
-		self.fc = nn.Linear(conv_output_size + 512, state_dim)
+		#self.fc_connect = nn.Linear(conv_output_size + 512, conv_output_size + 512)
+		#self.fc = nn.Linear(conv_output_size + 512, state_dim)
+		self.fc_connect = nn.Linear(conv_output_size + adding_features_size, 
+									conv_output_size + adding_features_size)
+		self.fc = nn.Linear(conv_output_size + adding_features_size, state_dim)
 
 		self.apply(weights_init_encoder)
 
 	def forward(self, x, x_f):
+		
 		h_img = self.encoder_conv(x).view(x.size(0), -1)
-		h_features = self.encoder_features_1(x_f)
-		h_features = self.encoder_features_2(h_features)
-
-		h = self.fc_connect(torch.cat([h_img, h_features], axis = 1))
+		#h_features = self.encoder_features_1(x_f)
+		#h_features = self.encoder_features_2(h_features)
+		#h = self.fc_connect(torch.cat([h_img, h_features], axis = 1))
+		h = self.fc_connect(torch.cat([h_img, x_f], axis = 1))
 		state = self.fc(h)
 		return state

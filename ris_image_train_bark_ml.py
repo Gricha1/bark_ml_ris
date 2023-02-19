@@ -16,6 +16,17 @@ from custom_RIS import RIS
 from HER import HERReplayBuffer, PathBuilder
 import wandb
 
+
+'''
+# set path for experement video
+working_dir_name = str(pathlib.Path().resolve())
+observation_dir_name = working_dir_name + f"/video_train/obs_pngs"
+if os.path.isdir(observation_dir_name):
+    shutil.rmtree(observation_dir_name)
+path = Path(observation_dir_name)
+path.mkdir(parents=True, exist_ok=True)
+'''
+
 def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=None):
     accumulated_rewards = []
     successes = [] 
@@ -26,6 +37,8 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
         goal = obs["image_desired_goal"]
         t = 0
         accumulated_reward = 0
+        #debug_visualization = True
+
         while not done:
             action = policy.select_action(state, goal)
             next_obs, reward, done, info = env.step(action) 
@@ -38,8 +51,21 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
             done = done or t >= Tmax
 
             t += 1
+
+            '''
+            if debug_visualization:
+                observed_next_state = info["obs_to_validation"]
+                observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
+                                                    observed_next_state[2:3, :, :],   
+                                                    observed_next_state[4:5, :, :]], axis=0)
+                observed_next_state = np.moveaxis(observed_next_state, 0, -1)
+                plt.imshow(observed_next_state)
+                plt.savefig(observation_dir_name + '/' + f'fig{t}.png')
+            '''
+
         accumulated_rewards.append(accumulated_reward)
-        successes.append(1.0 * info["goal_reached"])
+        successes.append(1.0 * info["geometirc_goal_achieved"])        
+
         
     # debug acc rewards
     print("eval accumulateted rewards:", accumulated_rewards)
@@ -143,7 +169,7 @@ if __name__ == "__main__":
     # Create logger
     # TODO: save_git_head_hash = True by default, change it if neccesary
     logger = Logger(vars(args), save_git_head_hash=False)
-    run = wandb.init(project='RIS_bark_ml')
+    run = wandb.init(project='RIS_bark_ml_train')
     
     # Initialize policy
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
