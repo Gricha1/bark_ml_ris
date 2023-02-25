@@ -10,3 +10,5 @@ wandb
 opencv-python
 torch
 #gym
+moviepy 
+imageio

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from custom_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder, obs_Encoder, goal_Encoder
+from custom_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder, goal_Encoder
 
 from utils.data_aug import random_translate
 
@@ -42,9 +42,7 @@ class RIS(object):
 		# Encoder (for vision-based envs)
 		self.image_env = image_env
 		if self.image_env:
-			#self.obs_Encoder = obs_Encoder(state_dim=state_dim).to(device)
 			self.goal_Encoder = goal_Encoder(state_dim=state_dim).to(device)
-			#self.obs_encoder_optimizer = torch.optim.Adam(self.obs_Encoder.parameters(), lr=enc_lr)
 			self.goal_encoder_optimizer = torch.optim.Adam(self.goal_Encoder.parameters(), lr=enc_lr)
 
 		# Actor-Critic Hyperparameters
@@ -71,14 +69,12 @@ class RIS(object):
 		torch.save(self.critic.state_dict(),		folder + "critic.pth")
 		torch.save(self.subgoal_net.state_dict(),   folder + "subgoal_net.pth")
 		if self.image_env:
-			#torch.save(self.obs_Encoder.state_dict(), folder + "obs_encoder.pth")
 			torch.save(self.goal_Encoder.state_dict(), folder + "goal_encoder.pth")
 		if save_optims:
 			torch.save(self.actor_optimizer.state_dict(), 	folder + "actor_opti.pth")
 			torch.save(self.critic_optimizer.state_dict(), 	folder + "critic_opti.pth")
 			torch.save(self.subgoal_optimizer.state_dict(), folder + "subgoal_opti.pth")
 			if self.image_env:
-				#torch.save(self.obs_encoder_optimizer.state_dict(), folder + "obs_encoder_opti")
 				torch.save(self.goal_encoder_optimizer.state_dict(), folder + "goal_encoder_opti")
 
 	def load(self, folder):
@@ -86,7 +82,6 @@ class RIS(object):
 		self.critic.load_state_dict(torch.load(folder+"critic.pth", map_location=self.device))
 		self.subgoal_net.load_state_dict(torch.load(folder+"subgoal_net.pth", map_location=self.device))
 		if self.image_env:
-			#self.obs_Encoder.load_state_dict(torch.load(folder+"obs_encoder.pth", map_location=self.device))
 			self.goal_Encoder.load_state_dict(torch.load(folder+"goal_encoder.pth", map_location=self.device))
 
 	def select_action(self, state, goal):
@@ -95,20 +90,12 @@ class RIS(object):
 			state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
 			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
 			if self.image_env:
-				#x, x_f = get_img_feat_from_rollout(state, c_count=2)
 				x, x_f = get_img_feat_from_rollout(state, c_count=1)
-				#state = self.obs_Encoder(x, x_f)
 				state = self.goal_Encoder(x, x_f)
-
 				x_goal, x_f_goal = get_img_feat_from_rollout(goal, c_count=1)
 				goal = self.goal_Encoder(x_goal, x_f_goal)
-
-			# debug
 			action, _, _ = self.actor.sample(state, goal)
-			#_, _, mean = self.actor.sample(state, goal)
-
 		return action.cpu().data.numpy().flatten()
-		#return mean.cpu().data.numpy().flatten()
 		
 	def value(self, state, goal):
 		_, _, action = self.actor.sample(state, goal)
@@ -148,26 +135,17 @@ class RIS(object):
 			new_subgoal = subgoal_distribution.loc
 			policy_v_1 = self.value(state, new_subgoal)
 			policy_v_2 = self.value(new_subgoal, goal)
-
-			# debug
-			#policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
-			policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-self.max_env_steps, max=0.0).abs().max(-1)[0]
+			policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+			#policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-self.max_env_steps, max=0.0).abs().max(-1)[0]
 
 			# Compute subgoal distance loss
 			v_1 = self.value(state, subgoal)
 			v_2 = self.value(subgoal, goal)
-
-			# debug
-			#v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
-			v = torch.cat([v_1, v_2], -1).clamp(min=-self.max_env_steps, max=0.0).abs().max(-1)[0]
-
+			v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+			#v = torch.cat([v_1, v_2], -1).clamp(min=-self.max_env_steps, max=0.0).abs().max(-1)[0]
 			adv = - (v - policy_v)
 			weight = F.softmax(adv/self.Lambda, dim=0)
 		
-		# debug
-		#print("subgoal v_1(state-sub): ", v_1)
-		#print("gen subgoal v_1(state-sub):", policy_v_1)
-
 		log_prob = subgoal_distribution.log_prob(subgoal).sum(-1)
 		subgoal_loss = - (log_prob * weight).mean()
 
@@ -187,29 +165,22 @@ class RIS(object):
 		""" Encode images (if vision-based environment), use data augmentation """
 		
 		if self.image_env:
-
-			#x_state, x_f_state = get_img_feat_from_rollout(state, c_count=2, batch_size=state.shape[0])
-			#x_next_state, x_f_next_state = get_img_feat_from_rollout(next_state, c_count=2, batch_size=next_state.shape[0])
 			x_state, x_f_state = get_img_feat_from_rollout(state, c_count=1, batch_size=state.shape[0])
 			x_next_state, x_f_next_state = get_img_feat_from_rollout(next_state, c_count=1, batch_size=next_state.shape[0])
 			x_goal, x_f_goal = get_img_feat_from_rollout(goal, c_count=1, batch_size=goal.shape[0])
-			#x_sub_goal, x_f_sub_goal = get_img_feat_from_rollout(subgoal, c_count=2, batch_size=subgoal.shape[0])
 			x_sub_goal, x_f_sub_goal = get_img_feat_from_rollout(subgoal, c_count=1, batch_size=subgoal.shape[0])
 
 			# Data augmentation
-			#state = random_translate(state, pad=8)
-			#next_state = random_translate(next_state, pad=8)
-			#goal = random_translate(goal, pad=8)
-			#subgoal = random_translate(subgoal, pad=8)
+			x_state = random_translate(x_state, pad=8)
+			x_next_state = random_translate(x_next_state, pad=8)
+			x_goal = random_translate(x_goal, pad=8)
+			x_sub_goal = random_translate(x_sub_goal, pad=8)
 
 			# Stop gradient for subgoal goal and next state
-			#state = self.obs_Encoder(x_state, x_f_state)
 			state = self.goal_Encoder(x_state, x_f_state)
 			with torch.no_grad():
 				goal = self.goal_Encoder(x_goal, x_f_goal)
-				#next_state = self.obs_Encoder(x_next_state, x_f_next_state)
 				next_state = self.goal_Encoder(x_next_state, x_f_next_state)
-				#subgoal = self.obs_Encoder(x_sub_goal, x_f_sub_goal)
 				subgoal = self.goal_Encoder(x_sub_goal, x_f_sub_goal)
 				
 

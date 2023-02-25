@@ -60,6 +60,9 @@ if __name__ == "__main__":
     path = Path(observation_dir_name)
     path.mkdir(parents=True, exist_ok=True)
 
+    video_name = working_dir_name + "/video_validation/pngs"
+
+
     train_env_name = "parking-v0"
     test_env_name = train_env_name
 
@@ -99,7 +102,6 @@ if __name__ == "__main__":
 
 
     epoches = 10
-    # debug
     for epoch in range(epoches):
         # Initialize environment
         obs = env.reset()
@@ -121,7 +123,7 @@ if __name__ == "__main__":
                 action = policy.select_action(state, goal)
 
             # debug
-            #action = [1, 1]
+            #action = [0.5, 0]
             print("action:", action, end=" ")
 
             # Perform action
@@ -138,8 +140,13 @@ if __name__ == "__main__":
             state = next_state
             obs = next_obs
 
-            # save observation 
+            print()
+            print("agent:", info["obs_to_validation"][3, 0, :5])
+            print("goal:", info["obs_to_validation"][3, 1, :5])
+            print()
+
             save_obs = False
+
             if save_obs:
                 observed_next_state = info["obs_to_validation"]
                 observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
@@ -148,16 +155,23 @@ if __name__ == "__main__":
                 observed_next_state = np.moveaxis(observed_next_state, 0, -1)
                 plt.imshow(observed_next_state)
                 plt.savefig(observation_dir_name + '/' + f'fig{t}.png')
-
-                #wandb.log({"example": wandb.Video("myvideo.mp4")})
         
             if done:
                 if save_obs:
                     from utilite_video_generator import generate_video
-                    generate_video(env=False, obs=True, name=epoch)
-                    print('save video', end=" ")
+                    generate_video(env=False, obs=True, run=run)
+                    print('save obs video', end=" ")
                     shutil.rmtree(observation_dir_name)
+                    path = Path(observation_dir_name)
                     path.mkdir(parents=True, exist_ok=True)
+
+                from utilite_video_generator import generate_video
+                generate_video(env=True, obs=False, run=run)
+                print('save env video', end=" ")
+                shutil.rmtree(video_name)
+                path = Path(video_name)
+                path.mkdir(parents=True, exist_ok=True)
+
                 print("episode is finished")
                 break
 

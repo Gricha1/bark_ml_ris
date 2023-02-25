@@ -26,11 +26,8 @@ if VALIDATE_ENV:
   os.system('Xvfb :1 -screen 0 1600x1200x16  &')    # create virtual display with size 1600x1200 and 16 bit color. Color can be changed to 24 or 8
   os.environ['DISPLAY']=':1.0'    # tell X clients to use our virtual DISPLAY :1.0
 
-  run_number = 1
-  run_name = "run_" + f"{run_number}"
   working_dir_name = str(pathlib.Path().resolve())
-  video_name = working_dir_name + "/video_validation/pngs/" + f"{run_name}"
-
+  video_name = working_dir_name + "/video_validation/pngs"
   if os.path.isdir(video_name):
     shutil.rmtree(video_name)
   path = Path(video_name)
@@ -118,6 +115,9 @@ class AgentLaneCorridorConfig:
     self._crad = kwargs.pop("crad", 1) # collision radius
     self.num_spawned_agents = 0
 
+    self.center_point_x = -30
+    self.center_point_y = -3
+
   def InferRoadIdsAndLaneCorr(self, world):
     goal_polygon = Polygon2d([0, 0, 0],
                              [Point2d(-1,0),
@@ -144,11 +144,12 @@ class AgentLaneCorridorConfig:
     pose = self.position(world)
     if pose is None:
       return None
-    velocity = self.velocity()
-    # old pose (near to junction)
-    # return np.array([0, 80, -3, 0, 2])
-    agent_x = -30
-    agent_y = -3
+    velocity = self.velocity()    
+
+    #agent_x = np.random.choice(self.center_point_x + np.linspace(-50, 50, 20))
+    agent_x = np.random.choice(self.center_point_x + np.linspace(-25, 0, 20))
+    agent_y = np.random.choice(self.center_point_y + np.linspace(-7, 7, 20))
+
     return np.array([0, agent_x, agent_y, 0, 0])
 
   def ds(self):
@@ -224,9 +225,6 @@ class AgentLaneCorridorConfig:
   def goal(self, world):
     # TODO: create correct goal definition 
     # for the agent which has geometric and kinematic goals
-    agent_x = -30
-    agent_y = -3
-
     """
     left_bottom = Point2d(agent_x + 25, agent_y + 2)
     left_top = Point2d(agent_x + 25, agent_y + 7)
@@ -241,8 +239,10 @@ class AgentLaneCorridorConfig:
     """
     # sample goal from distribution
     goal_polygon = GenerateCarRectangle(self._wb, self._crad)
-    translate_point = Point2d(agent_x + np.random.choice(np.linspace(-25, 25, 20)), 
-                              agent_y + np.random.choice(np.linspace(-7, 7, 20)))
+    #translate_point = Point2d(self.center_point_x + np.random.choice(np.linspace(-50, 50, 20)), 
+    #                          self.center_point_y + np.random.choice(np.linspace(-7, 7, 20)))
+    translate_point = Point2d(self.center_point_x + np.random.choice(np.linspace(0, 25, 20)), 
+                              self.center_point_y + np.random.choice(np.linspace(-7, 7, 20)))                              
     goal_polygon = goal_polygon.Translate(translate_point)
     
     return GoalDefinitionPolygon(goal_polygon)
@@ -682,7 +682,7 @@ class TestEvaluator:
 
 
     # TODO: get goal info from goal_definition
-    L_EPS = 0.5
+    L_EPS = 1.5
     THETA_EPS = 5
     V_EPS = 0.05
     STEER_EPS = 20
@@ -872,11 +872,7 @@ class ImageObserver(BaseObserver):
                    and grid_shape[1] % grid_resolution == 0, \
                    "incorrect grid shape"
 
-    
-    #print("obs agent behavior model type:", type(ego_agent.behavior_model))
-
-    # get agent and its goal
-    #ego_agent = observed_world.ego_agent
+    # get goal geometric
     goal_definition = ego_agent.goal_definition
     goal_shape = goal_definition.goal_shape.ToArray()
     right_top = Point(goal_shape[1][0], goal_shape[1][1])
@@ -976,12 +972,15 @@ class ImageObserver(BaseObserver):
 
 
     # get goal numpy
+    wheel_base = ego_agent.dynamic_model.GetWheelBase()
     goal_x = (goal.left_top.x + goal.right_bottom.x) / 2
     goal_y = (goal.left_top.y + goal.right_bottom.y) / 2
     goal_theta = goal.heading()
     goal_v = 0
     goal_steer = 0
-    goal_kinematic_state = np.array([goal_x, goal_y, goal_theta, goal_v, goal_steer])
+    shifted_goal_point = CustomPoint2d(goal_x, goal_y).shift(goal_theta + np.pi, wheel_base/2)
+    shifted_goal_x, shifted_goal_y = shifted_goal_point.x, shifted_goal_point.y
+    goal_kinematic_state = np.array([shifted_goal_x, shifted_goal_y, goal_theta, goal_v, goal_steer])
 
     x_min = goal_kinematic_state[0] - self.grid_shape[0] / (2 * self.grid_resolution) 
     y_min = goal_kinematic_state[1] - self.grid_shape[1] / (2 * self.grid_resolution)
@@ -1036,19 +1035,6 @@ class ImageObserver(BaseObserver):
         grid_with_adding_features = np.zeros(grid_shape)
 
         # TODO: get agent goal from agent.goal_definition
-        # goal kinematic state
-        goal_x = (goal.left_top.x + goal.right_bottom.x) / 2
-        goal_y = (goal.left_top.y + goal.right_bottom.y) / 2
-        goal_theta = goal.heading()
-        goal_v = 0
-        goal_steer = 0
-        goal_kinematic_state = np.array([goal_x, goal_y, goal_theta, goal_v, goal_steer])
-        
-        agent_kinematic_state = ego_agent.state[1:].tolist()
-        agent_steer = ego_agent.behavior_model.GetCarSteer(ego_agent.dynamic_model.GetWheelBase())
-        agent_kinematic_state.append(agent_steer)
-        agent_kinematic_state = np.array(agent_kinematic_state)
-
         assert len(agent_kinematic_state) == len(goal_kinematic_state), \
                "goal and agent state should be the same"
 
@@ -1496,17 +1482,7 @@ class GCContinuousParkingGym(ContinuousParkingGym):
               } 
     
     next_obs = obs_dict
-    status = {}
-
-    # TODO: implemet get correct xy-distance (terminal distance)
-    #status["xy-distance"] = [info["dist_to_goal"]]
-    status["done"] = done
-
-    # TODO: implement correct reward 
-    achieved_goals = state_achieved_goal
-    desired_goals = state_desired_goal
-    #reward = desired_goals - achieved_goals
-
+    
     # debug
     info["obs_to_validation"] = observed_state
     
