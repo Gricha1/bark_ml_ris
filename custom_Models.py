@@ -5,7 +5,9 @@ import numpy as np
 """ Actor """
 
 class GaussianPolicy(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
+	#changed
+	#def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
+	def __init__(self, state_dim, action_dim, hidden_dims=[512, 512]):
 		super(GaussianPolicy, self).__init__()
 		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
 		for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
@@ -54,7 +56,8 @@ class Critic(nn.Module):
 
 
 class EnsembleCritic(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2):
+	def __init__(self, state_dim, action_dim, hidden_dims=[512, 512], n_Q=2):
 		super(EnsembleCritic, self).__init__()
 		ensemble_Q = [Critic(state_dim=state_dim, action_dim=action_dim, hidden_dims=hidden_dims) for _ in range(n_Q)]			
 		self.ensemble_Q = nn.ModuleList(ensemble_Q)

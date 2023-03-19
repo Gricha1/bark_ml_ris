@@ -42,8 +42,8 @@ class RIS(object):
 		# Encoder (for vision-based envs)
 		self.image_env = image_env
 		if self.image_env:
-			self.goal_Encoder = goal_Encoder(state_dim=state_dim).to(device)
-			self.goal_encoder_optimizer = torch.optim.Adam(self.goal_Encoder.parameters(), lr=enc_lr)
+			self.encoder = goal_Encoder(state_dim=state_dim).to(device)
+			self.goal_encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=enc_lr)
 
 		# Actor-Critic Hyperparameters
 		self.tau = tau
@@ -69,7 +69,7 @@ class RIS(object):
 		torch.save(self.critic.state_dict(),		folder + "critic.pth")
 		torch.save(self.subgoal_net.state_dict(),   folder + "subgoal_net.pth")
 		if self.image_env:
-			torch.save(self.goal_Encoder.state_dict(), folder + "goal_encoder.pth")
+			torch.save(self.encoder.state_dict(), folder + "goal_encoder.pth")
 		if save_optims:
 			torch.save(self.actor_optimizer.state_dict(), 	folder + "actor_opti.pth")
 			torch.save(self.critic_optimizer.state_dict(), 	folder + "critic_opti.pth")
@@ -82,7 +82,7 @@ class RIS(object):
 		self.critic.load_state_dict(torch.load(folder+"critic.pth", map_location=self.device))
 		self.subgoal_net.load_state_dict(torch.load(folder+"subgoal_net.pth", map_location=self.device))
 		if self.image_env:
-			self.goal_Encoder.load_state_dict(torch.load(folder+"goal_encoder.pth", map_location=self.device))
+			self.encoder.load_state_dict(torch.load(folder+"goal_encoder.pth", map_location=self.device))
 
 	def select_action(self, state, goal):
 
@@ -91,9 +91,9 @@ class RIS(object):
 			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
 			if self.image_env:
 				x, x_f = get_img_feat_from_rollout(state, c_count=1)
-				state = self.goal_Encoder(x, x_f)
+				state = self.encoder(x, x_f)
 				x_goal, x_f_goal = get_img_feat_from_rollout(goal, c_count=1)
-				goal = self.goal_Encoder(x_goal, x_f_goal)
+				goal = self.encoder(x_goal, x_f_goal)
 			action, _, _ = self.actor.sample(state, goal)
 		return action.cpu().data.numpy().flatten()
 		
@@ -177,11 +177,11 @@ class RIS(object):
 			x_sub_goal = random_translate(x_sub_goal, pad=8)
 
 			# Stop gradient for subgoal goal and next state
-			state = self.goal_Encoder(x_state, x_f_state)
+			state = self.encoder(x_state, x_f_state)
 			with torch.no_grad():
-				goal = self.goal_Encoder(x_goal, x_f_goal)
-				next_state = self.goal_Encoder(x_next_state, x_f_next_state)
-				subgoal = self.goal_Encoder(x_sub_goal, x_f_sub_goal)
+				goal = self.encoder(x_goal, x_f_goal)
+				next_state = self.encoder(x_next_state, x_f_next_state)
+				subgoal = self.encoder(x_sub_goal, x_f_sub_goal)
 				
 
 		""" Critic """

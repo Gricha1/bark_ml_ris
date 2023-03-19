@@ -11,7 +11,8 @@ import gym
 from gym.envs.registration import register
 
 from utils.logger import Logger
-from custom_RIS import RIS
+#from custom_RIS import RIS, get_img_feat_from_rollout
+from custom_second_RIS import RIS, get_img_feat_from_rollout
 from HER import HERReplayBuffer, PathBuilder
 import wandb
 
@@ -43,6 +44,8 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     parser.add_argument("--enc_lr",             default=1e-4, type=float)
     parser.add_argument("--state_dim",          default=16, type=int)
+    parser.add_argument("--no_video",           default=False, type=bool)
+    parser.add_argument("--validate_bad_cases", default=False, type=bool)
 
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
@@ -67,8 +70,8 @@ if __name__ == "__main__":
     test_env_name = train_env_name
 
     # Set seed
-    np.random.seed(args.seed)
-    random.seed(args.seed)
+    #np.random.seed(args.seed)
+    #random.seed(args.seed)
     torch.manual_seed(args.seed)
 
     register(
@@ -90,18 +93,25 @@ if __name__ == "__main__":
     run = wandb.init(project='RIS_bark_ml_validate')
     
     # Initialize policy
+    '''
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  image_env=True, alpha=args.alpha, 
                  Lambda=args.Lambda, epsilon=args.epsilon, 
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  enc_lr=args.enc_lr, device=args.device, 
                  logger=logger if args.log_loss else None, max_env_steps=args.max_episode_length)
+    '''
+    #policy = RIS(state_dim=state_dim, action_dim=action_dim, image_env=True, alpha=args.alpha, Lambda=args.Lambda, epsilon=args.epsilon, h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, enc_lr=args.enc_lr, device=args.device, logger=logger if args.log_loss else None)
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
+
     if load_results:
         policy.load(folder)
         print("weights is loaded")
 
 
-    epoches = 10
+    success_rate = 0
+    fail_rate = 0
+    epoches = 250
     for epoch in range(epoches):
         # Initialize environment
         obs = env.reset()
@@ -110,10 +120,53 @@ if __name__ == "__main__":
         goal = obs["image_desired_goal"]
         t = 0
 
+        # debug subgoals
+        with torch.no_grad():
+            #changed
+            encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
+            encoded_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
+            #x_state, x_f_state = get_img_feat_from_rollout(encoded_state, c_count=1)
+            #x_goal, x_f_goal = get_img_feat_from_rollout(encoded_goal, c_count=1)
+            #encoded_state = policy.encoder(x_state, x_f_state)
+            #encoded_goal = policy.encoder(x_goal, x_f_goal)
+            subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
+            subgoal = subgoal_distribution.rsample()
+
+            fig = plt.figure()
+            fig.add_subplot(111)
+            #x_f_state_to_draw = x_f_state.cpu()
+            #x_f_goal_to_draw = x_f_goal.cpu()
+            x_f_state_to_draw = encoded_state.cpu()
+            x_f_goal_to_draw = encoded_goal.cpu()
+            plt.scatter([x_f_state_to_draw[0][0], x_f_goal_to_draw[0][0]], 
+                        [x_f_state_to_draw[0][1], x_f_goal_to_draw[0][1]])
+
+            dx = x_f_state_to_draw[0][0] - x_f_goal_to_draw[0][0]
+            dy = x_f_state_to_draw[0][1] - x_f_goal_to_draw[0][1]
+            euc_dist = np.sqrt(dx ** 2 - dy ** 2)
+            K =  euc_dist / policy.value(encoded_state, encoded_goal)
+            euc_state_to_subgoal = policy.value(encoded_state, subgoal) * K
+            euc_subgoal_to_goal = policy.value(subgoal, encoded_goal) * K
+            circle_state_subgoal = plt.Circle((x_f_state_to_draw[0][0], x_f_state_to_draw[0][1]), 
+                                              euc_state_to_subgoal, color='b', fill=False)
+            circle_goal_subgoal = plt.Circle((x_f_goal_to_draw[0][0], x_f_goal_to_draw[0][1]), 
+                                             euc_subgoal_to_goal, color='g', fill=False)
+            ax = fig.gca()
+            ax.add_patch(circle_state_subgoal)
+            ax.add_patch(circle_goal_subgoal)
+
+            plt.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]])
+            
+            if not args.no_video:
+                fig.canvas.draw()
+                data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                img = wandb.Image(data)
+                run.log({f"agent_state": img})
+
+
         while not done:
             t += 1
-
-            # debug
             print("step:", t, end=" ")
             
             # Select action
@@ -121,32 +174,46 @@ if __name__ == "__main__":
                 action = env.action_space.sample()
             else:
                 action = policy.select_action(state, goal)
-
-            # debug
-            #action = [0.5, 0]
             print("action:", action, end=" ")
 
             # Perform action
             next_obs, reward, done, info = env.step(action) 
             print("reward:", reward, 
-                "dist to goal:", info["dist_to_goal"], 
-                "agent theta:", info["agent_state"][2],
-                "agent steer:", info["agent_state"][4],
-                "episode ends:", done)
+                  "dist to goal:", info["dist_to_goal"], 
+                  "agent theta:", info["agent_state"][2],
+                  "agent steer:", info["agent_state"][4],
+                  "episode ends:", done)
+
             done = done or t >= int(args.max_timesteps)
+            if done:
+                if info["terminal_state"]: success_rate += 1
+                else: fail_rate += 1
+                run.log({f"success_rate": success_rate / epoches})
+                run.log({f"fail_rate": fail_rate / epoches})
+                run.log({f"success_count": success_rate})
+                
 
             next_state = next_obs["image_observation"]
 
             state = next_state
             obs = next_obs
+            
+            #with torch.no_grad():
+                #changed
+                #encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
+                #encoded_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
+                #x_state, x_f_state = get_img_feat_from_rollout(encoded_state, c_count=1)
+                #x_goal, x_f_goal = get_img_feat_from_rollout(encoded_goal, c_count=1)
+                #encoded_state = policy.encoder(x_state, x_f_state)
+                #encoded_goal = policy.encoder(x_goal, x_f_goal)
+                #run.log({f"V state to subgoal{epoch}": policy.value(encoded_state, subgoal),
+                #         f"V subgoal to goal{epoch}": policy.value(subgoal, encoded_goal),
+                #         f"V state to goal{epoch}": policy.value(encoded_state, encoded_goal)})
+                #print()
+            
 
-            print()
-            print("agent:", info["obs_to_validation"][3, 0, :5])
-            print("goal:", info["obs_to_validation"][3, 1, :5])
-            print()
-
+            # save episode observations
             save_obs = False
-
             if save_obs:
                 observed_next_state = info["obs_to_validation"]
                 observed_next_state = np.concatenate([observed_next_state[0:1, :, :] + observed_next_state[1:2, :, :],
@@ -156,23 +223,28 @@ if __name__ == "__main__":
                 plt.imshow(observed_next_state)
                 plt.savefig(observation_dir_name + '/' + f'fig{t}.png')
         
-            if done:
-                if save_obs:
+            # save episode video
+            if not args.no_video:
+                if args.validate_bad_cases and (not info["terminal_state"] and done) or \
+                        not args.validate_bad_cases and done:
+                    if save_obs:
+                        from utilite_video_generator import generate_video
+                        generate_video(env=False, obs=True, run=run)
+                        print('save obs video', end=" ")
+                        shutil.rmtree(observation_dir_name)
+                        path = Path(observation_dir_name)
+                        path.mkdir(parents=True, exist_ok=True)
+
                     from utilite_video_generator import generate_video
-                    generate_video(env=False, obs=True, run=run)
-                    print('save obs video', end=" ")
-                    shutil.rmtree(observation_dir_name)
-                    path = Path(observation_dir_name)
+                    generate_video(env=True, obs=False, run=run)
+                    print('save env video', end=" ")
+                    shutil.rmtree(video_name)
+                    path = Path(video_name)
                     path.mkdir(parents=True, exist_ok=True)
 
-                from utilite_video_generator import generate_video
-                generate_video(env=True, obs=False, run=run)
-                print('save env video', end=" ")
-                shutil.rmtree(video_name)
-                path = Path(video_name)
-                path.mkdir(parents=True, exist_ok=True)
+                    print("episode is finished")
+                    break
 
-                print("episode is finished")
-                break
+
 
 
