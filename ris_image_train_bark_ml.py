@@ -190,7 +190,10 @@ if __name__ == "__main__":
 
     # change hyperparams
     #policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, h_lr=1e-3, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, target_update_interval=1, h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, 
+                 Lambda=args.Lambda, target_update_interval=1, 
+                 h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
+                 device=args.device, logger=logger if args.log_loss else None)
     #policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, gamma=0.95, tau=0.05, target_update_interval=1, h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
     
     if load_results:

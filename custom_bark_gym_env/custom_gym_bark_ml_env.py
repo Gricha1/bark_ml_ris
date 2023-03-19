@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import pathlib
 
-VALIDATE_ENV = True
+VALIDATE_ENV = False
 video_name = ""
 
 if VALIDATE_ENV:
@@ -1256,9 +1256,17 @@ class CustomSingleAgentRuntime(Runtime):
     # debug
     print("debug count of scenarios:" , self._scenario_generator.get_num_scenarios())
 
-  def reset(self, scenario=None):
+  def reset(self, val_scenario_idx=None):
     """Resets the runtime and its objects."""
-    super().reset(scenario=scenario)
+
+    # debug
+    print("scenario indx:", val_scenario_idx)
+    if val_scenario_idx is None:
+      scenario = None
+      super().reset(scenario=scenario)
+    else:
+      scenario = self._scenario_generator.get_scenario(val_scenario_idx)
+      super().reset(scenario=scenario)
     assert len(self._scenario._eval_agent_ids) == 1, \
       "This runtime only supports a single agent!"
     eval_id = self._scenario._eval_agent_ids[0]
@@ -1361,10 +1369,10 @@ class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
                                 render=True if VALIDATE_ENV else False
                                 )
 
-  def reset(self, seed=None):
+  def reset(self, val_scenario_idx=None):
     info = {}
     # reset eval agent behavior model. Cuz it containes agent steer angle 
-    reset_runtime = CustomSingleAgentRuntime.reset(self)
+    reset_runtime = CustomSingleAgentRuntime.reset(self, val_scenario_idx=val_scenario_idx)
 
     return reset_runtime, info
   
@@ -1396,10 +1404,10 @@ class GCContinuousParkingGym(ContinuousParkingGym):
     #return np.zeros(new_actions.shape)
     return self._evaluator.compute_rewards(new_actions, new_next_obs_dict)
 
-  def reset(self):
+  def reset(self, val_scenario_idx=None):
 
     # TODO: set correct observation for goal, and agent obs and reshape them to ONE ROW
-    observed_state, info = ContinuousParkingGym.reset(self)
+    observed_state, info = ContinuousParkingGym.reset(self, val_scenario_idx=val_scenario_idx)
 
     #changed
     observation = observed_state[3, 0, :5]

@@ -112,9 +112,17 @@ if __name__ == "__main__":
     success_rate = 0
     fail_rate = 0
     epoches = 250
-    for epoch in range(epoches):
+    failed_tasks_idx = []
+
+
+    validate_tasks = [17, 24, 32, 62, 98, 102, 106, 138, 194, 212, 219]
+    #validate_tasks = list(range(epoches))
+
+
+
+    for task_id in validate_tasks:
         # Initialize environment
-        obs = env.reset()
+        obs = env.reset(val_scenario_idx=task_id)
         done = False
         state = obs["image_observation"]
         goal = obs["image_desired_goal"]
@@ -187,10 +195,12 @@ if __name__ == "__main__":
             done = done or t >= int(args.max_timesteps)
             if done:
                 if info["terminal_state"]: success_rate += 1
-                else: fail_rate += 1
-                run.log({f"success_rate": success_rate / epoches})
-                run.log({f"fail_rate": fail_rate / epoches})
-                run.log({f"success_count": success_rate})
+                else: 
+                    fail_rate += 1
+                    failed_tasks_idx.append(task_id)
+                run.log({f"success_rate": success_rate / len(validate_tasks)})
+                run.log({f"fail_rate": fail_rate / len(validate_tasks)})
+                run.log({f"task count": len(validate_tasks)})
                 
 
             next_state = next_obs["image_observation"]
@@ -222,7 +232,7 @@ if __name__ == "__main__":
                 observed_next_state = np.moveaxis(observed_next_state, 0, -1)
                 plt.imshow(observed_next_state)
                 plt.savefig(observation_dir_name + '/' + f'fig{t}.png')
-        
+            
             # save episode video
             if not args.no_video:
                 if args.validate_bad_cases and (not info["terminal_state"] and done) or \
@@ -244,6 +254,9 @@ if __name__ == "__main__":
 
                     print("episode is finished")
                     break
+
+
+    print("failed tasks idxs:", failed_tasks_idx)
 
 
 
