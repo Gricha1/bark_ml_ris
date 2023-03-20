@@ -150,9 +150,14 @@ class AgentLaneCorridorConfig:
     velocity = self.velocity()    
 
     # sample agent pose
-    #agent_x = np.random.choice(self.center_point_x + np.linspace(-50, 50, 20))
+    #agent_x = np.random.choice(self.center_point_x + np.linspace(-30, 30, 30))
+    #agent_y = np.random.choice(self.center_point_y + np.linspace(-10, 10, 30))
     agent_x = np.random.choice(self.center_point_x + np.linspace(-25, 0, 20))
-    agent_y = np.random.choice(self.center_point_y + np.linspace(-7, 7, 20))
+    agent_y = np.random.choice(self.center_point_y + np.linspace(-7, 7, 30))
+    #agent_x = np.random.choice(self.center_point_x + np.linspace(-25, 0, 20))
+    # test
+    #agent_x = self.center_point_x + 25
+    #agent_y = self.center_point_y + 7
 
     return np.array([0, agent_x, agent_y, 0, 0])
 
@@ -244,8 +249,11 @@ class AgentLaneCorridorConfig:
 
     # sample goal from distribution
     goal_polygon = GenerateCarRectangle(self._wb, self._crad)
-    #translate_point = Point2d(self.center_point_x + np.random.choice(np.linspace(-50, 50, 20)), 
-    #                          self.center_point_y + np.random.choice(np.linspace(-7, 7, 20)))
+    #translate_point = Point2d(self.center_point_x + np.random.choice(np.linspace(-30, 30, 30)), 
+    #                          self.center_point_y + np.random.choice(np.linspace(-10, 10, 30)))
+    # test
+    #translate_point = Point2d(self.center_point_x - 25, 
+    #                          self.center_point_y - 7)
     translate_point = Point2d(self.center_point_x + np.random.choice(np.linspace(0, 25, 20)), 
                               self.center_point_y + np.random.choice(np.linspace(-7, 7, 20)))                              
     goal_polygon = goal_polygon.Translate(translate_point)
@@ -1342,7 +1350,7 @@ class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
     #  os.path.join(os.path.dirname(__file__),
     #  "../environments/blueprints/visualization_params.json"))
     cont_parking_bp = ContinuousParkingBlueprint(params,
-                                                 num_scenarios=500,
+                                                 num_scenarios=1000,
                                                  dt=0.1,
                                                  random_seed=0)
 
@@ -1388,7 +1396,9 @@ class ContinuousParkingGym(CustomSingleAgentRuntime, gym.Env):
       done = True
       reward = 0
     else:
-      reward = -1
+      # debug reward
+      #reward = -1
+      reward = -0.1
 
     truncated = False
     return observed_state, reward, done, truncated, info

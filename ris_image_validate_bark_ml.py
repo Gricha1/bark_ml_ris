@@ -115,8 +115,8 @@ if __name__ == "__main__":
     failed_tasks_idx = []
 
 
-    validate_tasks = [17, 24, 32, 62, 98, 102, 106, 138, 194, 212, 219]
-    #validate_tasks = list(range(epoches))
+    #validate_tasks = [17, 24, 32, 62, 98, 102, 106, 138, 194, 212, 219]
+    validate_tasks = list(range(epoches))
 
 
 
@@ -182,6 +182,7 @@ if __name__ == "__main__":
                 action = env.action_space.sample()
             else:
                 action = policy.select_action(state, goal)
+            #action = [-1, -0.01]    
             print("action:", action, end=" ")
 
             # Perform action

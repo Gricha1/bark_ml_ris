@@ -107,7 +107,9 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     done_batch          = batch["terminals"] 
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
-    reward_batch = np.ones_like(done_batch) * (-1)
+    # debug
+    #reward_batch = np.ones_like(done_batch) * (-1)
+    reward_batch = np.ones_like(done_batch) * (-0.1)
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
@@ -238,6 +240,8 @@ if __name__ == "__main__":
     goal = obs["desired_goal"]
     episode_timesteps = 0
     episode_num = 0 
+    old_success_rate = None
+    save_policy_count = 0 
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
@@ -345,12 +349,16 @@ if __name__ == "__main__":
                     })
             
 
-            # Save results
-            folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
-            if not os.path.exists(folder):
-                os.makedirs(folder)
-            logger.save(folder + "log.pkl")
-            policy.save(folder)
+            # Save (best) results
+            if old_success_rate is None or success_rate >= old_success_rate:
+                save_policy_count += 1
+                folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
+                if not os.path.exists(folder):
+                    os.makedirs(folder)
+                logger.save(folder + "log.pkl")
+                policy.save(folder)
+                run.log({"save_policy_count": save_policy_count})
+            old_success_rate = success_rate
 
             # debug
             print("eval", end=" ")
