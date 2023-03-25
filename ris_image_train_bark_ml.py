@@ -37,27 +37,29 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
         obs = env.reset()
         done = False
         #changed
-        #state = obs["image_observation"]
-        #goal = obs["image_desired_goal"]
-        state = obs["observation"]
-        goal = obs["desired_goal"]
+        if image_env:
+            state = obs["image_observation"]
+            goal = obs["image_desired_goal"]
+        else:
+            state = obs["observation"]
+            goal = obs["desired_goal"]
         t = 0
         acc_reward = 0
 
         # debug
-        # memmory lake??
-        with torch.no_grad():
-            encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
-            encoded_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
-            subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-            subgoal = subgoal_distribution.rsample()
-            sub_x = subgoal.cpu()[0][0]
-            sub_y = subgoal.cpu()[0][1]
-            dist_to_state = np.sqrt((sub_x - encoded_state.cpu()[0][0]) ** 2 + \
-                                    (sub_y - encoded_state.cpu()[0][1]))
-            dist_to_goal = np.sqrt((sub_x - encoded_goal.cpu()[0][0]) ** 2 + \
-                                    (sub_y - encoded_goal.cpu()[0][1]))
-            subgoal_max_dists.append(max(dist_to_state, dist_to_goal))
+        if not image_env:
+            with torch.no_grad():
+                encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
+                encoded_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
+                subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
+                subgoal = subgoal_distribution.rsample()
+                sub_x = subgoal.cpu()[0][0]
+                sub_y = subgoal.cpu()[0][1]
+                dist_to_state = np.sqrt((sub_x - encoded_state.cpu()[0][0]) ** 2 + \
+                                        (sub_y - encoded_state.cpu()[0][1]))
+                dist_to_goal = np.sqrt((sub_x - encoded_goal.cpu()[0][0]) ** 2 + \
+                                        (sub_y - encoded_goal.cpu()[0][1]))
+                subgoal_max_dists.append(max(dist_to_state, dist_to_goal))
 
         while not done:
             #changed
@@ -70,8 +72,10 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
 
             acc_reward += reward
             
-            #next_state = next_obs["image_observation"]
-            next_state = next_obs["observation"]
+            if image_env:
+                next_state = next_obs["image_observation"]
+            else:
+                next_state = next_obs["observation"]
             state = next_state
 
             done = done or t >= Tmax
@@ -181,63 +185,66 @@ if __name__ == "__main__":
     run = wandb.init(project='RIS_bark_ml_train')
     
     # Initialize policy
-    '''
+    image_env = False
+    
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
-                 image_env=True, alpha=args.alpha, 
-                 Lambda=args.Lambda, epsilon=args.epsilon, 
-                 h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
-                 enc_lr=args.enc_lr, device=args.device, 
-                 logger=logger if args.log_loss else None, max_env_steps=args.max_episode_length)
-    '''
-
-    # change hyperparams
-    #policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, h_lr=1e-3, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, 
+                 image_env=image_env,alpha=args.alpha, 
                  Lambda=args.Lambda, target_update_interval=1, 
                  h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
                  device=args.device, logger=logger if args.log_loss else None)
-    #policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, gamma=0.95, tau=0.05, target_update_interval=1, h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
     
+    '''
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
+                 image_env=image_env,alpha=args.alpha, 
+                 Lambda=args.Lambda,  gamma=0.95, tau=0.05, target_update_interval=1, 
+                 h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
+                 device=args.device, logger=logger if args.log_loss else None)
+    #policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, gamma=0.95, tau=0.05, target_update_interval=1, h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
+    '''
     if load_results:
         policy.load(folder)
 
     # Initialize replay buffer and path_builder
-    """
-    replay_buffer = HERReplayBuffer(
-        max_size=args.replay_buffer_size,
-        env=env,
-        fraction_resampled_goals_are_replay_buffer_goals = args.replay_buffer_goals, 
-        #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
-        #desired_goal_keys   =["image_desired_goal", "state_desired_goal"],
-        observation_key     = 'image_observation',
-        desired_goal_key    = 'image_desired_goal',
-        achieved_goal_key   = 'image_achieved_goal',
-        vectorized          = True
-    )
-    """
-    replay_buffer = HERReplayBuffer(
-        max_size=args.replay_buffer_size,
-        env=env,
-        fraction_goals_are_rollout_goals = 0.2,
-        fraction_resampled_goals_are_env_goals = 0.0,
-        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
-        #desired_goal_keys   =["desired_goal", "state_desired_goal"],
-        observation_key     = 'observation',
-        desired_goal_key    = 'desired_goal',
-        achieved_goal_key   = 'achieved_goal',
-        vectorized          = vectorized 
-    )
+    if image_env:
+        
+        replay_buffer = HERReplayBuffer(
+            max_size=args.replay_buffer_size,
+            env=env,
+            fraction_resampled_goals_are_replay_buffer_goals = args.replay_buffer_goals, 
+            #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
+            #desired_goal_keys   =["image_desired_goal", "state_desired_goal"],
+            observation_key     = 'image_observation',
+            desired_goal_key    = 'image_desired_goal',
+            achieved_goal_key   = 'image_achieved_goal',
+            vectorized          = True
+        )
+        
+    else:
+        replay_buffer = HERReplayBuffer(
+            max_size=args.replay_buffer_size,
+            env=env,
+            fraction_goals_are_rollout_goals = 0.2,
+            fraction_resampled_goals_are_env_goals = 0.0,
+            fraction_resampled_goals_are_replay_buffer_goals = 0.5,
+            #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
+            #desired_goal_keys   =["desired_goal", "state_desired_goal"],
+            observation_key     = 'observation',
+            desired_goal_key    = 'desired_goal',
+            achieved_goal_key   = 'achieved_goal',
+            vectorized          = vectorized 
+        )
     path_builder = PathBuilder()
 
     # Initialize environment
     obs = env.reset()
     done = False
     #changed
-    #state = obs["image_observation"]
-    #goal = obs["image_desired_goal"]
-    state = obs["observation"]
-    goal = obs["desired_goal"]
+    if image_env:
+        state = obs["image_observation"]
+        goal = obs["image_desired_goal"]
+    else:
+        state = obs["observation"]
+        goal = obs["desired_goal"]
     episode_timesteps = 0
     episode_num = 0 
     old_success_rate = None
@@ -265,8 +272,10 @@ if __name__ == "__main__":
         logger.store(step_time = step_time)
 
         #changed
-        #next_state = next_obs["image_observation"]
-        next_state = next_obs["observation"]
+        if image_env:
+            next_state = next_obs["image_observation"]
+        else:
+            next_state = next_obs["observation"]
 
         path_builder.add_all(
             observations=obs,
@@ -309,10 +318,12 @@ if __name__ == "__main__":
             obs = env.reset()
             done = False
             #changed
-            #state = obs["image_observation"]
-            #goal = obs["image_desired_goal"]
-            state = obs["observation"]
-            goal = obs["desired_goal"]
+            if image_env:
+                state = obs["image_observation"]
+                goal = obs["image_desired_goal"]
+            else:
+                state = obs["observation"]
+                goal = obs["desired_goal"]
             episode_timesteps = 0
             episode_num += 1 
 
@@ -333,7 +344,6 @@ if __name__ == "__main__":
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
                      'entropy_1': sum(logger.data["entropy_1"][-args.eval_freq:]) / args.eval_freq,
                      'entropy_2': sum(logger.data["entropy_2"][-args.eval_freq:]) / args.eval_freq,
-                     #'log_prob': sum(logger.data["log_prob"][-args.eval_freq:]) / args.eval_freq,
                      'steps': logger.data["t"][-1],
                      'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
                      'train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,

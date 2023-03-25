@@ -6,8 +6,9 @@ import numpy as np
 
 class GaussianPolicy(nn.Module):
 	#changed
-	#def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
-	def __init__(self, state_dim, action_dim, hidden_dims=[512, 512]):
+	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512]):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512, 512]):
 		super(GaussianPolicy, self).__init__()
 		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
 		for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
@@ -56,8 +57,9 @@ class Critic(nn.Module):
 
 
 class EnsembleCritic(nn.Module):
-	#def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2):
-	def __init__(self, state_dim, action_dim, hidden_dims=[512, 512], n_Q=2):
+	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512], n_Q=2):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512, 512], n_Q=2):
 		super(EnsembleCritic, self).__init__()
 		ensemble_Q = [Critic(state_dim=state_dim, action_dim=action_dim, hidden_dims=hidden_dims) for _ in range(n_Q)]			
 		self.ensemble_Q = nn.ModuleList(ensemble_Q)
@@ -122,7 +124,7 @@ class Encoder(nn.Module):
 		return state
 
 class goal_Encoder(nn.Module):
-	def __init__(self, input_img_size = 120, adding_features_size=5, n_channels=1, state_dim=16):
+	def __init__(self, adding_features_size=5, n_channels=1, state_dim=16):
 		super(goal_Encoder, self).__init__()
 		self.encoder_conv = nn.Sequential(
 			nn.Conv2d(n_channels, 32, 3, 2), nn.ReLU(),
@@ -131,7 +133,8 @@ class goal_Encoder(nn.Module):
 			nn.Conv2d(32, 32, 3, 1), nn.ReLU()
 		)
 
-		conv_output_size = 4608
+		#conv_output_size = 4608 # 120 x 120
+		conv_output_size = 128 # 40 x 40
 
 		self.fc_connect = nn.Linear(conv_output_size + adding_features_size, 
 									conv_output_size + adding_features_size)

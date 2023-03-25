@@ -18,6 +18,7 @@ from pathlib import Path
 import pathlib
 
 VALIDATE_ENV = False
+IMAGED_ENV = False
 video_name = ""
 
 if VALIDATE_ENV:
@@ -732,6 +733,13 @@ class TestEvaluator:
     if dl + dtheta + dv + dsteer == 4:
       kinematic_goal_reached = True
 
+
+    reward_weights = [1, 0.3, 0, 0.02, 0.02]
+    p = 0.5
+
+    eval_results["dist_reward"] = -np.power(np.dot(np.abs(agent_kinematic_state - goal_kinematic_state), 
+                                                   np.array(reward_weights)), 
+                                            p)
     eval_results["kinematic_goal_reached"] = kinematic_goal_reached
     eval_results["dist_to_goal"] = -dl
     eval_results["geometirc_goal_achieved"] = dl_achieved
@@ -799,7 +807,8 @@ class ImageObserver(BaseObserver):
     self.adding_dynamic_features = False
     self.gridCount = 5 # static, dynamic, agent, adding_features, goal
     self.grid_resolution = 4
-    self.grid_shape = (120, 120)
+    #self.grid_shape = (120, 120)
+    self.grid_shape = (40, 40)
     state_min_box = [[[-np.inf for j in range(self.grid_shape[1])] 
             for i in range(self.grid_shape[0])] for _ in range(self.gridCount)]
     state_max_box = [[[np.inf for j in range(self.grid_shape[1])] 
@@ -1087,9 +1096,6 @@ class ImageObserver(BaseObserver):
     # TODO: set correct observation for goal, and agent obs and reshape them to ONE ROW
 
     #changed
-    #observation = Box(0.0, 1.0, (21168,), np.float32) 
-    #desired_goal = Box(0.0, 1.0, (21168,), np.float32) 
-    #achieved_goal = Box(0.0, 1.0, (21168,), np.float32) 
     observation = Box(-np.inf, np.inf, (5,), np.float32) 
     desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
     achieved_goal = Box(-np.inf, np.inf, (5,), np.float32)
@@ -1101,12 +1107,14 @@ class ImageObserver(BaseObserver):
     proprio_desired_goal = Box(-0.20000000298023224, 0.699999988079071, (2,), np.float32) 
     proprio_achieved_goal = Box(-0.20000000298023224, 0.699999988079071, (2,), np.float32) 
     #changed 
-    #image_observation = Box(-np.inf, np.inf, (14405,), np.float32) 
-    #image_desired_goal = Box(-np.inf, np.inf, (14405,), np.float32) 
-    #image_achieved_goal = Box(-np.inf, np.inf, (14405,), np.float32) 
-    image_observation = Box(-np.inf, np.inf, (5,), np.float32) 
-    image_desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
-    image_achieved_goal = Box(-np.inf, np.inf, (5,), np.float32) 
+    if IMAGED_ENV:
+      image_observation = Box(-np.inf, np.inf, (40 * 40 + 5,), np.float32) 
+      image_desired_goal = Box(-np.inf, np.inf, (40 * 40 + 5,), np.float32) 
+      image_achieved_goal = Box(-np.inf, np.inf, (40 * 40 + 5,), np.float32) 
+    else:
+      image_observation = Box(-np.inf, np.inf, (5,), np.float32) 
+      image_desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
+      image_achieved_goal = Box(-np.inf, np.inf, (5,), np.float32)
 
     image_proprio_observation = Box(-0.20000000298023224, 1.0, (21170,), np.float32) 
     image_proprio_desired_goal = Box(-0.20000000298023224, 1.0, (21170,), np.float32) 
@@ -1432,16 +1440,18 @@ class GCContinuousParkingGym(ContinuousParkingGym):
     proprio_achieved_goal = np.zeros(2)
 
     #changed
-    #image_observation = observed_state[2:3, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
-    #image_observation = np.concatenate((image_observation, observed_state[3, 0, :5]), axis=0)
-    #image_desired_goal = observed_state[-1, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
-    #image_desired_goal = np.zeros_like(image_desired_goal)
-    #image_desired_goal = np.concatenate((image_desired_goal, observed_state[3, 1, :5]), axis=0)
-    #image_achieved_goal = np.zeros(14405)
-    image_observation = observed_state[3, 0, :5]
-    image_desired_goal = observed_state[3, 1, :5]
-    image_achieved_goal = np.zeros(5)
-
+    if IMAGED_ENV:
+      image_observation = observed_state[2:3, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
+      image_observation = np.concatenate((image_observation, observed_state[3, 0, :5]), axis=0)
+      image_desired_goal = observed_state[4:5, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
+      image_desired_goal = np.zeros_like(image_desired_goal)
+      image_desired_goal = np.concatenate((image_desired_goal, observed_state[3, 1, :5]), axis=0)
+      image_achieved_goal = np.zeros(40 * 40 + 5)
+    else:
+      image_observation = observed_state[3, 0, :5]
+      image_desired_goal = image_observation
+      image_achieved_goal = image_desired_goal
+    
     image_proprio_observation = np.zeros(21170)
     image_proprio_desired_goal = np.zeros(21170)
     image_proprio_achieved_goal = np.zeros(21170)
@@ -1484,15 +1494,17 @@ class GCContinuousParkingGym(ContinuousParkingGym):
     proprio_achieved_goal = np.zeros(2)
 
     #changed
-    #image_observation = observed_state[2:3, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
-    #image_observation = np.concatenate((image_observation, observed_state[3, 0, :5]), axis=0)
-    #image_desired_goal = observed_state[4:5, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
-    #image_desired_goal = np.zeros_like(image_desired_goal)
-    #image_desired_goal = np.concatenate((image_desired_goal, observed_state[3, 1, :5]), axis=0)
-    #image_achieved_goal = np.zeros(14405)
-    image_observation = observed_state[3, 0, :5]
-    image_desired_goal = observed_state[3, 1, :5]
-    image_achieved_goal = np.zeros(5)
+    if IMAGED_ENV:
+      image_observation = observed_state[2:3, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
+      image_observation = np.concatenate((image_observation, observed_state[3, 0, :5]), axis=0)
+      image_desired_goal = observed_state[4:5, :, :].reshape(1 * observed_state.shape[1] * observed_state.shape[2])
+      image_desired_goal = np.zeros_like(image_desired_goal)
+      image_desired_goal = np.concatenate((image_desired_goal, observed_state[3, 1, :5]), axis=0)
+      image_achieved_goal = np.zeros(40 * 40 + 5)
+    else:
+      image_observation = observed_state[3, 0, :5]
+      image_desired_goal = image_observation
+      image_achieved_goal = image_desired_goal
 
     image_proprio_observation = np.zeros(21170)
     image_proprio_desired_goal = np.zeros(21170)

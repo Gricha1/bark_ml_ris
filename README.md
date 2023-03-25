@@ -18,7 +18,7 @@ python ris_image_train_bark_ml.py --exp_name bark_ml_ex_34 --replay_buffer_size 
 
 ## Validate
 cd usr/home/workspace/
-### make VALIDATE_ENV = True in custom_bark_gym_env/custom_gym_bark_ml_env.py (for videos)
+#### make VALIDATE_ENV = True in custom_bark_gym_env/custom_gym_bark_ml_env.py (for videos)
 python ris_image_validate_bark_ml.py --exp_name bark_ml_ex_14 --start_timesteps 0 --state_dim 5 --max_timesteps 100 --no_video True
 
 python utilite_video_generator.py 
