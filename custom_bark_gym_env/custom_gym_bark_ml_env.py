@@ -19,6 +19,11 @@ import pathlib
 
 VALIDATE_ENV = False
 IMAGED_ENV = False
+MAX_X = 500
+MAX_Y = 500
+MAX_V = 50
+MAX_THETA = 3.141
+MAX_STEER = 0.2
 video_name = ""
 
 if VALIDATE_ENV:
@@ -572,13 +577,11 @@ class LinearAccSteerAccBehaviorContinuousML(BehaviorContinuousML):
     #  "ActionsUpperBound",
     #  "Upper-bound for actions.",
     #  [1, 1]]
-    #self._upper_bounds = [1, 1]
     self._upper_bounds = [5, 5]
     self.prev_steer = 0
     self.max_acc = 5
     self.max_steer_acc = self._upper_bounds[1]
     self.max_steer_vel = 1
-    #self.max_steer = 28 * np.pi / 180
     self.max_steer = 0.2
 
   def GetCarSteer(self, wheel_base):
@@ -1055,7 +1058,12 @@ class ImageObserver(BaseObserver):
         # TODO: get agent goal from agent.goal_definition
         assert len(agent_kinematic_state) == len(goal_kinematic_state), \
                "goal and agent state should be the same"
-
+        assert len(goal_kinematic_state) == 5, "incorrect obs size"
+        
+        # Normalize observation
+        agent_kinematic_state = agent_kinematic_state / np.array([MAX_X, MAX_Y, MAX_THETA, MAX_V, MAX_STEER])
+        goal_kinematic_state = goal_kinematic_state / np.array([MAX_X, MAX_Y, MAX_THETA, MAX_V, MAX_STEER])
+        
         grid_with_adding_features[0, 0:len(agent_kinematic_state)] = agent_kinematic_state
         grid_with_adding_features[1, 0:len(goal_kinematic_state)] = goal_kinematic_state
 

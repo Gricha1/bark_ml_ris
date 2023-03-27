@@ -11,7 +11,6 @@ import gym
 from gym.envs.registration import register
 
 from utils.logger import Logger
-#from custom_RIS import RIS, get_img_feat_from_rollout
 from custom_second_RIS import RIS, get_img_feat_from_rollout
 from HER import HERReplayBuffer, PathBuilder
 import wandb

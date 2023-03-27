@@ -84,7 +84,9 @@ class LaplacePolicy(nn.Module):
 		self.mean = nn.Linear(hidden_dims[-1], state_dim)	
 		self.log_scale = nn.Linear(hidden_dims[-1], state_dim)	
 		self.LOG_SCALE_MIN = -20	
+		# debug
 		self.LOG_SCALE_MAX = 2	
+		#self.LOG_SCALE_MAX = 0	
 
 	def forward(self, state, goal):	
 		h = self.fc( torch.cat([state, goal], -1) )	

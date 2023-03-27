@@ -7,8 +7,6 @@ import argparse
 
 import gym
 from gym.envs.registration import register
-#from multiworld.envs.mujoco import register_custom_envs as register_mujoco_envs
-
 import time
 
 from utils.logger import Logger
@@ -17,21 +15,20 @@ from HER import HERReplayBuffer, PathBuilder
 import wandb
 
 
-'''
-# set path for experement video
-working_dir_name = str(pathlib.Path().resolve())
-observation_dir_name = working_dir_name + f"/video_train/obs_pngs"
-if os.path.isdir(observation_dir_name):
-    shutil.rmtree(observation_dir_name)
-path = Path(observation_dir_name)
-path.mkdir(parents=True, exist_ok=True)
-'''
-
 def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=None):
     final_distances = []
     successes = [] 
     acc_rewards = []
     subgoal_max_dists = []
+
+    # validation debug
+    state_distrs = {"x": [], "y": [], "theta": [], "v": [], "steer": []}
+    goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
+    max_state_vals = {}
+    min_state_vals = {}
+    max_goal_vals = {}
+    min_goal_vals = {}
+    mean_actions = {"a": [], "v_s": []}
 
     for _ in range(N):
         obs = env.reset()
@@ -46,7 +43,7 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
         t = 0
         acc_reward = 0
 
-        # debug
+        # validation debug
         if not image_env:
             with torch.no_grad():
                 encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
@@ -62,8 +59,26 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
                 subgoal_max_dists.append(max(dist_to_state, dist_to_goal))
 
         while not done:
-            #changed
+            
+            # validation debug
+            state_distrs["x"].append(state[0])
+            state_distrs["y"].append(state[1])
+            state_distrs["theta"].append(state[2])
+            state_distrs["v"].append(state[3])
+            state_distrs["steer"].append(state[4])
+
+            goal_dists["goal_x"].append(goal[0])
+            goal_dists["goal_y"].append(goal[1])
+            goal_dists["goal_theta"].append(goal[2])
+            goal_dists["goal_v"].append(goal[3])
+            goal_dists["goal_steer"].append(goal[4])
+            
             action = policy.select_action(state, goal)
+
+            # validation debug
+            mean_actions["a"].append(action[0])
+            mean_actions["v_s"].append(action[1])
+
             #    converted_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
             #    converted_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
             #    _, _, action = policy.actor.sample(converted_state, converted_goal)
@@ -82,22 +97,30 @@ def evalPolicy(policy, env, N=100, Tmax=100, distance_threshold=0.05, logger=Non
 
             t += 1
 
+        # validation debug
         final_distances.append(info["dist_to_goal"])
         successes.append(1.0 * info["geometirc_goal_achieved"])
         acc_rewards.append(acc_reward)        
 
-        
-    # debug acc rewards
+    # validation debug
     print("eval final distances:", final_distances)
     eval_distance, success_rate = np.mean(final_distances), np.mean(successes)
     eval_reward = np.mean(acc_rewards)
     eval_subgoal_dist = np.mean(subgoal_max_dists)
 
-    if logger is not None:
-        logger.store(eval_distance=eval_distance, success_rate=success_rate, 
-                     eval_reward=eval_reward, eval_subgoal_dist=eval_subgoal_dist)
+    # validation debug
+    for key in state_distrs:
+        max_state_vals["max_" + str(key)] = np.max(state_distrs[key])
+        min_state_vals["min_" + str(key)] = np.min(state_distrs[key])
+        state_distrs[key] = np.mean(state_distrs[key])
+    for key in goal_dists:
+        max_goal_vals["max_" + str(key)] = np.max(goal_dists[key])
+        min_goal_vals["min_" + str(key)] = np.min(goal_dists[key])
+        goal_dists[key] = np.mean(goal_dists[key])
 
-    return eval_distance, success_rate, eval_reward, eval_subgoal_dist
+
+
+    return eval_distance, success_rate, eval_reward, eval_subgoal_dist, [state_distrs, max_state_vals, min_state_vals], [goal_dists, max_goal_vals, min_goal_vals], mean_actions
 
 
 def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshold=0.05, device=torch.device("cuda")):
@@ -111,7 +134,6 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     done_batch          = batch["terminals"] 
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
-    # debug
     #reward_batch = np.ones_like(done_batch) * (-1)
     reward_batch = np.ones_like(done_batch) * (-0.1)
 
@@ -149,6 +171,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     parser.add_argument("--enc_lr",             default=1e-4, type=float)
     parser.add_argument("--state_dim",          default=16, type=int)
+    parser.add_argument("--wandb_project",      default="RIS_bark_ml_train", type=str)
 
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
@@ -156,7 +179,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
-    #register_mujoco_envs()
     train_env_name = "parking-v0"
     test_env_name = train_env_name
 
@@ -165,10 +187,16 @@ if __name__ == "__main__":
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    # register bark ml env
     register(
         id=train_env_name,
         entry_point='custom_bark_gym_env.custom_gym_bark_ml_env:GCContinuousParkingGym'
     )
+    # register polamp env
+    #register(
+    #    id=train_polamp_env_name,
+    #    entry_point='goal_polamp_env.env:GCPOLAMPEnvironment'
+    #)
 
     env         = gym.make(train_env_name)
     test_env    = gym.make(test_env_name)
@@ -182,28 +210,32 @@ if __name__ == "__main__":
     # Create logger
     # TODO: save_git_head_hash = True by default, change it if neccesary
     logger = Logger(vars(args), save_git_head_hash=False)
-    run = wandb.init(project='RIS_bark_ml_train')
+    #run = wandb.init(project='RIS_bark_ml_train')
+    run = wandb.init(project=args.wandb_project)
     
     # Initialize policy
     image_env = False
     
+    """
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  image_env=image_env,alpha=args.alpha, 
                  Lambda=args.Lambda, target_update_interval=1, 
                  h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
                  device=args.device, logger=logger if args.log_loss else None)
-    
+    """
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
+                image_env=image_env,alpha=args.alpha, 
+                Lambda=args.Lambda, target_update_interval=1, 
+                h_lr=1e-4, q_lr=1e-3, pi_lr=1e-3, 
+                device=args.device, logger=logger if args.log_loss else None)
+
     '''
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  image_env=image_env,alpha=args.alpha, 
                  Lambda=args.Lambda,  gamma=0.95, tau=0.05, target_update_interval=1, 
                  h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
                  device=args.device, logger=logger if args.log_loss else None)
-    #policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, gamma=0.95, tau=0.05, target_update_interval=1, h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
     '''
-    if load_results:
-        policy.load(folder)
-
     # Initialize replay buffer and path_builder
     if image_env:
         
@@ -211,8 +243,6 @@ if __name__ == "__main__":
             max_size=args.replay_buffer_size,
             env=env,
             fraction_resampled_goals_are_replay_buffer_goals = args.replay_buffer_goals, 
-            #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
-            #desired_goal_keys   =["image_desired_goal", "state_desired_goal"],
             observation_key     = 'image_observation',
             desired_goal_key    = 'image_desired_goal',
             achieved_goal_key   = 'image_achieved_goal',
@@ -226,14 +256,15 @@ if __name__ == "__main__":
             fraction_goals_are_rollout_goals = 0.2,
             fraction_resampled_goals_are_env_goals = 0.0,
             fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-            #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
-            #desired_goal_keys   =["desired_goal", "state_desired_goal"],
             observation_key     = 'observation',
             desired_goal_key    = 'desired_goal',
             achieved_goal_key   = 'achieved_goal',
             vectorized          = vectorized 
         )
     path_builder = PathBuilder()
+
+    if load_results:
+        policy.load(folder)
 
     # Initialize environment
     obs = env.reset()
@@ -329,15 +360,18 @@ if __name__ == "__main__":
 
         if (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
             # Eval policy
-            eval_distance, success_rate, eval_reward, eval_subgoal_dist = evalPolicy(
-                policy, test_env, 
-                N=args.n_eval,
-                Tmax=args.max_episode_length, 
-                distance_threshold=args.distance_threshold,
-                logger = logger
-            )
+            eval_distance, success_rate, eval_reward, eval_subgoal_dist, val_state, val_goal, mean_actions \
+                    = evalPolicy(
+                                policy, test_env, 
+                                N=args.n_eval,
+                                Tmax=args.max_episode_length, 
+                                distance_threshold=args.distance_threshold,
+                                logger = logger
+                                )
             print("RIS t={} | {}".format(t+1, logger))
-            run.log({
+
+            # validation debug
+            wandb_log_dict = {
                      'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq, 
                      'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,  
                      'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,  
@@ -351,14 +385,21 @@ if __name__ == "__main__":
                      f'val_distance({args.n_eval} episodes)': eval_distance,
                      f'eval_reward({args.n_eval} episodes)': eval_reward,
                      f'val_rate({args.n_eval} episodes)': success_rate,
+                     'val_mean_a': np.mean(mean_actions['a']),
+                     'val_mean_v_s': np.mean(mean_actions['v_s']),
                      f'val_subgoal_dist({args.n_eval} episodes)': eval_subgoal_dist,
                      'critic_grad_1': sum(logger.data["critic_grad_1"][-args.eval_freq:]) / args.eval_freq,
                      'critic_grad_2': sum(logger.data["critic_grad_2"][-args.eval_freq:]) / args.eval_freq,
                      'actor_grad': sum(logger.data["actor_grad"][-args.eval_freq:]) / args.eval_freq,
                      'subgoal_grad': sum(logger.data["subgoal_grad"][-args.eval_freq:]) / args.eval_freq
-                    })
+                    }
             
-
+            # validation debug
+            for dict_ in val_state + val_goal:
+                for key in dict_:
+                    wandb_log_dict[f"{key}"] = dict_[key]
+            run.log(wandb_log_dict)
+     
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:
                 save_policy_count += 1

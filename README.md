@@ -12,9 +12,13 @@ apt-get install -y xvfb
 
 #apt-get install python3-opencv
 
-## Train
+## Train bark_ml
 cd usr/home/workspace/
-python ris_image_train_bark_ml.py --exp_name bark_ml_ex_34 --replay_buffer_size 50000 --start_timesteps 20000 --eval_freq 2000 --batch_size 2048 --max_episode_length 300 --state_dim 5 --max_timesteps 300000
+python ris_image_train_bark_ml.py --exp_name bark_ml_ex_121 --replay_buffer_size 100000 --start_timesteps 20000 --eval_freq 2000 --batch_size 512 --max_episode_length 300 --state_dim 5 --wandb_project RIS_bark_ml_train
+
+## Train polamp_env
+cd usr/home/workspace/
+python ris_image_train_bark_ml.py --exp_name bark_ml_ex_121 --replay_buffer_size 10000 --start_timesteps 5000 --eval_freq 100 --batch_size 512 --max_episode_length 300 --state_dim 5 --wandb_project RIS_polamp_env
 
 ## Validate
 cd usr/home/workspace/
