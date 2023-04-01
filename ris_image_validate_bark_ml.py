@@ -123,8 +123,13 @@ if __name__ == "__main__":
         # Initialize environment
         obs = env.reset(val_scenario_idx=task_id)
         done = False
-        state = obs["image_observation"]
-        goal = obs["image_desired_goal"]
+
+        if image_env:
+            state = obs["image_observation"]
+            goal = obs["image_desired_goal"]
+        else:
+            state = obs["observation"]
+            goal = obs["desired_goal"]
         t = 0
 
         # debug subgoals
@@ -203,7 +208,10 @@ if __name__ == "__main__":
                 run.log({f"task count": len(validate_tasks)})
                 
 
-            next_state = next_obs["image_observation"]
+            if image_env:
+                next_state = next_obs["image_observation"]
+            else:
+                next_state = next_obs["observation"]
 
             state = next_state
             obs = next_obs

@@ -192,11 +192,6 @@ if __name__ == "__main__":
         id=train_env_name,
         entry_point='custom_bark_gym_env.custom_gym_bark_ml_env:GCContinuousParkingGym'
     )
-    # register polamp env
-    #register(
-    #    id=train_polamp_env_name,
-    #    entry_point='goal_polamp_env.env:GCPOLAMPEnvironment'
-    #)
 
     env         = gym.make(train_env_name)
     test_env    = gym.make(test_env_name)
@@ -215,7 +210,6 @@ if __name__ == "__main__":
     
     # Initialize policy
     image_env = False
-    
     """
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  image_env=image_env,alpha=args.alpha, 
@@ -236,9 +230,9 @@ if __name__ == "__main__":
                  h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
                  device=args.device, logger=logger if args.log_loss else None)
     '''
+
     # Initialize replay buffer and path_builder
     if image_env:
-        
         replay_buffer = HERReplayBuffer(
             max_size=args.replay_buffer_size,
             env=env,
@@ -283,7 +277,6 @@ if __name__ == "__main__":
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
-
         # debug
         print("step:", t, end=" ")
 

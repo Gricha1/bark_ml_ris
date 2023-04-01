@@ -6,6 +6,20 @@ import pathlib
 import wandb
 import numpy as np
 
+# for polamp env
+def create_video_from_imgs(images):
+  video = None
+  for image in images:
+    image = np.expand_dims(image, 0)
+    if video is None:
+      video = image
+    else:
+      video = np.concatenate([video, image], axis=0)
+  video = np.moveaxis(video, [0, 1, 2, 3], [0, 2, 3, 1])
+  print("video is created:", video.shape)
+
+  return video
+
 def create_video(image_folder, result_video_name, run):
   try:
     sorted_img_num_pairs = sorted([(int(img[3:][:-4]), img) for img in os.listdir(image_folder) if img.endswith(".png")])
