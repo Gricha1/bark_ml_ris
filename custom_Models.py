@@ -5,8 +5,9 @@ import numpy as np
 """ Actor """
 
 class GaussianPolicy(nn.Module):
-	#changed
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[64, 64]):
+	def __init__(self, state_dim, action_dim, hidden_dims=[128, 128]):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
 	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512]):
 	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512, 512]):
 		super(GaussianPolicy, self).__init__()
@@ -57,7 +58,9 @@ class Critic(nn.Module):
 
 
 class EnsembleCritic(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[64, 64], n_Q=2):
+	def __init__(self, state_dim, action_dim, hidden_dims=[128, 128], n_Q=2):
+	#def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2):
 	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512], n_Q=2):
 	#def __init__(self, state_dim, action_dim, hidden_dims=[512, 512, 512], n_Q=2):
 		super(EnsembleCritic, self).__init__()
@@ -73,7 +76,9 @@ class EnsembleCritic(nn.Module):
 """ High-level policy """
 
 class LaplacePolicy(nn.Module):	
-	def __init__(self, state_dim, hidden_dims=[256, 256]):	
+	#def __init__(self, state_dim, hidden_dims=[64, 64]):
+	def __init__(self, state_dim, hidden_dims=[128, 128]):
+	#def __init__(self, state_dim, hidden_dims=[256, 256]):	
 	#def __init__(self, state_dim, hidden_dims=[512, 512]):	
 		super(LaplacePolicy, self).__init__()	
 		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
@@ -84,9 +89,7 @@ class LaplacePolicy(nn.Module):
 		self.mean = nn.Linear(hidden_dims[-1], state_dim)	
 		self.log_scale = nn.Linear(hidden_dims[-1], state_dim)	
 		self.LOG_SCALE_MIN = -20	
-		# debug
 		self.LOG_SCALE_MAX = 2	
-		#self.LOG_SCALE_MAX = 0	
 
 	def forward(self, state, goal):	
 		h = self.fc( torch.cat([state, goal], -1) )	

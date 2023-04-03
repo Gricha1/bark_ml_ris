@@ -234,6 +234,7 @@ if __name__ == "__main__":
                   "agent theta:", info["agent_state"][2],
                   "agent steer:", info["agent_state"][4],
                   "episode ends:", done)
+            print("current step in env:", info["last_step_num"])
 
             #done = done or t >= int(args.max_timesteps)
             if done:

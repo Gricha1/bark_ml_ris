@@ -156,6 +156,23 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
               } 
 
     info["dist_to_goal"] = info["EuclideanDistance"]
+    info["last_step_num"] = self.step_counter
+
+    isDone = False
+    distance_to_goal = self.environment.get_goal_distance()
+    if distance_to_goal < self.SOFT_EPS:
+      info["geometirc_goal_achieved"] = True
+    else:
+      info["geometirc_goal_achieved"] = False
+    
+    if info["geometirc_goal_achieved"] or self._max_episode_steps == self.step_counter:
+      isDone = True
+    
+    #reward = -0.1 * (not info["geometirc_goal_achieved"])
+    reward = -1.0 * (not info["geometirc_goal_achieved"])
+
+
+    """
     if isDone:
       print("steps in env:", self.step_counter)
       if not (self._max_episode_steps == self.step_counter):
@@ -166,6 +183,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
           info["geometirc_goal_achieved"] = True
         else:
           info["geometirc_goal_achieved"] = False
+    """
 
     info["agent_state"] = observation
     return obs_dict, reward, isDone, info
