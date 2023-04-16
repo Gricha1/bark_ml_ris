@@ -26,6 +26,8 @@ import pathlib
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+
+    """
     parser.add_argument("--env",                default="Image84SawyerPushAndReachArenaTrainEnvBig-v0")
     parser.add_argument("--test_env",           default="Image84SawyerPushAndReachArenaTestEnvBig-v1")
     parser.add_argument("--epsilon",            default=1e-4, type=float)
@@ -46,9 +48,34 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     parser.add_argument("--enc_lr",             default=1e-4, type=float)
-    parser.add_argument("--state_dim",          default=16, type=int)
+    parser.add_argument("--state_dim",          default=5, type=int)
+    """
+
+    parser.add_argument("--env",                default="polamp_env")
+    parser.add_argument("--test_env",           default="polamp_env")
+    parser.add_argument("--epsilon",            default=1e-4, type=float)
+    parser.add_argument("--replay_buffer_goals",default=0.5, type=float)
+    parser.add_argument("--distance_threshold", default=0.05, type=float)
+    parser.add_argument("--start_timesteps",    default=0, type=int) 
+    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
+    parser.add_argument("--max_timesteps",      default=5e6, type=int)
+    parser.add_argument("--batch_size",         default=1024, type=int)
+    parser.add_argument("--replay_buffer_size", default=5e5, type=int)
+    parser.add_argument("--n_eval",             default=10, type=int)
+    parser.add_argument("--device",             default="cuda")
+    parser.add_argument("--seed",               default=42, type=int)
+    parser.add_argument("--exp_name",           default="RIS_sawyer")
+    parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float)
+
+    parser.add_argument("--h_lr",               default=1e-4, type=float)
+    parser.add_argument("--q_lr",               default=1e-3, type=float)
+    parser.add_argument("--pi_lr",              default=1e-3, type=float)
+    parser.add_argument("--state_dim",          default=5, type=int)
+
     parser.add_argument("--no_video",           default=False, type=bool)
     parser.add_argument("--validate_bad_cases", default=False, type=bool)
+    parser.add_argument("--wandb_project",      default="RIS_polamp_env_validate", type=str)
 
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
@@ -156,14 +183,19 @@ if __name__ == "__main__":
     failed_tasks_idx = []
 
     #validate_tasks = [17, 24, 32, 62, 98, 102, 106, 138, 194, 212, 219]
-    validate_tasks = list(range(num_val_tasks))
+    #validate_tasks = list(range(num_val_tasks))
+
+    validate_tasks = [1, 10, 25]
 
     for task_id in validate_tasks:
         # Initialize environment
         #obs = env.reset(val_scenario_idx=task_id)
-        #obs = env.reset()
-        #debug
         obs = env.reset(id=task_id, val_key=val_key)
+
+        # debug
+        print("task id:", task_id, "obs_x:", obs["observation"][0])
+        if not args.no_video:
+            images = []
 
         done = False
         state = obs["observation"]
@@ -217,14 +249,12 @@ if __name__ == "__main__":
 
         while not done:
             t += 1
+            # debug
             print("step:", t, end=" ")
-            
-            # Select action
-            if t < args.start_timesteps:
-                action = env.action_space.sample()
-            else:
-                action = policy.select_action(state, goal)
-            #action = [1, -0.5]    
+        
+            action = policy.select_action(state, goal)
+            # debug
+            #action = np.array([1, -0.5])
             print("action:", action, end=" ")
 
             # Perform action
@@ -267,14 +297,13 @@ if __name__ == "__main__":
 
             if not args.no_video:
                 image = env.render()
-                try:
-                    images.append(image)
-                except:
-                    images = []
-                    images.append(image)
-                from utilite_video_generator import create_video_from_imgs
-                video = create_video_from_imgs(images)
-        if not args.no_video:        
+                images.append(image)
+                #from utilite_video_generator import create_video_from_imgs
+                #video = create_video_from_imgs(images)
+                
+        if not args.no_video:    
+            from utilite_video_generator import create_video_from_imgs
+            video = create_video_from_imgs(images)    
             run.log({"validate_video": wandb.Video(video, fps=20)})
             """
             # save episode observations

@@ -74,6 +74,11 @@ class EnsembleCritic(nn.Module):
 		return Q
 
 """ High-level policy """
+# changed
+def weights_init_high_level(m):
+	if isinstance(m, nn.Linear):
+		nn.init.orthogonal_(m.weight.data)
+		m.bias.data.fill_(0.0)
 
 class LaplacePolicy(nn.Module):	
 	#def __init__(self, state_dim, hidden_dims=[64, 64]):
@@ -88,8 +93,11 @@ class LaplacePolicy(nn.Module):
 
 		self.mean = nn.Linear(hidden_dims[-1], state_dim)	
 		self.log_scale = nn.Linear(hidden_dims[-1], state_dim)	
-		self.LOG_SCALE_MIN = -20	
+		self.LOG_SCALE_MIN = -20
+
+		# changed	
 		self.LOG_SCALE_MAX = 2	
+		#self.LOG_SCALE_MAX = np.log(1)	
 
 	def forward(self, state, goal):	
 		h = self.fc( torch.cat([state, goal], -1) )	

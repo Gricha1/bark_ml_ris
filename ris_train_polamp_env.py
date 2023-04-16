@@ -10,13 +10,20 @@ from gym.envs.registration import register
 import time
 
 from utils.logger import Logger
-from custom_second_RIS import RIS
+
+
+from custom_third_RIS import RIS
+# normalize states
+from custom_third_RIS import normalize_state
+
 from HER import HERReplayBuffer, PathBuilder
 import wandb
 
 # polamp depends
 from polamp_env.lib.utils_operations import generateDataSet
 import json
+
+
 
 
 def evalPolicy(policy, env, N=100, distance_threshold=0.05, logger=None):
@@ -27,7 +34,7 @@ def evalPolicy(policy, env, N=100, distance_threshold=0.05, logger=None):
     episode_lengths = []
 
     # debug
-    state_distrs = {"x": [], "y": [], "theta": [], "v": [], "steer": []}
+    state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
     goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
     max_state_vals = {}
     min_state_vals = {}
@@ -56,6 +63,9 @@ def evalPolicy(policy, env, N=100, distance_threshold=0.05, logger=None):
         acc_reward = 0
 
         # debug
+        state_distrs["start_x"].append(state[0])
+
+        # debug
         if not image_env:
             with torch.no_grad():
                 encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
@@ -71,6 +81,10 @@ def evalPolicy(policy, env, N=100, distance_threshold=0.05, logger=None):
                 subgoal_max_dists.append(max(dist_to_state, dist_to_goal))
 
         while not done:
+
+            # normalize states
+            #state = normalize_state(state, env_state_bounds, validate=True)
+            #goal = normalize_state(goal, env_state_bounds, validate=True)
             
             # debug
             state_distrs["x"].append(state[0])
@@ -152,6 +166,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.ones_like(done_batch) * (-1)
+    #reward_batch = np.ones_like(done_batch) * (-0.01)
     #reward_batch = np.ones_like(done_batch) * (-0.1)
 
     # Convert to Pytorch
@@ -167,30 +182,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
 
-    """
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
-    parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--distance_threshold", default=0.05, type=float)
-    parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
-    parser.add_argument("--max_timesteps",      default=5e6, type=int)
-    parser.add_argument("--batch_size",         default=1024, type=int)
-    parser.add_argument("--replay_buffer_size", default=1e6, type=int)
-    parser.add_argument("--n_eval",             default=10, type=int)
-    parser.add_argument("--device",             default="cuda")
-    parser.add_argument("--seed",               default=42, type=int)
-    parser.add_argument("--exp_name",           default="RIS_sawyer")
-    parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=0.1, type=float)
-    parser.add_argument("--h_lr",               default=1e-5, type=float)
-    parser.add_argument("--q_lr",               default=1e-4, type=float)
-    parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    parser.add_argument("--state_dim",          default=5, type=int)
-    parser.add_argument("--wandb_project",      default="RIS_polamp_env_train", type=str)
+
     """
-    parser.add_argument("--env",                default="polamp_env")
-    parser.add_argument("--test_env",           default="polamp_env")
     parser.add_argument("--epsilon",            default=1e-4, type=float)
     parser.add_argument("--replay_buffer_goals",default=0.5, type=float)
     parser.add_argument("--distance_threshold", default=0.05, type=float)
@@ -210,14 +205,32 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    #parser.add_argument("--h_lr",               default=1e-3, type=float)
-    #parser.add_argument("--q_lr",               default=1e-4, type=float)
-    #parser.add_argument("--pi_lr",              default=1e-3, type=float)
+    #parser.add_argument("--h_lr",               default=1e-4, type=float)
+    #parser.add_argument("--q_lr",               default=1e-3, type=float)
+    #parser.add_argument("--pi_lr",              default=1e-4, type=float)
+    """
+
+    parser.add_argument("--epsilon",            default=1e-16, type=float)
+    parser.add_argument("--distance_threshold", default=0.5, type=float)
+    parser.add_argument("--start_timesteps",    default=1e4, type=int) 
+    parser.add_argument("--eval_freq",          default=int(1e3), type=int)
+    parser.add_argument("--max_timesteps",      default=5e6, type=int)
+    parser.add_argument("--batch_size",         default=2048, type=int)
+    parser.add_argument("--replay_buffer_size", default=1e6, type=int)
+    parser.add_argument("--n_eval",             default=5, type=int)
+    parser.add_argument("--device",             default="cuda")
+    parser.add_argument("--seed",               default=42, type=int)
+    parser.add_argument("--exp_name",           default="RIS_ant")
+    parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float)
+    parser.add_argument("--h_lr",               default=1e-4, type=float)
+    parser.add_argument("--q_lr",               default=1e-3, type=float)
+    parser.add_argument("--pi_lr",              default=1e-3, type=float)
+
+
 
     parser.add_argument("--state_dim",          default=5, type=int)
     parser.add_argument("--wandb_project",      default="RIS_polamp_env_train", type=str)
-
-
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
@@ -282,29 +295,44 @@ if __name__ == "__main__":
     run = wandb.init(project=args.wandb_project)
     
     # Initialize policy
+    # normalize state
+    env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
+                        "v": 2.778, "steer": 0.7854}
     image_env = False
-    
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha,
+                 image_env=image_env,
+                 Lambda=args.Lambda, epsilon=args.epsilon,
+                 h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
+                 device=args.device, logger=logger if args.log_loss else None, 
+                 env_state_bounds=env_state_bounds)
+
     """
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
-                 image_env=image_env,alpha=args.alpha, 
-                 Lambda=args.Lambda, target_update_interval=1, 
-                 h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
-                 device=args.device, logger=logger if args.log_loss else None)
-    """
+    # normalize state
+    env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
+                        "v": 2.778, "steer": 0.7854}
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                 image_env=image_env,alpha=args.alpha, 
                 Lambda=args.Lambda, epsilon=args.epsilon,
                 h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
-                device=args.device, logger=logger if args.log_loss else None)
-
-    '''
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
-                 image_env=image_env,alpha=args.alpha, 
-                 Lambda=args.Lambda,  gamma=0.95, tau=0.05, target_update_interval=1, 
-                 h_lr=1e-4, q_lr=args.q_lr, pi_lr=1e-3, 
-                 device=args.device, logger=logger if args.log_loss else None)
-    '''
+                device=args.device, logger=logger if args.log_loss else None, 
+                env_state_bounds=env_state_bounds)
+    """
+    
     # Initialize replay buffer and path_builder
+    replay_buffer = HERReplayBuffer(
+        max_size=args.replay_buffer_size,
+        env=env,
+        fraction_goals_are_rollout_goals = 0.2,
+        fraction_resampled_goals_are_env_goals = 0.0,
+        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
+        ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
+        desired_goal_keys   =["desired_goal", "state_desired_goal"],
+        observation_key     = 'observation',
+        desired_goal_key    = 'desired_goal',
+        achieved_goal_key   = 'achieved_goal',
+        vectorized          = vectorized 
+    )
+    """
     replay_buffer = HERReplayBuffer(
         max_size=args.replay_buffer_size,
         env=env,
@@ -315,19 +343,6 @@ if __name__ == "__main__":
         desired_goal_key    = 'desired_goal',
         achieved_goal_key   = 'achieved_goal',
         vectorized          =  vectorized
-    )
-        
-    """
-    replay_buffer = HERReplayBuffer(
-        max_size=args.replay_buffer_size,
-        env=env,
-        fraction_goals_are_rollout_goals = 0.2,
-        fraction_resampled_goals_are_env_goals = 0.0,
-        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        observation_key     = 'observation',
-        desired_goal_key    = 'desired_goal',
-        achieved_goal_key   = 'achieved_goal',
-        vectorized          = vectorized 
     )
     """
     path_builder = PathBuilder()
@@ -439,35 +454,86 @@ if __name__ == "__main__":
                                 )
             print("RIS t={} | {}".format(t+1, logger))
 
-            # test
-            print("eval_reward:", eval_reward)
-            print("eval_reward_type:", type(eval_reward))
-            print("eval_episode_length:", eval_episode_length)
-            print("eval_episode_length_type:", type(eval_episode_length))
+            """
+            'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq, 
+            'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,  
+            'critic_max_value': max(logger.data["critic_value"][-args.eval_freq:]),
+            'critic_min_value': min(logger.data["critic_value"][-args.eval_freq:]),
+            'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,  
+            'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
+            'entropy_1': sum(logger.data["entropy_1"][-args.eval_freq:]) / args.eval_freq,
+            'entropy_2': sum(logger.data["entropy_2"][-args.eval_freq:]) / args.eval_freq,
+            'steps': logger.data["t"][-1],
+            'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
+            'train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
+            'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
+            'high_policy_v': sum(logger.data["high_policy_v"][-args.eval_freq:]) / args.eval_freq,
+            'high_v': sum(logger.data["high_v"][-args.eval_freq:]) / args.eval_freq,
+            f'val_distance({args.n_eval} episodes)': eval_distance,
+            f'eval_reward({args.n_eval} episodes)': eval_reward,
+            f'val_rate({args.n_eval} episodes)': success_rate,
+            "val_episode_length": eval_episode_length,
+            'val_mean_a': np.mean(mean_actions['a']),
+            'val_mean_v_s': np.mean(mean_actions['v_s']),
+            """
 
             # debug
             wandb_log_dict = {
-                     'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq, 
-                     'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,  
-                     'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,  
+
+                    'steps': logger.data["t"][-1],
+
+                     # train logging
+                     'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
-                     'entropy_1': sum(logger.data["entropy_1"][-args.eval_freq:]) / args.eval_freq,
-                     'entropy_2': sum(logger.data["entropy_2"][-args.eval_freq:]) / args.eval_freq,
-                     'steps': logger.data["t"][-1],
                      'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
                      'train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
+                     'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
                      'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
+
+                     # validate logging
                      f'val_distance({args.n_eval} episodes)': eval_distance,
                      f'eval_reward({args.n_eval} episodes)': eval_reward,
                      f'val_rate({args.n_eval} episodes)': success_rate,
                      "val_episode_length": eval_episode_length,
-                     'val_mean_a': np.mean(mean_actions['a']),
-                     'val_mean_v_s': np.mean(mean_actions['v_s']),
-                     f'val_subgoal_dist({args.n_eval} episodes)': eval_subgoal_dist,
-                     #'critic_grad_1': sum(logger.data["critic_grad_1"][-args.eval_freq:]) / args.eval_freq,
-                     #'critic_grad_2': sum(logger.data["critic_grad_2"][-args.eval_freq:]) / args.eval_freq,
-                     #'actor_grad': sum(logger.data["actor_grad"][-args.eval_freq:]) / args.eval_freq,
-                     #'subgoal_grad': sum(logger.data["subgoal_grad"][-args.eval_freq:]) / args.eval_freq
+
+                     # batch state
+                     'train_state_x_max': sum(logger.data["train_state_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_state_x_mean': sum(logger.data["train_state_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'train_state_x_min': sum(logger.data["train_state_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_state_y_max': sum(logger.data["train_state_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_state_y_mean': sum(logger.data["train_state_y_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'train_state_y_min': sum(logger.data["train_state_y_min"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled subgoal
+                     'train_subgoal_x_max': sum(logger.data["train_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_x_min': sum(logger.data["train_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_x_mean': sum(logger.data["train_subgoal_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_y_max': sum(logger.data["train_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_y_min': sum(logger.data["train_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_y_mean': sum(logger.data["train_subgoal_y_mean"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled goal
+                     'train_goal_x_max': sum(logger.data["train_goal_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_goal_x_min': sum(logger.data["train_goal_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_goal_x_mean': sum(logger.data["train_goal_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'train_goal_y_max': sum(logger.data["train_goal_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_goal_y_min': sum(logger.data["train_goal_y_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_goal_y_mean': sum(logger.data["train_goal_y_mean"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled reward
+                     'train_reward_max': sum(logger.data["train_reward_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_reward_min': sum(logger.data["train_reward_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_reward_mean': sum(logger.data["train_reward_mean"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled goal
+                     'train_subgoal_data_x_max': sum(logger.data["train_subgoal_data_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_data_x_min': sum(logger.data["train_subgoal_data_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_data_x_mean': sum(logger.data["train_subgoal_data_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_data_y_max': sum(logger.data["train_subgoal_data_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_data_y_min': sum(logger.data["train_subgoal_data_y_min"][-args.eval_freq:]) / args.eval_freq,
+                     'train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
+
                     }
             
             # debug
@@ -486,6 +552,10 @@ if __name__ == "__main__":
                 policy.save(folder)
                 run.log({"save_policy_count": save_policy_count})
             old_success_rate = success_rate
+
+            # clean log buffer
+            logger.data = dict()
+
             # debug
             print("eval", end=" ")
 

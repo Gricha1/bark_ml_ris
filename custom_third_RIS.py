@@ -2,28 +2,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from custom_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, goal_Encoder
+from Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder
 
 from utils.data_aug import random_translate
 
 
 import torch.nn as nn
 
-# changed
-def transform_subgoal(new_subgoal, env_state_bounds, was_normalized=True):
-	if not was_normalized:
-		new_subgoal[:, 0] = new_subgoal[:, 0].clamp(-env_state_bounds["x"], env_state_bounds["x"])
-		new_subgoal[:, 1] = new_subgoal[:, 1].clamp(-env_state_bounds["y"], env_state_bounds["y"])
-		new_subgoal[:, 2] = new_subgoal[:, 2].clamp(-env_state_bounds["theta"], env_state_bounds["theta"])
-		new_subgoal[:, 3] = new_subgoal[:, 3].clamp(0, env_state_bounds["v"])
-		new_subgoal[:, 4] = new_subgoal[:, 4].clamp(-env_state_bounds["steer"], env_state_bounds["steer"])
-	else:
-		new_subgoal[:, 0] = new_subgoal[:, 0].clamp(-1, 1)
-		new_subgoal[:, 1] = new_subgoal[:, 1].clamp(-1, 1)
-		new_subgoal[:, 2] = new_subgoal[:, 2].clamp(-1, 1)
-		new_subgoal[:, 3] = new_subgoal[:, 3].clamp(0, 1)
-		new_subgoal[:, 4] = new_subgoal[:, 4].clamp(-1, 1)
-	return new_subgoal
 
 def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	if not validate:
@@ -40,20 +25,10 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 		new_subgoal[4] = new_subgoal[4] / env_state_bounds["steer"]
 	return new_subgoal
 
-# changed
-def get_img_feat_from_rollout(state, c_count=2, batch_size=1):
-	x = state[:, :-5]
-	x_f = state[:, -5:]
-	#x = x.view(batch_size, c_count, 120, 120)
-	x = x.view(batch_size, c_count, 40, 40)
-	x_f = x_f.view(batch_size, -1)
-	return x, x_f
-
 class RIS(object):
-	#def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, image_env=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda")):		
 	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, image_env=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}):		
 
-		# changed
+		# normalize states
 		self.env_state_bounds = env_state_bounds
 
 		# Actor
@@ -73,12 +48,9 @@ class RIS(object):
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
 		# Encoder (for vision-based envs)
-		# changed
-		self.is_normalize_state = True
-
 		self.image_env = image_env
 		if self.image_env:
-			self.encoder = goal_Encoder(state_dim=state_dim).to(device)
+			self.encoder = Encoder(state_dim=state_dim).to(device)
 			self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=enc_lr)
 
 		# Actor-Critic Hyperparameters
@@ -124,14 +96,10 @@ class RIS(object):
 			state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
 			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
 			if self.image_env:
-				# changed
-				x, x_f = get_img_feat_from_rollout(state, c_count=1)
-				x_goal, x_f_goal = get_img_feat_from_rollout(goal, c_count=1)
-				#changed
-				state = self.encoder(x, x_f)
-				goal = self.encoder(x_goal, x_f_goal)
-				state = x_f
-				goal = x_f_goal
+				state = state.view(1, 3, 84, 84)
+				goal = goal.view(1, 3, 84, 84)
+				state = self.encoder(state)
+				goal = self.encoder(goal)
 			action, _, _ = self.actor.sample(state, goal)
 		return action.cpu().data.numpy().flatten()
 		
@@ -154,27 +122,13 @@ class RIS(object):
 
 		with torch.no_grad():
 			subgoal = self.sample_subgoal(state, goal)
-			# changed
-			subgoal = transform_subgoal(subgoal, self.env_state_bounds)
-
+		
 		prior_action_dist = self.actor_target(state.unsqueeze(1).expand(batch_size, subgoal.size(1), self.state_dim), subgoal)
 		prior_prob = prior_action_dist.log_prob(action.unsqueeze(1).expand(batch_size, subgoal.size(1), self.action_dim)).sum(-1, keepdim=True).exp()
 		prior_log_prob = torch.log(prior_prob.mean(1) + self.epsilon)
-		D_KL = action_dist.log_prob(action).sum(-1, keepdim=True) - prior_log_prob			
-
-		# debug
-		with torch.no_grad():
-			entropy_1 = action_dist.entropy()[:, 0].mean().item()
-			entropy_2 = action_dist.entropy()[:, 1].mean().item()
-		# Log variables
-		if self.logger is not None:
-			self.logger.store(
-				entropy_1   = entropy_1,
-				entropy_2   = entropy_2				
-			)
+		D_KL = action_dist.log_prob(action).sum(-1, keepdim=True) - prior_log_prob
 
 		action = torch.tanh(action)
-		
 		return action, D_KL
 
 	def train_highlevel_policy(self, state, goal, subgoal):
@@ -184,10 +138,6 @@ class RIS(object):
 		with torch.no_grad():
 			# Compute target value
 			new_subgoal = subgoal_distribution.loc
-
-			# changed
-			new_subgoal = transform_subgoal(new_subgoal, self.env_state_bounds)
-
 			policy_v_1 = self.value(state, new_subgoal)
 			policy_v_2 = self.value(new_subgoal, goal)
 			policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
@@ -196,7 +146,6 @@ class RIS(object):
 			v_1 = self.value(state, subgoal)
 			v_2 = self.value(subgoal, goal)
 			v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
-
 			adv = - (v - policy_v)
 			weight = F.softmax(adv/self.Lambda, dim=0)
 
@@ -206,70 +155,66 @@ class RIS(object):
 		# Update network
 		self.subgoal_optimizer.zero_grad()
 		subgoal_loss.backward()
-
-		# changed
-		#torch.nn.utils.clip_grad_norm_(self.subgoal_net.parameters(), 0.5)
-
-		"""
-		#changed
-		with torch.no_grad():
-			total_norm = 0
-			parameters = [p for p in self.subgoal_net.parameters() if p.grad is not None and p.requires_grad]
-			for p in parameters:			
-				param_norm = p.grad.detach().data.norm(2)
-				total_norm += param_norm.item() ** 2
-			total_norm = total_norm ** 0.5
-		"""
 		self.subgoal_optimizer.step()
 		
+
+		# debug subgoal
+		train_subgoal = {"x_max": new_subgoal[:, 0].max().item(),
+						 "x_mean": new_subgoal[:, 0].mean().item(), 
+						 "x_min": new_subgoal[:, 0].min().item(),
+						 "y_max": new_subgoal[:, 1].max().item(),
+						 "y_mean": new_subgoal[:, 1].mean().item(), 
+						 "y_min": new_subgoal[:, 1].min().item(),
+						 }
+		#train_subgoal_x = new_subgoal[:, 0].mean().item()
+		#train_subgoal_y = new_subgoal[:, 1].mean().item()
+		if self.logger is not None:
+			self.logger.store(
+				train_subgoal_x_max = train_subgoal["x_max"],
+				train_subgoal_x_mean = train_subgoal["x_mean"],
+				train_subgoal_x_min = train_subgoal["x_min"],
+				train_subgoal_y_max = train_subgoal["y_max"],
+				train_subgoal_y_mean = train_subgoal["y_mean"],
+				train_subgoal_y_min = train_subgoal["y_min"],
+			)
+
 		# Log variables
-		#changed
 		if self.logger is not None:
 			self.logger.store(
 				adv = adv.mean().item(),
 				ratio_adv = adv.ge(0.0).float().mean().item(),
 				subgoal_loss = subgoal_loss.item(),
-				#subgoal_grad = total_norm,
 				high_policy_v = policy_v.mean().item(),
-				high_v = v.mean().item(),
-				sub_goal_log_prob = log_prob.mean().item()
+				high_v = v.mean().item()
 			)
 
 	def train(self, state, action, reward, next_state, done, goal, subgoal):
 		""" Encode images (if vision-based environment), use data augmentation """
 
-		# changed
-		if self.is_normalize_state:
-			state = normalize_state(state, self.env_state_bounds)
-			next_state = normalize_state(next_state, self.env_state_bounds)
-			goal = normalize_state(goal, self.env_state_bounds)
-			subgoal = normalize_state(subgoal, self.env_state_bounds)
-
+		# normalize state, goal, next_state, subgoal
+		#state = normalize_state(state, self.env_state_bounds)
+		#next_state = normalize_state(next_state, self.env_state_bounds)
+		#goal = normalize_state(goal, self.env_state_bounds)
+		#subgoal = normalize_state(subgoal, self.env_state_bounds)
+		
 		if self.image_env:
-			#changed
-			x_state, x_f_state = get_img_feat_from_rollout(state, c_count=1, batch_size=state.shape[0])
-			x_next_state, x_f_next_state = get_img_feat_from_rollout(next_state, c_count=1, batch_size=next_state.shape[0])
-			x_goal, x_f_goal = get_img_feat_from_rollout(goal, c_count=1, batch_size=goal.shape[0])
-			x_sub_goal, x_f_sub_goal = get_img_feat_from_rollout(subgoal, c_count=1, batch_size=subgoal.shape[0])
+			state = state.view(-1, 3, 84, 84)
+			next_state = next_state.view(-1, 3, 84, 84)
+			goal = goal.view(-1, 3, 84, 84)
+			subgoal = subgoal.view(-1, 3, 84, 84)
 
 			# Data augmentation
-			#changed
-			x_state = random_translate(x_state, pad=8)
-			x_next_state = random_translate(x_next_state, pad=8)
-			x_goal = random_translate(x_goal, pad=8)
-			x_sub_goal = random_translate(x_sub_goal, pad=8)
+			state = random_translate(state, pad=8)
+			next_state = random_translate(next_state, pad=8)
+			goal = random_translate(goal, pad=8)
+			subgoal = random_translate(subgoal, pad=8)
 
 			# Stop gradient for subgoal goal and next state
-			#changed
-			state = self.encoder(x_state, x_f_state)
+			state = self.encoder(state)
 			with torch.no_grad():
-				goal = self.encoder(x_goal, x_f_goal)
-				next_state = self.encoder(x_next_state, x_f_next_state)
-				subgoal = self.encoder(x_sub_goal, x_f_sub_goal)
-			#state = x_f_state
-			#goal = x_f_goal
-			#next_state = x_f_next_state
-			#subgoal = x_f_sub_goal
+				goal = self.encoder(goal)
+				next_state = self.encoder(next_state)
+				subgoal = self.encoder(subgoal)
 
 		""" Critic """
 		# Compute target Q
@@ -288,33 +233,8 @@ class RIS(object):
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
 		if self.image_env: self.encoder_optimizer.step()
-		
-		#changed
-		# torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
-		"""
-		with torch.no_grad():
-			total_norm_1 = 0
-			parameters = [p for p in self.critic.ensemble_Q[0].parameters() if p.grad is not None and p.requires_grad]
-			for p in parameters:			
-				param_norm = p.grad.detach().data.norm(2)
-				total_norm_1 += param_norm.item() ** 2
-			total_norm_1 = total_norm_1 ** 0.5	
 
-			total_norm_2 = 0
-			parameters = [p for p in self.critic.ensemble_Q[1].parameters() if p.grad is not None and p.requires_grad]
-			for p in parameters:			
-				param_norm = p.grad.detach().data.norm(2)
-				total_norm_2 += param_norm.item() ** 2
-			total_norm_2 = total_norm_2 ** 0.5	
-
-		if self.logger is not None:
-			self.logger.store(
-				critic_value   = Q.mean().item(),
-				target_value  = target_Q.mean().item(),
-				critic_grad_1   = total_norm_1,
-				critic_grad_2   = total_norm_2
-			)
-		"""
+		# debug
 		if self.logger is not None:
 			self.logger.store(
 				critic_value   = Q.mean().item(),
@@ -344,23 +264,6 @@ class RIS(object):
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
-
-		# changed
-		#torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1)
-		"""
-		with torch.no_grad():
-			total_norm = 0
-			parameters = [p for p in self.actor.parameters() if p.grad is not None and p.requires_grad]
-			for p in parameters:			
-				param_norm = p.grad.detach().data.norm(2)
-				total_norm += param_norm.item() ** 2
-			total_norm = total_norm ** 0.5		
-		if self.logger is not None:
-			self.logger.store(
-				actor_grad   = total_norm,
-			)
-		"""
-
 		self.actor_optimizer.step()
 
 		# Update target networks
@@ -372,10 +275,77 @@ class RIS(object):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
 
+		# debug
+		train_state = {"x_max": state[:, 0].max().item(),
+					   "x_mean": state[:, 0].mean().item(), 
+					   "x_min": state[:, 0].min().item(),
+					   "y_max": state[:, 1].max().item(),
+					   "y_mean": state[:, 1].mean().item(), 
+					   "y_min": state[:, 1].min().item(),
+					  }
+
+		train_goal = {"x_max": goal[:, 0].max().item(),
+					   "x_mean": goal[:, 0].mean().item(), 
+					   "x_min": goal[:, 0].min().item(),
+					   "y_max": goal[:, 1].max().item(),
+					   "y_mean": goal[:, 1].mean().item(), 
+					   "y_min": goal[:, 1].min().item(),
+					  }
+		train_reward = {"max": reward[:, 0].max().item(),
+					  "mean": reward[:, 0].mean().item(), 
+					  "min": reward[:, 0].min().item(),
+					  }
+		
+		train_subgoal_data = {"x_max": subgoal[:, 0].max().item(),
+							  "x_mean": subgoal[:, 0].mean().item(), 
+							  "x_min": subgoal[:, 0].min().item(),
+							  "y_max": subgoal[:, 1].max().item(),
+							  "y_mean": subgoal[:, 1].mean().item(), 
+							  "y_min": subgoal[:, 1].min().item(),
+							 }
+
+		if self.logger is not None:
+			self.logger.store(
+				train_state_x_max = train_state["x_max"],
+				train_state_x_mean = train_state["x_mean"],
+				train_state_x_min = train_state["x_min"],
+				train_state_y_max = train_state["y_max"],
+				train_state_y_mean = train_state["y_mean"],
+				train_state_y_min = train_state["y_min"],
+			)
+		
+		if self.logger is not None:
+			self.logger.store(
+				train_goal_x_max = train_goal["x_max"],
+				train_goal_x_mean = train_goal["x_mean"],
+				train_goal_x_min = train_goal["x_min"],
+				train_goal_y_max = train_goal["y_max"],
+				train_goal_y_mean = train_goal["y_mean"],
+				train_goal_y_min = train_goal["y_min"],
+			)
+
+		if self.logger is not None:
+			self.logger.store(
+				train_reward_max = train_reward["max"],
+				train_reward_mean = train_reward["mean"],
+				train_reward_min = train_reward["min"],
+			)
+		
+		if self.logger is not None:
+			self.logger.store(
+				train_subgoal_data_x_max = train_subgoal_data["x_max"],
+				train_subgoal_data_x_mean = train_subgoal_data["x_mean"],
+				train_subgoal_data_x_min = train_subgoal_data["x_min"],
+				train_subgoal_data_y_max = train_subgoal_data["y_max"],
+				train_subgoal_data_y_mean = train_subgoal_data["y_mean"],
+				train_subgoal_data_y_min = train_subgoal_data["y_min"],
+			)
+
 		# Log variables
 		if self.logger is not None:
 			self.logger.store(
 				actor_loss   = actor_loss.item(),
 				critic_loss  = critic_loss.item(),
-				D_KL		 = D_KL.mean().item()				
+				D_KL		 = D_KL.mean().item()		
+
 			)
