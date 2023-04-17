@@ -72,7 +72,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     #normalized_action = [action[0] * agent.dynamic_model.max_acc, 
     #                     action[1] * agent.dynamic_model.max_ang_vel]
     # only forward movement
-    action[0] = (action[0] + 1) / 2 # action = [0:1, -1:1]
+    # action[0] = (action[0] + 1) / 2 # action = [0:1, -1:1]
     normalized_action = [action[0] * agent.dynamic_model.max_acc, 
                          action[1] * agent.dynamic_model.max_ang_vel]
     

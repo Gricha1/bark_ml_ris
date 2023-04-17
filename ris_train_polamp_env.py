@@ -41,15 +41,9 @@ def evalPolicy(policy, env, N=100, distance_threshold=0.05, logger=None):
     max_goal_vals = {}
     min_goal_vals = {}
     mean_actions = {"a": [], "v_s": []}
-
-    num_val_tasks = 35
-    val_keys = ["map0"]
     val_key = "map0"
-    validate_tasks = list(range(num_val_tasks))
-    validate_tasks = np.random.choice(validate_tasks, size=N)
-
-    #for _ in range(N):
-    for task_id in validate_tasks:    
+    eval_tasks = len(env.valTasks[val_key])
+    for task_id in range(eval_tasks):    
         obs = env.reset(id=task_id, val_key=val_key)
         done = False
         #changed
@@ -213,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(1e3), type=int)
+    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -230,6 +224,7 @@ if __name__ == "__main__":
 
 
     parser.add_argument("--state_dim",          default=5, type=int)
+    parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="RIS_polamp_env_train", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
@@ -253,6 +248,8 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
     # maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
+    maps["map0"] = []
+
     args.evaluation = False
     environment_config = {
         'vehicle_config': car_config,
@@ -292,7 +289,9 @@ if __name__ == "__main__":
     # Create logger
     # TODO: save_git_head_hash = True by default, change it if neccesary
     logger = Logger(vars(args), save_git_head_hash=False)
-    run = wandb.init(project=args.wandb_project)
+
+    if args.using_wandb:
+        run = wandb.init(project=args.wandb_project)
     
     # Initialize policy
     # normalize state
@@ -537,10 +536,11 @@ if __name__ == "__main__":
                     }
             
             # debug
-            for dict_ in val_state + val_goal:
-                for key in dict_:
-                    wandb_log_dict[f"{key}"] = dict_[key]
-            run.log(wandb_log_dict)
+            if args.using_wandb:
+                for dict_ in val_state + val_goal:
+                    for key in dict_:
+                        wandb_log_dict[f"{key}"] = dict_[key]
+                run.log(wandb_log_dict)
      
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:

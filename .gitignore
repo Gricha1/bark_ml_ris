@@ -1,0 +1,5 @@
+*.pyc
+*.pth
+wandb/
+results/
+__pycache__

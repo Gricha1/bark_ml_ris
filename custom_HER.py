@@ -5,7 +5,7 @@ Credits: https://github.com/snasiriany/leap
 import numpy as np
 from gym.spaces import Dict
 
-from multiworld.core.image_env import unormalize_image, normalize_image
+# from multiworld.core.image_env import unormalize_image, normalize_image
 
 class PathBuilder(dict):
     """
@@ -396,7 +396,8 @@ def preprocess_obs_dict(obs_dict):
     """
     for obs_key, obs in obs_dict.items():
         if 'image' in obs_key and obs is not None:
-            obs_dict[obs_key] = unormalize_image(obs)
+            # obs_dict[obs_key] = unormalize_image(obs)
+            obs_dict[obs_key] = obs
     return obs_dict
 
 def postprocess_obs_dict(obs_dict):
@@ -405,5 +406,6 @@ def postprocess_obs_dict(obs_dict):
     """
     for obs_key, obs in obs_dict.items():
         if 'image' in obs_key and obs is not None:
-            obs_dict[obs_key] = normalize_image(obs)
+            # obs_dict[obs_key] = normalize_image(obs)
+            obs_dict[obs_key] = obs
     return obs_dict
