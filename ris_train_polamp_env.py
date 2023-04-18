@@ -17,7 +17,7 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, N=100, distance_threshold=0.05, logger=None):
+def evalPolicy(policy, env):
     # debug
     state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
     goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
@@ -380,12 +380,7 @@ if __name__ == "__main__":
             eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length \
-                    = evalPolicy(
-                                policy, test_env, 
-                                N=args.n_eval, 
-                                distance_threshold=args.distance_threshold,
-                                logger = logger
-                                )
+                    = evalPolicy(policy, test_env)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
