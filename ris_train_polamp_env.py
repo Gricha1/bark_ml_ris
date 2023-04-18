@@ -13,7 +13,7 @@ from gym.envs.registration import register
 from utils.logger import Logger
 from polamp_RIS import RIS
 from polamp_RIS import normalize_state
-from HER import HERReplayBuffer, PathBuilder
+from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 

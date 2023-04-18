@@ -16,7 +16,6 @@ from gym.envs.registration import register
 
 from utils.logger import Logger
 from polamp_RIS import RIS
-from HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
