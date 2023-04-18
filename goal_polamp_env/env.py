@@ -10,11 +10,11 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def __init__(self, full_env_name, config):
     POLAMPEnvironment.__init__(self, full_env_name, config)
 
-    # change observation space
+    self.reward_scale = 1
+
     observation = Box(-np.inf, np.inf, (5,), np.float32) 
     desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
     achieved_goal = Box(-np.inf, np.inf, (5,), np.float32)
-
     state_observation = observation 
     state_desired_goal = desired_goal 
     state_achieved_goal = achieved_goal 
@@ -30,10 +30,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     self.observation_space = gym.spaces.dict.Dict(obs_dict)
 
-  # TODO: create compute_rewards function
-  def compute_rewards(self, new_actions, new_next_obs_dict):
-    #return np.zeros(new_actions.shape)
-    return np.zeros((new_actions.shape[0], 1))
+  def compute_rewards(self, new_actions, new_next_obs_dict):    
+    return -1.0 * self.reward_scale * np.ones((new_actions.shape[0], 1))
 
   def reset(self, **kwargs):
 
@@ -41,15 +39,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    #print("agent state:", self.environment.agent.current_state)
-    #print("goal state:", self.environment.agent.goal_state)
 
-
-    #changed
     observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
     desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
     achieved_goal = observation
-
     state_observation = observation
     state_desired_goal = desired_goal
     state_achieved_goal = achieved_goal
@@ -66,13 +59,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     
   def step(self, action, **kwargs):
-
-    # normalize actions action = [-1:1, -1:1]
+    # normalized actions = [-1:1, -1:1]
     agent = self.environment.agent
-    #normalized_action = [action[0] * agent.dynamic_model.max_acc, 
-    #                     action[1] * agent.dynamic_model.max_ang_vel]
-    # only forward movement
-    # action[0] = (action[0] + 1) / 2 # action = [0:1, -1:1]
     normalized_action = [action[0] * agent.dynamic_model.max_acc, 
                          action[1] * agent.dynamic_model.max_ang_vel]
     
@@ -81,11 +69,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
 
-    #changed
     observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
     desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
     achieved_goal = observation
-
     state_observation = observation
     state_desired_goal = desired_goal
     state_achieved_goal = achieved_goal
@@ -111,27 +97,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if info["geometirc_goal_achieved"] or self._max_episode_steps == self.step_counter:
       isDone = True
     
-    #reward = -0.1 * (not info["geometirc_goal_achieved"])
-    reward = -1.0 * (not info["geometirc_goal_achieved"])
-    #reward = -0.01 * (not info["geometirc_goal_achieved"])
-
-
-    """
-    if isDone:
-      print("steps in env:", self.step_counter)
-      if not (self._max_episode_steps == self.step_counter):
-        info["geometirc_goal_achieved"] = True
-      else:
-        distance_to_goal = self.environment.get_goal_distance()
-        if distance_to_goal < self.SOFT_EPS:
-          info["geometirc_goal_achieved"] = True
-        else:
-          info["geometirc_goal_achieved"] = False
-    """
+    if not info["geometirc_goal_achieved"]:
+      reward = self.compute_rewards(np.array([1]), None).item()
+    else:
+      reward = 0.0
 
     info["agent_state"] = observation
     return obs_dict, reward, isDone, info
-
 
 
   # overload

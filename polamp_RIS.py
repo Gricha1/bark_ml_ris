@@ -1,14 +1,10 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-from Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder
-
-from utils.data_aug import random_translate
-
-
 import torch.nn as nn
 
+from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder
+from utils.data_aug import random_translate
 
 def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	if not validate:
