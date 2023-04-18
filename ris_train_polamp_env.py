@@ -137,6 +137,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
     #reward_batch = np.ones_like(done_batch) * (-1)
+    reward_batch = - np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True))
+    done_batch   = 1.0 * (reward_batch > -distance_threshold) 
+    reward_batch = - np.ones_like(done_batch) * env.reward_scale
+    
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
