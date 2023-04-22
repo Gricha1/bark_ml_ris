@@ -7,6 +7,10 @@ import os
 import numpy as np
 import pandas as pd
 from math import ceil
+import json
+import gym
+from gym.envs.registration import register
+import time
 
 import hrac.utils as utils
 import hrac.hrac as hrac
@@ -14,6 +18,7 @@ from hrac.models import ANet
 from envs import EnvWithGoal, GatherEnv
 from envs.create_maze_env import create_maze_env
 from envs.create_gather_env import create_gather_env
+from polamp_env.lib.utils_operations import generateDataSet
 
 
 """
@@ -24,7 +29,7 @@ https://github.com/bhairavmehta95/data-efficient-hrl/blob/master/hiro/train_hiro
 
 def evaluate_policy(env, env_name, manager_policy, controller_policy,
                     calculate_controller_reward, ctrl_rew_scale,
-                    manager_propose_frequency=10, eval_idx=0, eval_episodes=5):
+                    manager_propose_frequency=10, eval_idx=0, eval_episodes=7):
     print("Starting evaluation number {}...".format(eval_idx))
     env.evaluate = True
 
@@ -33,8 +38,13 @@ def evaluate_policy(env, env_name, manager_policy, controller_policy,
         avg_controller_rew = 0.
         global_steps = 0
         goals_achieved = 0
-        for eval_ep in range(eval_episodes):
-            obs = env.reset()
+
+        eval_tasks = [0, 5, 10, 15, 20, 25, 32]
+        assert len(eval_tasks) == eval_episodes
+        #for eval_ep in range(eval_episodes):
+        for eval_ep in eval_tasks:
+            #obs = env.reset()
+            obs = env.reset(id=eval_ep, val_key=val_key)
 
             goal = obs["desired_goal"]
             state = obs["observation"]
@@ -49,11 +59,12 @@ def evaluate_policy(env, env_name, manager_policy, controller_policy,
                 step_count += 1
                 global_steps += 1
                 action = controller_policy.select_action(state, subgoal, evaluation=True)
-                new_obs, reward, done, _ = env.step(action)
-                if env_name != "AntGather" and env.success_fn(reward):
+                new_obs, reward, done, info = env.step(action)
+                # debug
+                #if env_name != "AntGather" and env.success_fn(reward):
+                if info["geometirc_goal_achieved"]:
                     env_goals_achieved += 1
                     goals_achieved += 1
-                    done = True
 
                 goal = new_obs["desired_goal"]
                 new_state = new_obs["observation"]
@@ -119,6 +130,16 @@ def update_amat_and_train_anet(n_states, adj_mat, state_list, state_dict, a_net,
             for j in range(1, min(args.manager_propose_freq, len(traj) - i)):
                 s1 = tuple(np.round(traj[i][:controller_goal_dim]).astype(np.int32))
                 s2 = tuple(np.round(traj[i+j][:controller_goal_dim]).astype(np.int32))
+
+                # debug
+                #print("s1:", traj[i][:controller_goal_dim])
+                #print("s2:", traj[i+j][:controller_goal_dim])
+
+                #assert s1[0] >= 0 and s1[0] < 30, f"error s1: {s1}"
+                #assert s1[1] >= 0 and s1[1] < 30, f"error s1: {s1}"
+                #assert s2[0] >= 0 and s2[0] < 30, f"error s2: {s2}"
+                #assert s2[1] >= 0 and s2[1] < 30, f"error s2: {s2}"
+
                 if s1 not in state_list:
                     state_list.append(s1)
                     state_dict[s1] = n_states
@@ -130,10 +151,15 @@ def update_amat_and_train_anet(n_states, adj_mat, state_list, state_dict, a_net,
                 adj_mat[state_dict[s1], state_dict[s2]] = 1
                 adj_mat[state_dict[s2], state_dict[s1]] = 1
     print("Explored states: {}".format(n_states))
-    flags = np.ones((30, 30))
-    for s in state_list:
-        flags[int(s[0]), int(s[1])] = 0
-    print(flags)
+
+    #flags = np.ones((30, 30))
+    # debug
+    #print("state list:", len(state_list))
+    #print("state list:", state_list)
+    #for s in state_list:
+    #    flags[int(s[0]), int(s[1])] = 0
+    #print(flags)
+
     if not args.load_adj_net:
         print("Training adjacency network...")
         utils.train_adj_net(a_net, state_list, adj_mat[:n_states, :n_states],
@@ -189,6 +215,46 @@ def run_hrac(args):
     elif args.env_name in ["AntMaze", "AntMazeSparse", "AntPush", "AntFall"]:
         env = EnvWithGoal(create_maze_env(args.env_name, args.seed), args.env_name)
         env.seed(args.seed)
+    elif args.env_name == "polamp":
+        with open("polamp_env/configs/train_configs.json", 'r') as f:
+             train_config = json.load(f)
+        with open("polamp_env/configs/environment_configs.json", 'r') as f:
+            our_env_config = json.load(f)
+            # print(our_env_config)
+        with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
+            reward_config = json.load(f)
+        with open("polamp_env/configs/car_configs.json", 'r') as f:
+            car_config = json.load(f)
+
+        dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
+        # maps, trainTask, valTasks = dataSet["empty"]
+        maps, trainTask, valTasks = dataSet["obstacles"]
+        maps["map0"] = []
+
+        args.evaluation = False
+        environment_config = {
+            'vehicle_config': car_config,
+            'tasks': trainTask,
+            'valTasks': valTasks,
+            'maps': maps,
+            'our_env_config' : our_env_config,
+            'reward_config' : reward_config,
+            'evaluation': args.evaluation,
+        }
+        args.other_keys = environment_config
+
+        train_env_name = "polamp_env-v0"
+
+        # register polamp env
+        register(
+            id=train_env_name,
+            entry_point='goal_polamp_env.env:GCPOLAMPEnvironment',
+            kwargs={'full_env_name': "polamp_env", "config": args.other_keys}
+        )
+
+        env = gym.make(train_env_name)
+
+
     else:
         raise NotImplementedError
 
@@ -231,6 +297,9 @@ def run_hrac(args):
     state_dim = state.shape[0]
     if args.env_name in ["AntMaze", "AntPush", "AntFall"]:
         goal_dim = goal.shape[0]
+    # debug polamp
+    elif args.env_name == "polamp":
+        goal_dim = goal.shape[0]
     else:
         goal_dim = 0
 
@@ -259,6 +328,15 @@ def run_hrac(args):
         goal_loss_coeff=args.goal_loss_coeff,
         absolute_goal=args.absolute_goal
     )
+
+    # debug polamp
+    #print("controller state:", state_dim)
+    #print("controller goal:", controller_goal_dim)
+    #print("controller action:", action_dim)
+    #print("manager state:", state_dim)
+    #print("manager goal:", goal_dim)
+    #print("manager action:", controller_goal_dim)
+    #return
 
     calculate_controller_reward = get_reward_function(
         controller_goal_dim, absolute_goal=args.absolute_goal, binary_reward=args.binary_int_reward)
@@ -371,10 +449,18 @@ def run_hrac(args):
                             calculate_controller_reward, args.ctrl_rew_scale, args.manager_propose_freq,
                             len(evaluations))
 
+                    # debug
+                    print("evaluations till:", len(evaluations))
+
                     writer.add_scalar("eval/avg_ep_rew", avg_ep_rew, total_timesteps)
                     writer.add_scalar("eval/avg_controller_rew", avg_controller_rew, total_timesteps)
 
                     evaluations.append([avg_ep_rew, avg_controller_rew, avg_steps])
+
+                    # debug
+                    print("evaluations after:", len(evaluations))
+                    assert 1==0
+
                     output_data["frames"].append(total_timesteps)
                     if args.env_name == "AntGather":
                         output_data["reward"].append(avg_ep_rew)
@@ -398,6 +484,12 @@ def run_hrac(args):
                 if len(manager_transition[-2]) != 1:                    
                     manager_transition[1] = state
                     manager_transition[5] = float(True)
+
+                    # debug
+                    print()
+                    print("manager trans:", len(manager_transition[-2]))
+                    assert len(manager_transition[-2]) != 0, f"len is {len(manager_transition[-2])}"
+
                     manager_buffer.add(manager_transition)
 
             obs = env.reset()
@@ -466,7 +558,6 @@ def run_hrac(args):
         if timesteps_since_subgoal % args.manager_propose_freq == 0:
             manager_transition[1] = state
             manager_transition[5] = float(done)
-
             manager_buffer.add(manager_transition)
             subgoal = manager_policy.sample_goal(state, goal)
 

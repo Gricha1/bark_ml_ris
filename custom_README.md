@@ -14,10 +14,10 @@ tensorboard --logdir logs/hrac --bind_all
 # polamp env
 
 ## train
-python polamp_main.py --env_name AntMazeSparse --model_dir polamp_ex_1 
+python polamp_main.py --env_name polamp --model_dir polamp_ex_1 
 
 ## validate
-python polamp_eval.py --env_name AntMazeSparse --model_dir polamp_ex_1
+python polamp_eval.py --env_name polamp --model_dir polamp_ex_1
 
 ## logger
 tensorboard --logdir logs/hrac --bind_all

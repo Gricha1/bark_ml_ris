@@ -2,11 +2,15 @@ import torch
 
 import numpy as np
 import os
+import gym
+from gym.envs.registration import register
+import json
 
 import hrac.hrac as hrac
 from envs import EnvWithGoal, GatherEnv
 from envs.create_maze_env import create_maze_env
 from envs.create_gather_env import create_gather_env
+from polamp_env.lib.utils_operations import generateDataSet
 
 
 def evaluate_policy(env, env_name, manager_policy, controller_policy,
@@ -36,11 +40,11 @@ def evaluate_policy(env, env_name, manager_policy, controller_policy,
                 step_count += 1
                 global_steps += 1
                 action = controller_policy.select_action(state, subgoal, evaluation=True)
-                new_obs, reward, done, _ = env.step(action)
-                if env_name != "AntGather" and env.success_fn(reward):
+                new_obs, reward, done, info = env.step(action)
+                #if env_name != "AntGather" and env.success_fn(reward):
+                if info["geometirc_goal_achieved"]:
                     env_goals_achieved += 1
                     goals_achieved += 1
-                    done = True
 
                 goal = new_obs["desired_goal"]
                 new_state = new_obs["observation"]
@@ -100,12 +104,54 @@ def get_reward_function(dims, absolute_goal=False, binary_reward=False):
 
 
 def eval_hrac(args):
+
+    args.model_dir = "./models/" + args.model_dir
+
     if args.env_name == "AntGather":
         env = GatherEnv(create_gather_env(args.env_name, args.seed), args.env_name)
         env.seed(args.seed)   
     elif args.env_name in ["AntMaze", "AntMazeSparse", "AntPush", "AntFall"]:
         env = EnvWithGoal(create_maze_env(args.env_name, args.seed), args.env_name)
         env.seed(args.seed)
+    elif args.env_name == "polamp":
+        with open("polamp_env/configs/train_configs.json", 'r') as f:
+             train_config = json.load(f)
+        with open("polamp_env/configs/environment_configs.json", 'r') as f:
+            our_env_config = json.load(f)
+            # print(our_env_config)
+        with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
+            reward_config = json.load(f)
+        with open("polamp_env/configs/car_configs.json", 'r') as f:
+            car_config = json.load(f)
+
+        dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
+        # maps, trainTask, valTasks = dataSet["empty"]
+        maps, trainTask, valTasks = dataSet["obstacles"]
+        maps["map0"] = []
+        
+        args.evaluation = False
+        environment_config = {
+            'vehicle_config': car_config,
+            'tasks': trainTask,
+            'valTasks': valTasks,
+            'maps': maps,
+            'our_env_config' : our_env_config,
+            'reward_config' : reward_config,
+            'evaluation': args.evaluation,
+        }
+        args.other_keys = environment_config
+
+        train_env_name = "polamp_env-v0"
+
+        # register polamp env
+        register(
+            id=train_env_name,
+            entry_point='goal_polamp_env.env:GCPOLAMPEnvironment',
+            kwargs={'full_env_name': "polamp_env", "config": args.other_keys}
+        )
+
+        env = gym.make(train_env_name)
+
     else:
         raise NotImplementedError
 
@@ -145,6 +191,9 @@ def eval_hrac(args):
 
     state_dim = state.shape[0]
     if args.env_name in ["AntMaze", "AntPush", "AntFall"]:
+        goal_dim = goal.shape[0]
+    # debug polamp
+    elif args.env_name == "polamp":
         goal_dim = goal.shape[0]
     else:
         goal_dim = 0

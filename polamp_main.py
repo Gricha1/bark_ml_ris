@@ -1,6 +1,6 @@
 import argparse
 
-from hrac.custom_train import run_hrac
+from hrac.polamp_train import run_hrac
 
 
 if __name__ == "__main__":
@@ -9,23 +9,21 @@ if __name__ == "__main__":
     parser.add_argument("--seed", default=2, type=int)
     parser.add_argument("--eval_freq", default=5e3, type=float)
     parser.add_argument("--max_timesteps", default=5e6, type=float)
-    #parser.add_argument("--save_models", action="store_true")
     parser.add_argument("--save_models", default=True, action="store_true")
     parser.add_argument("--model_dir", default="./models", type=str)
-
-    parser.add_argument("--env_name", default="AntMaze", type=str)
+    parser.add_argument("--env_name", default="polamp", type=str)
     parser.add_argument("--load", default=False, type=bool)
     parser.add_argument("--log_dir", default="./logs", type=str)
     parser.add_argument("--no_correction", action="store_true")
     parser.add_argument("--inner_dones", action="store_true")
-    #parser.add_argument("--absolute_goal", action="store_true")
-    #parser.add_argument("--absolute_goal", default=True, action="store_true")
-    parser.add_argument("--absolute_goal", default=False, action="store_true")
+    parser.add_argument("--absolute_goal", default=True, action="store_true")
+    #parser.add_argument("--absolute_goal", default=False, action="store_true")
     parser.add_argument("--binary_int_reward", action="store_true")
     parser.add_argument("--load_adj_net", default=False, action="store_true")
 
     parser.add_argument("--gid", default=0, type=int)
     parser.add_argument("--traj_buffer_size", default=50000, type=int)
+    #parser.add_argument("--traj_buffer_size", default=2000, type=int)
     parser.add_argument("--lr_r", default=2e-4, type=float)
     parser.add_argument("--r_margin_pos", default=1.0, type=float)
     parser.add_argument("--r_margin_neg", default=1.2, type=float)
