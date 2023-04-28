@@ -7,6 +7,31 @@ import numpy as np
 import os
 import time
 
+class HighPolicyMemory:
+    def __init__(self, args, env):
+        self.max_size = args.replay_buffer_high_policy_size
+        self.current_size = 0
+        self.batch_size = args.high_policy_batch_size
+        self.obs = torch.zeros((self.max_size, env.observation_space["observation"].shape[0]), dtype=torch.float32)
+        self.goal = torch.zeros((self.max_size, env.observation_space["desired_goal"].shape[0]), dtype=torch.float32)
+
+    def add(self, obs, goal):
+        self.obs[self.current_size % self.max_size] = obs
+        self.goal[self.current_size % self.max_size] = goal
+        self.current_size += 1
+    
+    def _sample_indices(self):
+        return np.random.choice(list(range(min(self.current_size, self.max_size))), self.batch_size)
+
+    def sample_batch(self):
+        batch_indexes = self._sample_indices()
+        return self.obs[batch_indexes], self.goal[batch_indexes]
+
+    def random_state_batch(self):
+        batch_indexes = self._sample_indices()
+        return self.obs[batch_indexes]
+
+
 class Memory:
     def __init__(self, args, env, device):
         #self.obs = torch.zeros((args.batch_size, env.observation_space.shape[0]), dtype=torch.float32).to(device)
@@ -58,6 +83,8 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None):
         return
     agent.eval()
     state = env.reset(id=id, val_key=val_key)
+    goal = state["desired_goal"]
+    state = state["observation"]
     if save_image:
         images = []
         images.append(env.render())
@@ -71,12 +98,14 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None):
     while not isDone and t < max_steps:
         #action = agent.act(state, False)
         # start_time = time.time()
-        action = agent.get_action(state, deterministic=True)
+        action = agent.get_action(state, goal, deterministic=True)
         # goal_time = time.time()
         # print(f"------ network time ----: {(goal_time - start_time) * 1e3}")
         # print("action: ", action)
         # start_time = time.time()
         state, reward, isDone, info = env.step(action)
+        goal = state["desired_goal"]
+        state = state["observation"]
         # goal_time = time.time()
         # print(f"------ env time ----: {(goal_time - start_time) * 1e3}")
         # print("info: ", info)
@@ -110,10 +139,12 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
     constraint_cost = 0
     timestep = 0
     counter_done = 0
+    counter_success_done = 0
     counter_collision = 0
     total_distance = 0
     constraint_violation = 0
     
+    high_policy_memory = HighPolicyMemory(args, env)
     memory = Memory(args, env, agent.device)
 
     batch_time = 0
@@ -137,7 +168,8 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
         episodes += 1
         for t in range(max_episode_timesteps):
             # lst_states.append(state)
-            # debug
+            high_policy_memory.add(torch.Tensor(observation), torch.Tensor(goal))
+            
             #action, log_prob = agent.policy_old.act(observation)
             action, log_prob = agent.policy_old.act(np.concatenate([observation, goal], axis=0))
             index = timestep % update_timestep
@@ -171,10 +203,37 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
 
             # выполняем обновление
             if timestep % update_timestep == 0:
-                print("------ updating ------")
-                stast = agent.update(memory, penalizing_ppo)
-                if not wandb is None:                 
-                    wandb.log({ 'dist_entropy': stast["dist_entropy"],
+                print(f"------ updating {args.name_save}------")
+
+                # train high level policy
+                if timestep >= args.high_policy_start_timesteps:
+                    stast_high_policy = agent.update_high_level_policy(high_policy_memory)
+
+                # train low level policy
+                if timestep >= args.high_policy_start_timesteps:
+                    stast = agent.update_low_level_policy(memory, penalizing_ppo)
+
+                if not wandb is None and timestep >= args.high_policy_start_timesteps:                 
+                    wandb.log({ 
+                                # high level policy
+                                'H_train_adv': stast_high_policy["adv"],
+                                'H_subgoal_loss': stast_high_policy["subgoal_loss"],
+                                'H_sampled_subgoal_v': stast_high_policy["high_policy_v"],
+                                'H_target_subgoal_v': stast_high_policy["high_v"],
+
+                                'H_subgoal_x_max': stast_high_policy["H_subgoal_x_max"],
+                                'H_subgoal_x_mean': stast_high_policy["H_subgoal_x_mean"],
+                                'H_subgoal_x_min': stast_high_policy["H_subgoal_x_min"],
+
+                                'H_sampled_subgoal_x_max': stast_high_policy["H_sampled_subgoal_x_max"],
+                                'H_sampled_subgoal_x_mean': stast_high_policy["H_sampled_subgoal_x_mean"],
+                                'H_sampled_subgoal_x_min': stast_high_policy["H_sampled_subgoal_x_min"],
+
+                                # low level policy
+                                "H_logprobs": stast["total_high_level_actor_logprobs"],
+                                "H_oldactor_logprobs": stast["total_high_level_oldactor_logprobs"],
+                                'D_KL': stast["D_KL"],
+                                'dist_entropy': stast["dist_entropy"],
                                 'penalty_loss': stast["penalty_loss"],
                                 'constrained_costs': stast["constrained_costs"],
                                 'lyambda': stast["lagrange_multiplier"],
@@ -187,9 +246,10 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                                 'mse_loss': stast["mse_loss"],
                                 'cmse_loss': stast["cmse_loss"],
                                 'penalty_surr_loss': stast["penalty_surr_loss"],
+                                'state_values': stast["state_values"],
                                 'fps': update_timestep / batch_time,}
                                 , step = timestep)
-                else:
+                elif wandb is None:
                     print(f"dist_entropy: {stast['dist_entropy']}")
                     print(f"loss_penalty: {stast['penalty_loss']}")
                     print(f"cost_mean: {stast['constrained_costs']}")
@@ -213,7 +273,9 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                     running_reward /= episodes
                     constraint_cost /= episodes
                     counter_done /= episodes
+                    counter_success_done /= episodes
                     counter_done *= 100
+                    counter_success_done *= 100
                     total_distance /= episodes
                     counter_collision /= episodes
                     counter_collision *= 100
@@ -227,7 +289,8 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                     if not wandb is None:
                         wandb.log({'running_reward': running_reward,
                                    'constraint_cost': constraint_cost,
-                                   'success_rate': counter_done,
+                                   #'success_rate': counter_done,
+                                   'success_rate': counter_success_done,
                                    'min_distance' : total_distance,
                                    'collision_rate': counter_collision,
                                    'constraint_violation_rate': constraint_violation,
@@ -246,24 +309,31 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                     running_reward = 0
                     constraint_cost = 0
                     counter_done = 0
+                    counter_success_done = 0
                     total_distance = 0
                     counter_collision = 0
                     constraint_violation = 0
                     episodes = 1
             
+            """
             if "SoftEps" in info or "Collision" in info:
                 total_distance += min_distance
                 if "Collision" in info:
                     counter_collision += 1
                 break
+            """
 
             if done:
                 total_distance += min_distance
                 counter_done += 1
+                if info["geometirc_goal_achieved"]:
+                    counter_success_done += 1
                 break
             
+            """
             if cost_limit_truncated:
                 if cost >= cost_limit:
                     total_distance += min_distance
                     constraint_violation += 1
                     break
+            """

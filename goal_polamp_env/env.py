@@ -61,10 +61,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def step(self, action, **kwargs):
     # normalized actions = [-1:1, -1:1]
     agent = self.environment.agent
-    normalized_action = [action[0] * agent.dynamic_model.max_acc, 
-                         action[1] * agent.dynamic_model.max_ang_vel]
-    
-    observed_state, reward, isDone, info = POLAMPEnvironment.step(self, normalized_action, **kwargs)
+    #normalized_action = [action[0] * agent.dynamic_model.max_acc, 
+    #                     action[1] * agent.dynamic_model.max_ang_vel]
+    #observed_state, reward, isDone, info = POLAMPEnvironment.step(self, normalized_action, **kwargs)
+    observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state

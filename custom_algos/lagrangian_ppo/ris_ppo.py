@@ -5,11 +5,12 @@ from torch.distributions import MultivariateNormal
 import gym
 import numpy as np
 import os
-from .models import ActorCritic, Lyambda
+import torch.nn.functional as F
+from .goal_models import ActorCritic, Lyambda, LaplacePolicy
 
 
 class RIS_PPO:
-    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high):
+    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-4, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16):
         self.lr = args.lr
         self.gamma = args.gamma
         self.eps_clip = args.eps_clip
@@ -39,7 +40,141 @@ class RIS_PPO:
             self.lagrange = Lyambda(self.penalty_init, self.device).to(self.device)
             self.lagrange_optimizer = torch.optim.Adam(self.lagrange.parameters(), lr=self.penalty_lr)
 
-    def update(self, memory, penalizing_ppo):
+        self.subgoal_net = LaplacePolicy(state_dim).to(self.device)
+        self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
+
+        self.epsilon = epsilon
+        
+        # High-level policy hyperparameters
+        self.alpha = alpha
+        self.Lambda = Lambda
+        self.n_ensemble = n_ensemble
+
+    def sample_subgoal(self, state, goal):
+        subgoal_distribution = self.subgoal_net(state, goal)
+        subgoal = subgoal_distribution.rsample((self.n_ensemble,))
+        subgoal = torch.transpose(subgoal, 0, 1)
+        return subgoal
+
+    def evluate_and_sample_DL(self, old_obs, old_goal, old_actions):
+        logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
+
+        with torch.no_grad():
+            subgoal = self.sample_subgoal(old_obs, old_goal)
+
+        sum_old_probs = torch.zeros((subgoal.size(0))).to(self.device)
+        for j in range(self.n_ensemble):
+            subgoal_j = subgoal[:, j, :]
+            old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
+            old_probs = old_logprobs.exp()
+            sum_old_probs += old_probs
+        sum_old_probs /= self.n_ensemble
+        sum_old_logprobs = torch.log(sum_old_probs + self.epsilon)
+
+        D_KL = logprobs - sum_old_logprobs
+
+        if abs(logprobs.mean().item()) > 10000 or abs(sum_old_logprobs.mean().item()) > 10000:
+
+            print("#########################")
+            print("BUG WITH LOGPPROB:")
+
+            print("logprobs mean:", logprobs.mean().item())
+            print("logprobs max:", logprobs.max().item())
+            print("logprobs min:", logprobs.min().item())
+            
+            print("old logprobs mean:", sum_old_logprobs.mean().item())
+            print("old logprobs max:", sum_old_logprobs.max().item())
+            print("old logprobs min:", sum_old_logprobs.min().item())
+
+            print("old action max acc:", old_actions[:, 0].max().item())
+            print("old action min acc:", old_actions[:, 0].min().item())
+            print("old action max steer:", old_actions[:, 1].max().item())
+            print("old action min steer:", old_actions[:, 1].min().item())
+            print("action stats:", action_stats)
+
+            print("argmin logprob state:", old_obs[logprobs.argmin().item(), :])
+            print("argmin logprob goal:", old_goal[logprobs.argmin().item(), :])
+            print("argmin logprob action:", old_actions[logprobs.argmin().item(), :])
+                
+
+            assert 1 == 0
+
+        # debug
+        action_stats["high_level_actor_logprobs"] = logprobs.mean().item()
+        action_stats["high_level_oldactor_logprobs"] = sum_old_logprobs.mean().item()
+
+        return logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL
+
+    def update_high_level_policy(self, memory):
+        stats_log = {}
+        
+        obs, goal = memory.sample_batch()
+        subgoal = memory.random_state_batch()
+        obs = obs.to(self.device)
+        goal = goal.to(self.device)
+        subgoal = subgoal.to(self.device)
+
+        subgoal_distribution = self.subgoal_net(obs, goal)
+
+        with torch.no_grad():
+            # Compute target value
+            new_subgoal = subgoal_distribution.loc
+
+            policy_v_1 = self.policy.value_layer(torch.cat((obs, new_subgoal), -1))
+            policy_v_2 = self.policy.value_layer(torch.cat((new_subgoal, goal), -1))
+            policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+
+			# Compute subgoal distance loss
+            v_1 = self.policy.value_layer(torch.cat((obs, subgoal), -1))
+            v_2 = self.policy.value_layer(torch.cat((subgoal, goal), -1))
+            v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+            adv = - (v - policy_v)
+            weight = F.softmax(adv/self.Lambda, dim=0)
+
+        log_prob = subgoal_distribution.log_prob(subgoal).sum(-1)
+        subgoal_loss = - (log_prob * weight).mean()
+
+        # Update network
+        self.subgoal_optimizer.zero_grad()
+        subgoal_loss.backward()
+        self.subgoal_optimizer.step()
+
+        adv = adv.mean().item()
+        subgoal_loss = subgoal_loss.item()
+        high_policy_v = policy_v.mean().item()
+        high_v = v.mean().item()
+  
+        stats_log["adv"] = adv
+        stats_log["subgoal_loss"] = subgoal_loss
+        stats_log["high_policy_v"] = high_policy_v
+        stats_log["high_v"] = high_v
+
+        train_subgoal = {"x_max": new_subgoal[:, 0].max().item(),
+						 "x_mean": new_subgoal[:, 0].mean().item(), 
+						 "x_min": new_subgoal[:, 0].min().item(),
+						 "y_max": new_subgoal[:, 1].max().item(),
+						 "y_mean": new_subgoal[:, 1].mean().item(), 
+						 "y_min": new_subgoal[:, 1].min().item(),
+						 }
+
+        train_subgoal_data = {"x_max": subgoal[:, 0].max().item(),
+							  "x_mean": subgoal[:, 0].mean().item(), 
+							  "x_min": subgoal[:, 0].min().item(),
+							  "y_max": subgoal[:, 1].max().item(),
+							  "y_mean": subgoal[:, 1].mean().item(), 
+							  "y_min": subgoal[:, 1].min().item(),
+							 }
+
+        stats_log["H_subgoal_x_max"] = train_subgoal["x_max"]
+        stats_log["H_subgoal_x_mean"] = train_subgoal["x_mean"]
+        stats_log["H_subgoal_x_min"] = train_subgoal["x_min"]
+        stats_log["H_sampled_subgoal_x_max"] = train_subgoal_data["x_max"]
+        stats_log["H_sampled_subgoal_x_mean"] = train_subgoal_data["x_mean"]
+        stats_log["H_sampled_subgoal_x_min"] = train_subgoal_data["x_min"]
+
+        return stats_log
+
+    def update_low_level_policy(self, memory, penalizing_ppo):
         memory.rewards_monte_carlo(self.gamma)
         memory.shuffle()
         rewards = memory.rewards
@@ -57,6 +192,10 @@ class RIS_PPO:
         total_cmse_loss = 0
         total_dist_entropy = 0
         total_penalty_loss = 0
+        total_state_values = 0
+        total_D_KL = 0
+        total_high_level_actor_logprobs = 0
+        total_high_level_oldactor_logprobs = 0
         c_mse = 0
         stats_log = {}
         # Adding gradient ascent for langrange multiplier
@@ -74,8 +213,9 @@ class RIS_PPO:
         surr_const_loss = 0.
         
         for _ in range(self.K_epochs):
+            # RIS
             #logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(old_obs, old_actions)
-            logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
+            logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL = self.evluate_and_sample_DL(old_obs, old_goal, old_actions)
             lst_actions_mean.append(action_stats["action_mean"].detach().numpy())
             lst_std.append(action_stats["logstd"].detach().numpy())
             
@@ -96,8 +236,13 @@ class RIS_PPO:
             surr1 = ratios * advantages
             clamp_ratios = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
             surr2 = clamp_ratios * advantages
-            policy_loss = -torch.min(surr1, surr2).mean()
+            # RIS
+            #policy_loss = -torch.min(surr1, surr2).mean()
+            policy_loss = -torch.min(surr1, surr2)
+            policy_loss += self.alpha*D_KL
+            policy_loss = policy_loss.mean()
             loss = policy_loss - 0.01 * dist_entropy
+
 
             if self.constrained_ppo:
                 penalty = self.lagrange.penalty()
@@ -118,6 +263,10 @@ class RIS_PPO:
             total_policy_loss += policy_loss
             total_dist_entropy += dist_entropy
             total_surr_penalty_loss += surr_const_loss
+            total_state_values += state_values.mean().item()
+            total_D_KL += D_KL.mean().item()
+            total_high_level_actor_logprobs += action_stats["high_level_actor_logprobs"]
+            total_high_level_oldactor_logprobs += action_stats["high_level_oldactor_logprobs"]
 
         # копируем веса
         self.policy_old.value_layer.load_state_dict(self.policy.value_layer.state_dict())
@@ -131,6 +280,10 @@ class RIS_PPO:
         stats_log["cmse_loss"] = total_cmse_loss / self.K_epochs
         stats_log["dist_entropy"] = total_dist_entropy / self.K_epochs
         stats_log["penalty_surr_loss"] = total_surr_penalty_loss / self.K_epochs
+        stats_log["state_values"] = total_state_values / self.K_epochs
+        stats_log["D_KL"] = total_D_KL / self.K_epochs
+        stats_log["total_high_level_actor_logprobs"] = total_high_level_actor_logprobs / self.K_epochs
+        stats_log["total_high_level_oldactor_logprobs"] = total_high_level_oldactor_logprobs / self.K_epochs
         
         stats_log["penalty_loss"] = total_penalty_loss
         stats_log["constrained_costs"] = constrained_costs.mean()
@@ -141,9 +294,10 @@ class RIS_PPO:
         return stats_log
         #, np.mean(np.array(lst_dist_entropy))
 
-    def get_action(self, state, deterministic=False):
+    def get_action(self, state, goal, deterministic=False):
         #state = torch.FloatTensor(state).to(device)
         self.eval()
+        state = np.concatenate([state, goal], axis=0)
         action, _ = self.policy.act(state, deterministic=deterministic)
 
         return action.detach().cpu().numpy()
