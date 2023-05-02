@@ -73,6 +73,7 @@ class RIS_PPO:
 
         D_KL = logprobs - sum_old_logprobs
 
+        '''
         if abs(logprobs.mean().item()) > 10000 or abs(sum_old_logprobs.mean().item()) > 10000:
 
             print("#########################")
@@ -95,11 +96,12 @@ class RIS_PPO:
             print("argmin logprob state:", old_obs[logprobs.argmin().item(), :])
             print("argmin logprob goal:", old_goal[logprobs.argmin().item(), :])
             print("argmin logprob action:", old_actions[logprobs.argmin().item(), :])
+            print("argmin logprob subgoal:", subgoal[logprobs.argmin().item(), :])
                 
 
             assert 1 == 0
-
-        # debug
+        '''
+        
         action_stats["high_level_actor_logprobs"] = logprobs.mean().item()
         action_stats["high_level_oldactor_logprobs"] = sum_old_logprobs.mean().item()
 
@@ -239,7 +241,7 @@ class RIS_PPO:
             # RIS
             #policy_loss = -torch.min(surr1, surr2).mean()
             policy_loss = -torch.min(surr1, surr2)
-            policy_loss += self.alpha*D_KL
+            #policy_loss += self.alpha*D_KL
             policy_loss = policy_loss.mean()
             loss = policy_loss - 0.01 * dist_entropy
 
@@ -255,6 +257,10 @@ class RIS_PPO:
             
             self.actor_optimizer.zero_grad()
             loss.mean().backward()
+
+            # low level policy grad normlization
+            #torch.nn.utils.clip_grad_norm_(self.policy.value_layer.parameters(), 5)
+
             self.actor_optimizer.step()
 
             total_loss += loss

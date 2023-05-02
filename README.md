@@ -13,19 +13,17 @@ apt-get install -y xvfb
 
 #apt-get install python3-opencv
 
-# Ant env(origin)
-cd usr/home/workspace/
-## Train Ant U
-python origin_train_ant.py --exp_name test_origin_ant_run_1
-
-## Validate Ant U
-python origin_validate_ant.py --exp_name test_origin_ant_run_1
 
 
 # polamp env
+
+# train PPO
+python origin_train_lagrangian_ppo.py --name_save test_PPO_2
+
+# goal polamp env
 cd usr/home/workspace/
-## Train polamp_env
-python ris_train_polamp_env.py --exp_name polamp_env_ex_1 --wandb_project RIS_polamp_env_train
+## Train RIS_PPO
+python train_ris_ppo_polamp.py --name_save test_RIS_PPO_polamp_ex51
 
 ## Validate polamp_env ( not in docker )
 python ris_validate_polamp_env.py --exp_name polamp_env_ex_1 --no_video True --wandb_project RIS_polamp_env_validate

@@ -157,7 +157,6 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
         lst_states = []
         start_time = time.time()
         observation = env.reset()
-        # debug
         goal = observation["desired_goal"]
         observation = observation["observation"]
         goal_time = time.time()
@@ -167,25 +166,27 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
         # print("i: ", i_episode)
         episodes += 1
         for t in range(max_episode_timesteps):
+
+            #action, log_prob = agent.policy_old.act(observation)
+            action, log_prob = agent.policy_old.act(np.concatenate([observation, goal]))
+
             # lst_states.append(state)
             high_policy_memory.add(torch.Tensor(observation), torch.Tensor(goal))
-            
-            #action, log_prob = agent.policy_old.act(observation)
-            action, log_prob = agent.policy_old.act(np.concatenate([observation, goal], axis=0))
+
             index = timestep % update_timestep
             memory.obs[index] = torch.Tensor(observation).to("cuda")
-            # debug
             memory.goal[index] = torch.Tensor(goal).to("cuda")
             memory.actions[index] = action
             memory.logprobs[index] = log_prob
             action_step = action.cpu().numpy()
             start_time = time.time()
+
             observation, reward, done, info = env.step(action_step)
-            # debug
             goal = observation["desired_goal"]
             observation = observation["observation"]
             goal_time = time.time()
             batch_time += goal_time - start_time
+            
             memory.rewards[index] = reward
             memory.dones[index] = done
             # adding cost
