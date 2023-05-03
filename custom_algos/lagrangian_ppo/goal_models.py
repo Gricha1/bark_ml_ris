@@ -74,7 +74,7 @@ class Actor(nn.Module):
         if not self.adaptive_std:
             action_logstd = self.logstd.expand_as(action_mean)
         else:
-            action_mean, action_logstd = action_mean.chunk(2, dim=1)
+            action_mean, action_logstd = action_mean.chunk(2, dim=-1)
 
         action_std = self.get_corrected_std(action_logstd)
         dist = Normal(action_mean, action_std)

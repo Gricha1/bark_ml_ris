@@ -59,32 +59,22 @@ class RIS_PPO:
     def sample_subgoal(self, state, goal):
         subgoal_distribution = self.subgoal_net(state, goal)
         subgoal = subgoal_distribution.rsample((self.n_ensemble,))
-        subgoal = torch.transpose(subgoal, 0, 1)
+        # subgoal = torch.transpose(subgoal, 0, 1)
         return subgoal
 
     def evluate_and_sample_DL(self, old_obs, old_goal, old_actions):
         logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
 
-        #new_action, _ = self.policy.act(torch.cat((old_obs, old_goal), 1), to_device=False)
-        #assert new_action.shape[1] == 4, "should be batch_size/2 x 4"
-        #new_action = torch.cat((new_action[:, 0:2], new_action[:, 2:]), 0)
-        #assert new_action.shape == old_actions.shape
-        #new_logprobs, _, _, _, _ = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), new_action)
         with torch.no_grad():
             subgoal = self.sample_subgoal(old_obs, old_goal)
-        sum_old_probs = torch.zeros((subgoal.size(0))).to(self.device)
-        for j in range(self.n_ensemble):
-            subgoal_j = subgoal[:, j, :]
-            old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
-            #old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), new_action)
-            #old_logprobs, _, _, _, _ = self.policy_old_temp.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
-            old_probs = old_logprobs.exp()
-            sum_old_probs += old_probs
-        sum_old_probs /= self.n_ensemble
-        sum_old_logprobs = torch.log(sum_old_probs + self.epsilon)
+        
+        new_old_obs = old_obs.expand_as(subgoal)
+        new_old_actions = old_actions.expand(subgoal.shape[0], old_actions.shape[0], old_actions.shape[1])
+        cat_obs = torch.cat((new_old_obs, subgoal), -1)
+        old_logprobs, _, _, _, _ = self.policy_old.evaluate(cat_obs, new_old_actions)
+        prior_prob = old_logprobs.sum(-1, keepdim=True).exp()
+        sum_old_logprobs = torch.log(prior_prob.mean() + self.epsilon)
         D_KL = logprobs - sum_old_logprobs
-        #D_KL = new_logprobs - sum_old_logprobs
-
         
         if abs(logprobs.mean().item()) > 1000 or abs(sum_old_logprobs.mean().item()) > 1000:
 
@@ -141,7 +131,6 @@ class RIS_PPO:
         obs = memory.obs.detach()
         goal = memory.goal.detach()
         subgoal = obs[torch.randperm(obs.size()[0])]
-
         obs = obs.to(self.device)
         goal = goal.to(self.device)
         subgoal = subgoal.to(self.device)
