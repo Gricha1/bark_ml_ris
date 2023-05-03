@@ -209,6 +209,8 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                 # train high level policy
                 if timestep >= args.high_policy_start_timesteps:
                     stast_high_policy = agent.update_high_level_policy(high_policy_memory)
+                #if timestep >= args.high_policy_start_timesteps:
+                #    stast_high_policy = agent.update_high_level_policy(memory)
 
                 # train low level policy
                 if timestep >= args.high_policy_start_timesteps:
@@ -231,8 +233,10 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                                 'H_sampled_subgoal_x_min': stast_high_policy["H_sampled_subgoal_x_min"],
 
                                 # low level policy
-                                "H_logprobs": stast["total_high_level_actor_logprobs"],
-                                "H_oldactor_logprobs": stast["total_high_level_oldactor_logprobs"],
+                                "actor_new_logprobs": stast["actor_new_logprobs"],
+                                "actor_new_logprobs_min": stast["actor_new_logprobs_min"],
+                                "actor_logprobs": stast["actor_logprobs"],
+                                "oldactor_logprobs": stast["oldactor_logprobs"],
                                 'D_KL': stast["D_KL"],
                                 'dist_entropy': stast["dist_entropy"],
                                 'penalty_loss': stast["penalty_loss"],

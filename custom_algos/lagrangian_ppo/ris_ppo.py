@@ -10,7 +10,7 @@ from .goal_models import ActorCritic, Lyambda, LaplacePolicy
 
 
 class RIS_PPO:
-    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-4, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16):
+    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-4, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16, save_path=None):
         self.lr = args.lr
         self.gamma = args.gamma
         self.eps_clip = args.eps_clip
@@ -32,6 +32,10 @@ class RIS_PPO:
         self.policy_old = ActorCritic(state_dim + goal_dim, action_dim, args, self.device, action_space_high)
         self.policy_old.action_layer.load_state_dict(self.policy.action_layer.state_dict())
         self.policy_old.value_layer.load_state_dict(self.policy.value_layer.state_dict())
+        self.policy_old_temp = ActorCritic(state_dim + goal_dim, action_dim, args, self.device, action_space_high)
+        self.policy_old_temp.action_layer.load_state_dict(self.policy.action_layer.state_dict())
+        self.policy_old_temp.value_layer.load_state_dict(self.policy.value_layer.state_dict())
+
         self.MseLoss = nn.MSELoss()
 
         if self.constrained_ppo:
@@ -50,6 +54,8 @@ class RIS_PPO:
         self.Lambda = Lambda
         self.n_ensemble = n_ensemble
 
+        self.save_path = save_path
+
     def sample_subgoal(self, state, goal):
         subgoal_distribution = self.subgoal_net(state, goal)
         subgoal = subgoal_distribution.rsample((self.n_ensemble,))
@@ -59,22 +65,28 @@ class RIS_PPO:
     def evluate_and_sample_DL(self, old_obs, old_goal, old_actions):
         logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
 
+        #new_action, _ = self.policy.act(torch.cat((old_obs, old_goal), 1), to_device=False)
+        #assert new_action.shape[1] == 4, "should be batch_size/2 x 4"
+        #new_action = torch.cat((new_action[:, 0:2], new_action[:, 2:]), 0)
+        #assert new_action.shape == old_actions.shape
+        #new_logprobs, _, _, _, _ = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), new_action)
         with torch.no_grad():
             subgoal = self.sample_subgoal(old_obs, old_goal)
-
         sum_old_probs = torch.zeros((subgoal.size(0))).to(self.device)
         for j in range(self.n_ensemble):
             subgoal_j = subgoal[:, j, :]
             old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
+            #old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), new_action)
+            #old_logprobs, _, _, _, _ = self.policy_old_temp.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
             old_probs = old_logprobs.exp()
             sum_old_probs += old_probs
         sum_old_probs /= self.n_ensemble
         sum_old_logprobs = torch.log(sum_old_probs + self.epsilon)
-
         D_KL = logprobs - sum_old_logprobs
+        #D_KL = new_logprobs - sum_old_logprobs
 
-        '''
-        if abs(logprobs.mean().item()) > 10000 or abs(sum_old_logprobs.mean().item()) > 10000:
+        
+        if abs(logprobs.mean().item()) > 1000 or abs(sum_old_logprobs.mean().item()) > 1000:
 
             print("#########################")
             print("BUG WITH LOGPPROB:")
@@ -91,19 +103,33 @@ class RIS_PPO:
             print("old action min acc:", old_actions[:, 0].min().item())
             print("old action max steer:", old_actions[:, 1].max().item())
             print("old action min steer:", old_actions[:, 1].min().item())
-            print("action stats:", action_stats)
+            #print("action stats:", action_stats["action_dist"][logprobs.argmin().item(), :])
+            print("action dist means:", action_stats["action_dist"].loc[logprobs.argmin().item(), :])
+            print("action dist std:", action_stats["action_dist"].scale[logprobs.argmin().item(), :])
 
             print("argmin logprob state:", old_obs[logprobs.argmin().item(), :])
             print("argmin logprob goal:", old_goal[logprobs.argmin().item(), :])
             print("argmin logprob action:", old_actions[logprobs.argmin().item(), :])
-            print("argmin logprob subgoal:", subgoal[logprobs.argmin().item(), :])
+            print("argmin logprob subgoal:", subgoal[logprobs.argmin().item(), :][0])
                 
+            #if not(self.save_path is None):
+            #    self.save(self.save_path)
+            #else:
+            self.save("./" + "temp_checkpoint_debug_1")
 
             assert 1 == 0
-        '''
+            
         
-        action_stats["high_level_actor_logprobs"] = logprobs.mean().item()
-        action_stats["high_level_oldactor_logprobs"] = sum_old_logprobs.mean().item()
+        #action_stats["ppo_actor_new_logprobs"] = new_logprobs.mean().item()
+        action_stats["ppo_actor_new_logprobs"] = 0
+        action_stats["ppo_actor_logprobs"] = logprobs.mean().item()
+        action_stats["ppo_actor_logprobs_min"] = logprobs.min().item()
+        action_stats["ppo_oldactor_logprobs"] = sum_old_logprobs.mean().item()
+
+
+        # копируем веса
+        #self.policy_old_temp.value_layer.load_state_dict(self.policy.value_layer.state_dict())
+        #self.policy_old_temp.action_layer.load_state_dict(self.policy.action_layer.state_dict())
 
         return logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL
 
@@ -112,6 +138,10 @@ class RIS_PPO:
         
         obs, goal = memory.sample_batch()
         subgoal = memory.random_state_batch()
+        #obs = memory.obs.detach()
+        #goal = memory.goal.detach()
+        #subgoal = obs[torch.randperm(obs.size()[0])]
+
         obs = obs.to(self.device)
         goal = goal.to(self.device)
         subgoal = subgoal.to(self.device)
@@ -196,8 +226,10 @@ class RIS_PPO:
         total_penalty_loss = 0
         total_state_values = 0
         total_D_KL = 0
-        total_high_level_actor_logprobs = 0
-        total_high_level_oldactor_logprobs = 0
+        actor_new_logprobs = 0
+        actor_new_logprobs_min = 0
+        actor_logprobs = 0
+        oldactor_logprobs = 0
         c_mse = 0
         stats_log = {}
         # Adding gradient ascent for langrange multiplier
@@ -215,9 +247,9 @@ class RIS_PPO:
         surr_const_loss = 0.
         
         for _ in range(self.K_epochs):
-            # RIS
             #logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(old_obs, old_actions)
             logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL = self.evluate_and_sample_DL(old_obs, old_goal, old_actions)
+            #logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
             lst_actions_mean.append(action_stats["action_mean"].detach().numpy())
             lst_std.append(action_stats["logstd"].detach().numpy())
             
@@ -238,10 +270,9 @@ class RIS_PPO:
             surr1 = ratios * advantages
             clamp_ratios = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
             surr2 = clamp_ratios * advantages
-            # RIS
             #policy_loss = -torch.min(surr1, surr2).mean()
             policy_loss = -torch.min(surr1, surr2)
-            #policy_loss += self.alpha*D_KL
+            policy_loss += self.alpha*D_KL
             policy_loss = policy_loss.mean()
             loss = policy_loss - 0.01 * dist_entropy
 
@@ -271,8 +302,11 @@ class RIS_PPO:
             total_surr_penalty_loss += surr_const_loss
             total_state_values += state_values.mean().item()
             total_D_KL += D_KL.mean().item()
-            total_high_level_actor_logprobs += action_stats["high_level_actor_logprobs"]
-            total_high_level_oldactor_logprobs += action_stats["high_level_oldactor_logprobs"]
+
+            actor_new_logprobs += action_stats["ppo_actor_new_logprobs"]
+            actor_new_logprobs_min += action_stats["ppo_actor_logprobs_min"]
+            actor_logprobs += action_stats["ppo_actor_logprobs"]
+            oldactor_logprobs += action_stats["ppo_oldactor_logprobs"]
 
         # копируем веса
         self.policy_old.value_layer.load_state_dict(self.policy.value_layer.state_dict())
@@ -288,8 +322,10 @@ class RIS_PPO:
         stats_log["penalty_surr_loss"] = total_surr_penalty_loss / self.K_epochs
         stats_log["state_values"] = total_state_values / self.K_epochs
         stats_log["D_KL"] = total_D_KL / self.K_epochs
-        stats_log["total_high_level_actor_logprobs"] = total_high_level_actor_logprobs / self.K_epochs
-        stats_log["total_high_level_oldactor_logprobs"] = total_high_level_oldactor_logprobs / self.K_epochs
+        stats_log["actor_new_logprobs"] = actor_new_logprobs / self.K_epochs
+        stats_log["actor_new_logprobs_min"] = actor_new_logprobs_min / self.K_epochs
+        stats_log["actor_logprobs"] = actor_logprobs / self.K_epochs
+        stats_log["oldactor_logprobs"] = oldactor_logprobs / self.K_epochs
         
         stats_log["penalty_loss"] = total_penalty_loss
         stats_log["constrained_costs"] = constrained_costs.mean()

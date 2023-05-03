@@ -88,8 +88,9 @@ class Actor(nn.Module):
 
         return action_mean, action_logprobs, dist_entropy, action_std
     
-    def act(self, state, deterministic=False):
-        state = torch.FloatTensor(state).to(self.device)
+    def act(self, state, deterministic=False, to_device=True):
+        if to_device:
+            state = torch.FloatTensor(state).to(self.device)
         action_mean = self.action_layer(state)
         if not self.adaptive_std:
             action_logstd = self.logstd
@@ -145,8 +146,8 @@ class ActorCritic():
     def forward(self):
         raise NotImplementedError
 
-    def act(self, state, deterministic=False):
-        return self.action_layer.act(state, deterministic)
+    def act(self, state, deterministic=False, to_device=True):
+        return self.action_layer.act(state, deterministic, to_device=to_device)
         
     def evaluate(self, state, action):
         action_mean, action_logprobs, dist_entropy, action_std = self.action_layer.evaluate(state, action)

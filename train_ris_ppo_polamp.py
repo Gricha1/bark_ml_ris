@@ -92,7 +92,7 @@ parser.add_argument("--save_image",                 default=1, type=bool)
 args = parser.parse_args()
 print(f"args: {args}")
 
-agent = RIS_PPO(state_dim, goal_dim, action_dim, args, env.action_space.high)
+agent = RIS_PPO(state_dim, goal_dim, action_dim, args, env.action_space.high, save_path=args.name_save)
 if args.training:
     if args.using_wandb:
         wandb.init(config=args, project=project_name)
