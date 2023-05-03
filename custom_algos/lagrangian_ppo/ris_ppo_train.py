@@ -207,10 +207,10 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                 print(f"------ updating {args.name_save}------")
 
                 # train high level policy
-                if timestep >= args.high_policy_start_timesteps:
-                    stast_high_policy = agent.update_high_level_policy(high_policy_memory)
                 #if timestep >= args.high_policy_start_timesteps:
-                #    stast_high_policy = agent.update_high_level_policy(memory)
+                #    stast_high_policy = agent.update_high_level_policy(high_policy_memory)
+                if timestep >= args.high_policy_start_timesteps:
+                    stast_high_policy = agent.update_high_level_policy(memory)
 
                 # train low level policy
                 if timestep >= args.high_policy_start_timesteps:

@@ -136,11 +136,11 @@ class RIS_PPO:
     def update_high_level_policy(self, memory):
         stats_log = {}
         
-        obs, goal = memory.sample_batch()
-        subgoal = memory.random_state_batch()
-        #obs = memory.obs.detach()
-        #goal = memory.goal.detach()
-        #subgoal = obs[torch.randperm(obs.size()[0])]
+        #obs, goal = memory.sample_batch()
+        #subgoal = memory.random_state_batch()
+        obs = memory.obs.detach()
+        goal = memory.goal.detach()
+        subgoal = obs[torch.randperm(obs.size()[0])]
 
         obs = obs.to(self.device)
         goal = goal.to(self.device)
