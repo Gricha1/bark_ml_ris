@@ -82,7 +82,6 @@ class Actor(nn.Module):
         action_logprobs = dist.log_prob(action).sum(1)
         dist_entropy = dist.entropy().sum(1)
 
-
         # debug normalize actions to -1, +1
         #action_mean = torch.tanh(action_mean)
 

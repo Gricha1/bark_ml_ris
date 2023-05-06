@@ -25,7 +25,8 @@ cd usr/home/workspace/
 ## Train RIS_PPO
 python train_ris_ppo_polamp.py --name_save test_RIS_PPO_polamp_ex51
 
-## Validate polamp_env ( not in docker )
-python ris_validate_polamp_env.py --exp_name polamp_env_ex_1 --no_video True --wandb_project RIS_polamp_env_validate
+## Validate RIS_PPO ( not in docker )
+### change --training to 0
+python train_ris_ppo_polamp.py --name_val test_RIS_PPO_polamp_ex51
 
 python utilite_video_generator.py 

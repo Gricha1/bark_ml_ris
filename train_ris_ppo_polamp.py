@@ -51,7 +51,7 @@ env         = gym.make(train_env_name)
 #test_env    = gym.make(test_env_name)
 #env = POLAMPEnvironment("polamp", environment_config) 
 
-project_name = "train_ris_ppo_polamp"
+#project_name = "train_ris_ppo_polamp"
 #state_dim = env.observation_space.shape[0]
 state_dim = env.observation_space["observation"].shape[0]
 goal_dim = env.observation_space["achieved_goal"].shape[0]
@@ -95,6 +95,7 @@ print(f"args: {args}")
 agent = RIS_PPO(state_dim, goal_dim, action_dim, args, env.action_space.high, save_path=args.name_save)
 if args.training:
     if args.using_wandb:
+        project_name = "train_ris_ppo_polamp"
         wandb.init(config=args, project=project_name)
         config = wandb.config
     else:
@@ -105,6 +106,9 @@ if args.training:
 
     ppo_batch_train(env, agent, args, wandb=wandb)
 else:
+    if args.using_wandb:
+        project_name = "validate_ris_ppo_polamp"
+        wandb.init(config=environment_config, project=project_name)
     name_val = args.name_val
     agent.load("{}{}".format("./", name_val))
     collision_tasks = 0
@@ -122,10 +126,17 @@ else:
                         "map8": [10],
                         "map9": [12],
                         }
+    faled_tasks = []
 
-    for val_key in env.valTasks:
-        eval_tasks = len(env.valTasks[val_key])
+    #val_keys = env.valTasks
+    val_keys = ["map0"]
+
+    for val_key in val_keys:
+        #val_task_ids = list(range(len(env.valTasks[val_key])))
+        val_task_ids = [7, 9]
+        eval_tasks = len(val_task_ids)
         total_tasks += eval_tasks
+        
         print(f"val_key: {val_key}")
         print(f"eval_tasks: {eval_tasks}")
         # for id in range(eval_tasks):
@@ -136,14 +147,21 @@ else:
             # if not val_key in task_collision:
             #     continue
             # for id in task_collision[val_key]:
-            for id in range(eval_tasks):
+            for id in val_task_ids:
                 print(id)
-                if (id % 5) != 0:
-                    continue
+                #if (id % 5) != 0:
+                #    continue
             # for id in range(5, 6):
                 # obs = env.reset(id=id, val_key=val_key)
                 images, isDone, info, episode_cost, min_beam = validate(env, agent, env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key)
                 if isDone:
+                    #total_distance += min_distance
+                    #counter_done += 1
+                    if info["geometirc_goal_achieved"]:
+                        successed_tasks += 1
+                    else:
+                        faled_tasks.append((val_key, id))
+                    """
                     if "Collision" in info:
                         # collision = True
                         # isDone = False
@@ -155,11 +173,12 @@ else:
                         print("$$ SoftEps $$")
                     else:
                         successed_tasks += 1
+                    """
 
                 constrained_cost.append(episode_cost)
                 lst_min_beam.append(min_beam)
                 if args.save_image:
-                    wandb.init(config=environment_config, project="validation_custom_ppo")
+                    #wandb.init(config=environment_config, project="validation_custom_ppo")
                     wandb.log({f"random_task": wandb.Video(images, fps=10, format="gif")})
         else:
             for id in range(eval_tasks):
@@ -181,13 +200,15 @@ else:
                     else:
                         successed_tasks += 1
 
-    success_rate = successed_tasks / total_tasks * 100
-    collision_rate = collision_tasks / total_tasks * 100
-    print(f"success_rate: {success_rate}")
-    print(f"collision_rate: {collision_rate}")
-    print(f"mean constrained_cost: {np.mean(constrained_cost)}")
-    print(f"max constrained_cost: {np.max(constrained_cost)}")
-    print(f"min constrained_cost: {np.min(constrained_cost)}")
-    print(f"mean lst_min_beam: {np.mean(lst_min_beam)}")
-    print(f"max lst_min_beam: {np.max(lst_min_beam)}")
-    print(f"min lst_min_beam: {np.min(lst_min_beam)}")
+    #success_rate = successed_tasks / total_tasks * 100
+    #collision_rate = collision_tasks / total_tasks * 100
+    print(f"successed_tasks: {successed_tasks}")
+    print(f"total_tasks: {total_tasks}")
+    print(f"failed tasks:", faled_tasks)
+    #print(f"collision_rate: {collision_rate}")
+    #print(f"mean constrained_cost: {np.mean(constrained_cost)}")
+    #print(f"max constrained_cost: {np.max(constrained_cost)}")
+    #print(f"min constrained_cost: {np.min(constrained_cost)}")
+    #print(f"mean lst_min_beam: {np.mean(lst_min_beam)}")
+    #print(f"max lst_min_beam: {np.max(lst_min_beam)}")
+    #print(f"min lst_min_beam: {np.min(lst_min_beam)}")

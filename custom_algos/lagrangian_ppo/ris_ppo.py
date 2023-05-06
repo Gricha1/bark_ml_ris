@@ -84,9 +84,11 @@ class RIS_PPO:
         sum_old_logprobs = torch.log(sum_old_probs + self.epsilon)
         D_KL = logprobs - sum_old_logprobs
         #D_KL = new_logprobs - sum_old_logprobs
-
         
-        if abs(logprobs.mean().item()) > 1000 or abs(sum_old_logprobs.mean().item()) > 1000:
+        clip_D_KL = 2
+        #D_KL = torch.clamp(D_KL, -clip_D_KL, clip_D_KL)
+
+        if abs(logprobs.mean().item()) > 100000 or abs(sum_old_logprobs.mean().item()) > 100000:
 
             print("#########################")
             print("BUG WITH LOGPPROB:")
@@ -124,6 +126,7 @@ class RIS_PPO:
         action_stats["ppo_actor_new_logprobs"] = 0
         action_stats["ppo_actor_logprobs"] = logprobs.mean().item()
         action_stats["ppo_actor_logprobs_min"] = logprobs.min().item()
+        action_stats["ppo_actor_logprobs_max"] = logprobs.max().item()
         action_stats["ppo_oldactor_logprobs"] = sum_old_logprobs.mean().item()
 
 
@@ -136,11 +139,11 @@ class RIS_PPO:
     def update_high_level_policy(self, memory):
         stats_log = {}
         
-        #obs, goal = memory.sample_batch()
-        #subgoal = memory.random_state_batch()
-        obs = memory.obs.detach()
-        goal = memory.goal.detach()
-        subgoal = obs[torch.randperm(obs.size()[0])]
+        obs, goal = memory.sample_batch()
+        subgoal = memory.random_state_batch()
+        #obs = memory.obs.detach()
+        #goal = memory.goal.detach()
+        #subgoal = obs[torch.randperm(obs.size()[0])]
 
         obs = obs.to(self.device)
         goal = goal.to(self.device)
@@ -227,7 +230,8 @@ class RIS_PPO:
         total_state_values = 0
         total_D_KL = 0
         actor_new_logprobs = 0
-        actor_new_logprobs_min = 0
+        actor_logprobs_min = 0
+        actor_logprobs_max = 0
         actor_logprobs = 0
         oldactor_logprobs = 0
         c_mse = 0
@@ -304,7 +308,8 @@ class RIS_PPO:
             total_D_KL += D_KL.mean().item()
 
             actor_new_logprobs += action_stats["ppo_actor_new_logprobs"]
-            actor_new_logprobs_min += action_stats["ppo_actor_logprobs_min"]
+            actor_logprobs_min += action_stats["ppo_actor_logprobs_min"]
+            actor_logprobs_max += action_stats["ppo_actor_logprobs_max"]
             actor_logprobs += action_stats["ppo_actor_logprobs"]
             oldactor_logprobs += action_stats["ppo_oldactor_logprobs"]
 
@@ -323,7 +328,8 @@ class RIS_PPO:
         stats_log["state_values"] = total_state_values / self.K_epochs
         stats_log["D_KL"] = total_D_KL / self.K_epochs
         stats_log["actor_new_logprobs"] = actor_new_logprobs / self.K_epochs
-        stats_log["actor_new_logprobs_min"] = actor_new_logprobs_min / self.K_epochs
+        stats_log["actor_logprobs_min"] = actor_logprobs_min / self.K_epochs
+        stats_log["actor_logprobs_max"] = actor_logprobs_max / self.K_epochs
         stats_log["actor_logprobs"] = actor_logprobs / self.K_epochs
         stats_log["oldactor_logprobs"] = oldactor_logprobs / self.K_epochs
         
