@@ -91,7 +91,7 @@ parser.add_argument("--training",                   default=1, type=bool)
 parser.add_argument("--save_image",                 default=0, type=bool)
 parser.add_argument("--save_subgoals_image",        default=1, type=bool)
 parser.add_argument("--save_subgoal_first_image",   default=0, type=bool)
-parser.add_argument("--eval_freq",    default=5e4, type=float)
+parser.add_argument("--eval_freq",    default=2e5, type=float)
 args = parser.parse_args()
 print(f"args: {args}")
 
