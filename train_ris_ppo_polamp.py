@@ -48,7 +48,7 @@ register(
 )
 
 env         = gym.make(train_env_name)
-#test_env    = gym.make(test_env_name)
+test_env    = gym.make(test_env_name)
 #env = POLAMPEnvironment("polamp", environment_config) 
 
 #project_name = "train_ris_ppo_polamp"
@@ -88,7 +88,10 @@ parser.add_argument("--penalty_clip",               default=0.6, type=float)
 parser.add_argument("--adaptive_std",                default=1, type=bool)
 parser.add_argument("--using_wandb",                default=1, type=bool)
 parser.add_argument("--training",                   default=1, type=bool)
-parser.add_argument("--save_image",                 default=1, type=bool)
+parser.add_argument("--save_image",                 default=0, type=bool)
+parser.add_argument("--save_subgoals_image",        default=1, type=bool)
+parser.add_argument("--save_subgoal_first_image",   default=0, type=bool)
+parser.add_argument("--eval_freq",    default=5e4, type=float)
 args = parser.parse_args()
 print(f"args: {args}")
 
@@ -104,11 +107,13 @@ if args.training:
         print(f"train_config['name_save']: {args.name_save}")
         agent.load("{}{}".format("./", args.curriculum_name))
 
-    ppo_batch_train(env, agent, args, wandb=wandb)
+    ppo_batch_train(env, test_env, agent, args, wandb=wandb)
 else:
     if args.using_wandb:
         project_name = "validate_ris_ppo_polamp"
-        wandb.init(config=environment_config, project=project_name)
+        run = wandb.init(config=environment_config, project=project_name)
+    else:
+        run = None
     name_val = args.name_val
     agent.load("{}{}".format("./", name_val))
     collision_tasks = 0
@@ -132,15 +137,16 @@ else:
     val_keys = ["map0"]
 
     for val_key in val_keys:
-        #val_task_ids = list(range(len(env.valTasks[val_key])))
-        val_task_ids = [7, 9]
+        val_task_ids = list(range(len(env.valTasks[val_key])))
+        #val_task_ids = [7, 9]
         eval_tasks = len(val_task_ids)
         total_tasks += eval_tasks
         
         print(f"val_key: {val_key}")
         print(f"eval_tasks: {eval_tasks}")
         # for id in range(eval_tasks):
-        if args.save_image:
+        if args.save_image or args.save_subgoals_image:
+            assert args.save_image != args.save_subgoals_image, "only 1 type of image"
             print("ok")
             # if val_key!="map11":
             #     continue
@@ -153,7 +159,7 @@ else:
                 #    continue
             # for id in range(5, 6):
                 # obs = env.reset(id=id, val_key=val_key)
-                images, isDone, info, episode_cost, min_beam = validate(env, agent, env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key)
+                images, isDone, info, episode_cost, min_beam = validate(env, agent, env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key, run=run, save_subgoal_image=args.save_subgoals_image, save_subgoal_first_image=args.save_subgoal_first_image)
                 if isDone:
                     #total_distance += min_distance
                     #counter_done += 1
@@ -177,9 +183,14 @@ else:
 
                 constrained_cost.append(episode_cost)
                 lst_min_beam.append(min_beam)
-                if args.save_image:
+                if args.save_image or args.save_subgoals_image:
                     #wandb.init(config=environment_config, project="validation_custom_ppo")
-                    wandb.log({f"random_task": wandb.Video(images, fps=10, format="gif")})
+
+                    #print("type:", type(images[0]))
+                    #print("shape:", images[0].shape)
+                    #assert 1 == 0
+                    
+                    run.log({f"random_task": wandb.Video(images, fps=10, format="gif")})
         else:
             for id in range(eval_tasks):
                 # obs = env.reset(id=id, val_key=val_key)

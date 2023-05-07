@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import time
+import wandb
 
 class HighPolicyMemory:
     def __init__(self, args, env):
@@ -78,16 +79,17 @@ class Memory:
         self.dones = self.dones[b_inds]
 
 
-def validate(env, agent, max_steps, save_image=False, id=None, val_key=None):
+def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run=None, save_subgoal_image=False, save_subgoal_first_image=False):
     if id is None or val_key is None:
         return
     agent.eval()
     state = env.reset(id=id, val_key=val_key)
     goal = state["desired_goal"]
     state = state["observation"]
-    if save_image:
+    if save_image or save_subgoal_image:
         images = []
-        images.append(env.render())
+        if not save_subgoal_image:
+            images.append(env.render())
     # else:
     #     env.render(save_image=save_image)
     isDone = False
@@ -95,7 +97,93 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None):
     sum_reward = 0
     episode_constrained = []
     episode_min_beam = []
+
+    if save_subgoal_image:
+        fig = plt.figure()
+        fig.add_subplot(111)
+
+    # debug subgoals
+    if save_subgoal_first_image:
+        with torch.no_grad():
+            encoded_state = torch.FloatTensor(state).to(agent.device).unsqueeze(0)
+            encoded_goal = torch.FloatTensor(goal).to(agent.device).unsqueeze(0)
+            subgoal_distribution = agent.subgoal_net(encoded_state, encoded_goal)
+            #subgoal = subgoal_distribution.rsample()
+            subgoal = subgoal_distribution.loc
+            #fig = plt.figure()
+            #fig.add_subplot(111)
+            x_f_state_to_draw = encoded_state.cpu()
+            x_agent = x_f_state_to_draw[0][0]
+            y_agent = x_f_state_to_draw[0][1]
+            theta_agent = x_f_state_to_draw[0][2]
+            x_f_goal_to_draw = encoded_goal.cpu()
+            x_goal = x_f_goal_to_draw[0][0]
+            y_goal = x_f_goal_to_draw[0][1]
+            theta_goal = x_f_goal_to_draw[0][2]
+            car_length = 0.5
+            plt.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
+                    [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
+            plt.scatter([x_agent], [y_agent], color="green", s=100)
+            plt.text(x_agent + 0.05, y_agent + 0.05, "agent")
+
+            plt.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
+                    [y_goal, y_goal + np.sin(theta_goal) * car_length], color="yellow", linewidth=3)
+            plt.scatter([x_goal], [y_goal], color="yellow", s=100)
+            plt.text(x_goal + 0.05, y_goal + 0.05, "goal")
+
+            plt.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+            plt.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
+
+            fig.canvas.draw()
+            data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            img = wandb.Image(data)
+            run.log({f"agent_state": img})
+
     while not isDone and t < max_steps:
+
+        # debug subgoals
+        if save_subgoal_image:
+            with torch.no_grad():
+                encoded_state = torch.FloatTensor(state).to(agent.device).unsqueeze(0)
+                encoded_goal = torch.FloatTensor(goal).to(agent.device).unsqueeze(0)
+                subgoal_distribution = agent.subgoal_net(encoded_state, encoded_goal)
+                #subgoal = subgoal_distribution.rsample()
+                subgoal = subgoal_distribution.loc
+                #fig = plt.figure()
+                #fig.add_subplot(111)
+                x_f_state_to_draw = encoded_state.cpu()
+                x_agent = x_f_state_to_draw[0][0]
+                y_agent = x_f_state_to_draw[0][1]
+                theta_agent = x_f_state_to_draw[0][2]
+                x_f_goal_to_draw = encoded_goal.cpu()
+                x_goal = x_f_goal_to_draw[0][0]
+                y_goal = x_f_goal_to_draw[0][1]
+                theta_goal = x_f_goal_to_draw[0][2]
+                car_length = 0.5
+                plt.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
+                        [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
+                plt.scatter([x_agent], [y_agent], color="green", s=100)
+                plt.text(x_agent + 0.05, y_agent + 0.05, "agent")
+
+                plt.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
+                        [y_goal, y_goal + np.sin(theta_goal) * car_length], color="yellow", linewidth=3)
+                plt.scatter([x_goal], [y_goal], color="yellow", s=100)
+                plt.text(x_goal + 0.05, y_goal + 0.05, "goal")
+
+                plt.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                plt.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
+
+                fig.canvas.draw()
+                data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                #img = wandb.Image(data)
+                images.append(data)
+                #plt.close()
+                fig.clear()
+                #run.log({f"agent_state": img})
+
+
         #action = agent.act(state, False)
         # start_time = time.time()
         action = agent.get_action(state, goal, deterministic=True)
@@ -120,12 +208,14 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None):
         t += 1
         
     env.close()
-    if save_image:
+    if save_subgoal_image:
+        plt.close()
+    if save_image or save_subgoal_image:
         images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
-    return sum_reward if not save_image else images, isDone, info, np.mean(episode_constrained), np.min(episode_min_beam) 
+    return sum_reward if not save_image and not save_subgoal_image else images, isDone, info, np.mean(episode_constrained), np.min(episode_min_beam) 
 
     
-def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
+def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
     update_timestep = args.batch_size
     log_interval = args.log_interval
     max_episodes = args.max_episodes
@@ -343,3 +433,12 @@ def ppo_batch_train(env, agent, args, wandb=None, saveImage=True):
                     constraint_violation += 1
                     break
             """
+
+            if timestep % args.eval_freq == 0:
+                print(f"------ validating------")
+                # get random validation task
+                val_key = "map0"
+                run = wandb
+                id = np.random.choice(list(range(len(test_env.valTasks[val_key]))))
+                images, isDone, info, episode_cost, min_beam = validate(test_env, agent, test_env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key, run=run, save_subgoal_image=args.save_subgoals_image, save_subgoal_first_image=args.save_subgoal_first_image)
+                run.log({f"validation_video": wandb.Video(images, fps=10, format="gif")})

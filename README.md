@@ -14,6 +14,11 @@ apt-get install -y xvfb
 #apt-get install python3-opencv
 
 
+# Docker
+
+docker run -it --gpus 0 -v $(pwd):/usr/home/workspace continuumio/miniconda3 gregory.RIS_PPO
+
+docker exec -it gregory.RIS_PPO bash
 
 # polamp env
 
