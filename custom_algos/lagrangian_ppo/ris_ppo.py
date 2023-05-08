@@ -86,8 +86,42 @@ class RIS_PPO:
         #print("argmin logprob subgoal:", subgoal[logprobs.argmin().item(), :][0])
         #self.save("./" + "temp_checkpoint_debug_1")
 
-        # debug old action value
         debug_stats = {}
+        # debug old obs
+        debug_stats["old_obs_x_mean"] = old_obs[:, 0].mean().item()
+        debug_stats["old_obs_x_max"] = old_obs[:, 0].max().item()
+        debug_stats["old_obs_x_min"] = old_obs[:, 0].min().item()
+        debug_stats["old_obs_y_mean"] = old_obs[:, 1].mean().item()
+        debug_stats["old_obs_y_max"] = old_obs[:, 1].max().item()
+        debug_stats["old_obs_y_min"] = old_obs[:, 1].min().item()
+        debug_stats["old_obs_theta_mean"] = old_obs[:, 2].mean().item()
+        debug_stats["old_obs_theta_max"] = old_obs[:, 2].max().item()
+        debug_stats["old_obs_theta_min"] = old_obs[:, 2].min().item()
+        debug_stats["old_obs_v_mean"] = old_obs[:, 3].mean().item()
+        debug_stats["old_obs_v_max"] = old_obs[:, 3].max().item()
+        debug_stats["old_obs_v_min"] = old_obs[:, 3].min().item()
+        debug_stats["old_obs_steer_mean"] = old_obs[:, 4].mean().item()
+        debug_stats["old_obs_steer_max"] = old_obs[:, 4].max().item()
+        debug_stats["old_obs_steer_min"] = old_obs[:, 4].min().item()
+
+        # debug old obs
+        debug_stats["old_goal_x_mean"] = old_goal[:, 0].mean().item()
+        debug_stats["old_goal_x_max"] = old_goal[:, 0].max().item()
+        debug_stats["old_goal_x_min"] = old_goal[:, 0].min().item()
+        debug_stats["old_goal_y_mean"] = old_goal[:, 1].mean().item()
+        debug_stats["old_goal_y_max"] = old_goal[:, 1].max().item()
+        debug_stats["old_goal_y_min"] = old_goal[:, 1].min().item()
+        debug_stats["old_goal_theta_mean"] = old_goal[:, 2].mean().item()
+        debug_stats["old_goal_theta_max"] = old_goal[:, 2].max().item()
+        debug_stats["old_goal_theta_min"] = old_goal[:, 2].min().item()
+        debug_stats["old_goal_v_mean"] = old_goal[:, 3].mean().item()
+        debug_stats["old_goal_v_max"] = old_goal[:, 3].max().item()
+        debug_stats["old_goal_v_min"] = old_goal[:, 3].min().item()
+        debug_stats["old_goal_steer_mean"] = old_goal[:, 4].mean().item()
+        debug_stats["old_goal_steer_max"] = old_goal[:, 4].max().item()
+        debug_stats["old_goal_steer_min"] = old_goal[:, 4].min().item()
+
+        # debug old action value
         debug_stats["old_action_acc_mean"] = old_actions[:, 0].mean().item()
         debug_stats["old_action_acc_max"] = old_actions[:, 0].max().item()
         debug_stats["old_action_acc_min"] = old_actions[:, 0].min().item()
