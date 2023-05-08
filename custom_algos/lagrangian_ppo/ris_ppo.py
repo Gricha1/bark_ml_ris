@@ -65,76 +65,59 @@ class RIS_PPO:
     def evluate_and_sample_DL(self, old_obs, old_goal, old_actions):
         logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
 
-        #new_action, _ = self.policy.act(torch.cat((old_obs, old_goal), 1), to_device=False)
-        #assert new_action.shape[1] == 4, "should be batch_size/2 x 4"
-        #new_action = torch.cat((new_action[:, 0:2], new_action[:, 2:]), 0)
-        #assert new_action.shape == old_actions.shape
-        #new_logprobs, _, _, _, _ = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), new_action)
         with torch.no_grad():
             subgoal = self.sample_subgoal(old_obs, old_goal)
         sum_old_probs = torch.zeros((subgoal.size(0))).to(self.device)
         for j in range(self.n_ensemble):
             subgoal_j = subgoal[:, j, :]
             old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
-            #old_logprobs, _, _, _, _ = self.policy_old.evaluate(torch.cat((old_obs, subgoal_j), 1), new_action)
-            #old_logprobs, _, _, _, _ = self.policy_old_temp.evaluate(torch.cat((old_obs, subgoal_j), 1), old_actions)
             old_probs = old_logprobs.exp()
             sum_old_probs += old_probs
         sum_old_probs /= self.n_ensemble
         sum_old_logprobs = torch.log(sum_old_probs + self.epsilon)
         D_KL = logprobs - sum_old_logprobs
-        #D_KL = new_logprobs - sum_old_logprobs
         
-        clip_D_KL = 2
+        #clip_D_KL = 2
         #D_KL = torch.clamp(D_KL, -clip_D_KL, clip_D_KL)
 
-        if abs(logprobs.mean().item()) > 100000 or abs(sum_old_logprobs.mean().item()) > 100000:
+        #print("argmin logprob state:", old_obs[logprobs.argmin().item(), :])
+        #print("argmin logprob goal:", old_goal[logprobs.argmin().item(), :])
+        #print("argmin logprob action:", old_actions[logprobs.argmin().item(), :])
+        #print("argmin logprob subgoal:", subgoal[logprobs.argmin().item(), :][0])
+        #self.save("./" + "temp_checkpoint_debug_1")
 
-            print("#########################")
-            print("BUG WITH LOGPPROB:")
+        # debug old action value
+        debug_stats = {}
+        debug_stats["old_action_acc_mean"] = old_actions[:, 0].mean().item()
+        debug_stats["old_action_acc_max"] = old_actions[:, 0].max().item()
+        debug_stats["old_action_acc_min"] = old_actions[:, 0].min().item()
+        debug_stats["old_action_steer_rate_mean"] = old_actions[:, 1].mean().item()
+        debug_stats["old_action_steer_rate_max"] = old_actions[:, 1].max().item()
+        debug_stats["old_action_steer_rate_min"] = old_actions[:, 1].min().item()
 
-            print("logprobs mean:", logprobs.mean().item())
-            print("logprobs max:", logprobs.max().item())
-            print("logprobs min:", logprobs.min().item())
-            
-            print("old logprobs mean:", sum_old_logprobs.mean().item())
-            print("old logprobs max:", sum_old_logprobs.max().item())
-            print("old logprobs min:", sum_old_logprobs.min().item())
-
-            print("old action max acc:", old_actions[:, 0].max().item())
-            print("old action min acc:", old_actions[:, 0].min().item())
-            print("old action max steer:", old_actions[:, 1].max().item())
-            print("old action min steer:", old_actions[:, 1].min().item())
-            #print("action stats:", action_stats["action_dist"][logprobs.argmin().item(), :])
-            print("action dist means:", action_stats["action_dist"].loc[logprobs.argmin().item(), :])
-            print("action dist std:", action_stats["action_dist"].scale[logprobs.argmin().item(), :])
-
-            print("argmin logprob state:", old_obs[logprobs.argmin().item(), :])
-            print("argmin logprob goal:", old_goal[logprobs.argmin().item(), :])
-            print("argmin logprob action:", old_actions[logprobs.argmin().item(), :])
-            print("argmin logprob subgoal:", subgoal[logprobs.argmin().item(), :][0])
-                
-            #if not(self.save_path is None):
-            #    self.save(self.save_path)
-            #else:
-            self.save("./" + "temp_checkpoint_debug_1")
-
-            assert 1 == 0
-            
+        # debug actor distibution means
+        debug_stats["actor_dist_acc_mean"] = action_stats["action_dist"].loc[:, 0].mean().item()
+        debug_stats["actor_dist_acc_max"] = action_stats["action_dist"].loc[:, 0].max().item()
+        debug_stats["actor_dist_acc_min"] = action_stats["action_dist"].loc[:, 0].min().item()
+        debug_stats["actor_dist_steer_rate_mean"] = action_stats["action_dist"].loc[:, 1].mean().item()
+        debug_stats["actor_dist_steer_rate_max"] = action_stats["action_dist"].loc[:, 1].max().item()
+        debug_stats["actor_dist_steer_rate_min"] = action_stats["action_dist"].loc[:, 1].min().item()
+        # debug actor distibution std
+        #debug_stats["actor_std_acc_mean"] = action_stats["action_dist"].loc[:, 0].mean().item()
+        #debug_stats["actor_std_acc_max"] = action_stats["action_dist"].loc[:, 0].max().item()
+        #debug_stats["actor_std_acc_min"] = action_stats["action_dist"].loc[:, 0].min().item()
+        #debug_stats["actor_std_acc_steer_rate"] = action_stats["action_dist"].loc[:, 1].mean().item()
+        #debug_stats["actor_std_acc_steer_rate"] = action_stats["action_dist"].loc[:, 1].max().item()
+        #debug_stats["actor_std_acc_steer_rate"] = action_stats["action_dist"].loc[:, 1].min().item()
         
-        #action_stats["ppo_actor_new_logprobs"] = new_logprobs.mean().item()
-        action_stats["ppo_actor_new_logprobs"] = 0
-        action_stats["ppo_actor_logprobs"] = logprobs.mean().item()
-        action_stats["ppo_actor_logprobs_min"] = logprobs.min().item()
-        action_stats["ppo_actor_logprobs_max"] = logprobs.max().item()
-        action_stats["ppo_oldactor_logprobs"] = sum_old_logprobs.mean().item()
+        # debug probs
+        debug_stats["actor_logprobs"] = logprobs.mean().item()
+        debug_stats["actor_logprobs_min"] = logprobs.min().item()
+        debug_stats["actor_logprobs_max"] = logprobs.max().item()
+        debug_stats["oldactor_logprobs_mean"] = sum_old_logprobs.mean().item()
 
 
-        # копируем веса
-        #self.policy_old_temp.value_layer.load_state_dict(self.policy.value_layer.state_dict())
-        #self.policy_old_temp.action_layer.load_state_dict(self.policy.action_layer.state_dict())
-
-        return logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL
+        return logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL, debug_stats
 
     def update_high_level_policy(self, memory):
         stats_log = {}
@@ -228,12 +211,18 @@ class RIS_PPO:
         total_dist_entropy = 0
         total_penalty_loss = 0
         total_state_values = 0
-        total_D_KL = 0
-        actor_new_logprobs = 0
-        actor_logprobs_min = 0
-        actor_logprobs_max = 0
-        actor_logprobs = 0
-        oldactor_logprobs = 0
+        total_D_KL_mean = 0
+        total_D_KL_min = 0
+        total_D_KL_max = 0
+
+        debug_info = {}
+
+        #actor_new_logprobs = 0
+        #actor_logprobs_min = 0
+        #actor_logprobs_max = 0
+        #actor_logprobs = 0
+        #oldactor_logprobs = 0
+
         c_mse = 0
         stats_log = {}
         # Adding gradient ascent for langrange multiplier
@@ -252,8 +241,7 @@ class RIS_PPO:
         
         for _ in range(self.K_epochs):
             #logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(old_obs, old_actions)
-            logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL = self.evluate_and_sample_DL(old_obs, old_goal, old_actions)
-            #logprobs, state_values, const_state_value, dist_entropy, action_stats = self.policy.evaluate(torch.cat((old_obs, old_goal), 1), old_actions)
+            logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL, debug_stats = self.evluate_and_sample_DL(old_obs, old_goal, old_actions)
             lst_actions_mean.append(action_stats["action_mean"].detach().numpy())
             lst_std.append(action_stats["logstd"].detach().numpy())
             
@@ -293,9 +281,6 @@ class RIS_PPO:
             self.actor_optimizer.zero_grad()
             loss.mean().backward()
 
-            # low level policy grad normlization
-            #torch.nn.utils.clip_grad_norm_(self.policy.value_layer.parameters(), 5)
-
             self.actor_optimizer.step()
 
             total_loss += loss
@@ -305,13 +290,21 @@ class RIS_PPO:
             total_dist_entropy += dist_entropy
             total_surr_penalty_loss += surr_const_loss
             total_state_values += state_values.mean().item()
-            total_D_KL += D_KL.mean().item()
+            total_D_KL_mean += D_KL.mean().item()
+            total_D_KL_min += D_KL.min().item()
+            total_D_KL_max += D_KL.max().item()
 
-            actor_new_logprobs += action_stats["ppo_actor_new_logprobs"]
-            actor_logprobs_min += action_stats["ppo_actor_logprobs_min"]
-            actor_logprobs_max += action_stats["ppo_actor_logprobs_max"]
-            actor_logprobs += action_stats["ppo_actor_logprobs"]
-            oldactor_logprobs += action_stats["ppo_oldactor_logprobs"]
+            for key in debug_stats:
+                if key not in debug_info:
+                    debug_info[key] = debug_stats[key]
+                else:
+                    debug_info[key] += debug_stats[key]
+
+            #actor_new_logprobs += debug_stats["actor_new_logprobs"]
+            #actor_logprobs_min += debug_stats["actor_logprobs_min"]
+            #actor_logprobs_max += debug_stats["actor_logprobs_max"]
+            #actor_logprobs += debug_stats["actor_logprobs"]
+            #oldactor_logprobs += debug_stats["oldactor_logprobs"]
 
         # копируем веса
         self.policy_old.value_layer.load_state_dict(self.policy.value_layer.state_dict())
@@ -326,12 +319,19 @@ class RIS_PPO:
         stats_log["dist_entropy"] = total_dist_entropy / self.K_epochs
         stats_log["penalty_surr_loss"] = total_surr_penalty_loss / self.K_epochs
         stats_log["state_values"] = total_state_values / self.K_epochs
-        stats_log["D_KL"] = total_D_KL / self.K_epochs
-        stats_log["actor_new_logprobs"] = actor_new_logprobs / self.K_epochs
-        stats_log["actor_logprobs_min"] = actor_logprobs_min / self.K_epochs
-        stats_log["actor_logprobs_max"] = actor_logprobs_max / self.K_epochs
-        stats_log["actor_logprobs"] = actor_logprobs / self.K_epochs
-        stats_log["oldactor_logprobs"] = oldactor_logprobs / self.K_epochs
+        stats_log["D_KL_mean"] = total_D_KL_mean / self.K_epochs
+        stats_log["D_KL_min"] = total_D_KL_min / self.K_epochs
+        stats_log["D_KL_max"] = total_D_KL_max / self.K_epochs
+
+        for key in debug_info:
+            debug_info[key] = debug_info[key] / self.K_epochs
+            stats_log[key] = debug_info[key]
+
+        #stats_log["actor_new_logprobs"] = actor_new_logprobs / self.K_epochs
+        #stats_log["actor_logprobs_min"] = actor_logprobs_min / self.K_epochs
+        #stats_log["actor_logprobs_max"] = actor_logprobs_max / self.K_epochs
+        #stats_log["actor_logprobs"] = actor_logprobs / self.K_epochs
+        #stats_log["oldactor_logprobs"] = oldactor_logprobs / self.K_epochs
         
         stats_log["penalty_loss"] = total_penalty_loss
         stats_log["constrained_costs"] = constrained_costs.mean()

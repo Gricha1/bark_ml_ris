@@ -306,8 +306,8 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                 if timestep >= args.high_policy_start_timesteps:
                     stast = agent.update_low_level_policy(memory, penalizing_ppo)
 
-                if not wandb is None and timestep >= args.high_policy_start_timesteps:                 
-                    wandb.log({ 
+                if not wandb is None and timestep >= args.high_policy_start_timesteps:  
+                    wandb_log = { 
                                 # high level policy
                                 'H_train_adv': stast_high_policy["adv"],
                                 'H_subgoal_loss': stast_high_policy["subgoal_loss"],
@@ -323,28 +323,37 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                                 'H_sampled_subgoal_x_min': stast_high_policy["H_sampled_subgoal_x_min"],
 
                                 # low level policy
-                                "actor_new_logprobs": stast["actor_new_logprobs"],
-                                "actor_logprobs_min": stast["actor_logprobs_min"],
-                                "actor_logprobs_max": stast["actor_logprobs_max"],
-                                "actor_logprobs": stast["actor_logprobs"],
-                                "oldactor_logprobs": stast["oldactor_logprobs"],
-                                'D_KL': stast["D_KL"],
-                                'dist_entropy': stast["dist_entropy"],
-                                'penalty_loss': stast["penalty_loss"],
-                                'constrained_costs': stast["constrained_costs"],
-                                'lyambda': stast["lagrange_multiplier"],
-                                'action_means_linear_acc': stast["action_means"][0],
-                                'action_mean_steering_vel': stast["action_means"][1],
-                                'std_linear_acc': stast["logstd"][0],
-                                'std_steering_vel': stast["logstd"][1],
-                                'total_loss': stast["total_loss"],
-                                'policy_loss': stast["policy_loss"],
-                                'mse_loss': stast["mse_loss"],
-                                'cmse_loss': stast["cmse_loss"],
-                                'penalty_surr_loss': stast["penalty_surr_loss"],
-                                'state_values': stast["state_values"],
-                                'fps': update_timestep / batch_time,}
-                                , step = timestep)
+                                #"actor_new_logprobs": stast["actor_new_logprobs"],
+                                #"actor_logprobs_min": stast["actor_logprobs_min"],
+                                #"actor_logprobs_max": stast["actor_logprobs_max"],
+                                #"actor_logprobs": stast["actor_logprobs"],
+                                #"oldactor_logprobs": stast["oldactor_logprobs"],
+                                
+                                #'D_KL_mean': stast["D_KL_mean"],
+                                #'D_KL_min': stast["D_KL_min"],
+                                #'D_KL_max': stast["D_KL_max"],
+                                #'dist_entropy': stast["dist_entropy"],
+                                #'penalty_loss': stast["penalty_loss"],
+                                #'constrained_costs': stast["constrained_costs"],
+                                #'lyambda': stast["lagrange_multiplier"],
+                                #'action_means_linear_acc': stast["action_means"][0],
+                                #'action_mean_steering_vel': stast["action_means"][1],
+                                #'std_linear_acc': stast["logstd"][0],
+                                #'std_steering_vel': stast["logstd"][1],
+                                #'total_loss': stast["total_loss"],
+                                #'policy_loss': stast["policy_loss"],
+                                #'mse_loss': stast["mse_loss"],
+                                #'cmse_loss': stast["cmse_loss"],
+                                #'penalty_surr_loss': stast["penalty_surr_loss"],
+                                #'state_values': stast["state_values"],
+                                #'fps': update_timestep / batch_time,}
+                                }
+                    for key in stast:
+                        assert not(key in wandb_log), ""
+                        wandb_log[key] = stast[key]
+
+                    wandb.log(wandb_log, step = timestep)
+
                 elif wandb is None:
                     print(f"dist_entropy: {stast['dist_entropy']}")
                     print(f"loss_penalty: {stast['penalty_loss']}")
