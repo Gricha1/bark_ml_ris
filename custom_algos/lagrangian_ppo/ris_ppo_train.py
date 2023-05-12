@@ -89,19 +89,16 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
     state = state["observation"]
     if save_image or save_subgoal_image:
         images = []
-        if not save_subgoal_image:
-            images.append(env.render())
-    # else:
-    #     env.render(save_image=save_image)
+    if save_image:
+        images.append(env.render())
+    if save_subgoal_image:
+        fig = plt.figure()
+        fig.add_subplot(111)
     isDone = False
     t = 0
     sum_reward = 0
     episode_constrained = []
     episode_min_beam = []
-
-    if save_subgoal_image:
-        fig = plt.figure()
-        fig.add_subplot(111)
 
     # debug subgoals
     if save_subgoal_first_image:
@@ -151,8 +148,6 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 subgoal_distribution = agent.subgoal_net(encoded_state, encoded_goal)
                 #subgoal = subgoal_distribution.rsample()
                 subgoal = subgoal_distribution.loc
-                #fig = plt.figure()
-                #fig.add_subplot(111)
                 x_f_state_to_draw = encoded_state.cpu()
                 x_agent = x_f_state_to_draw[0][0]
                 y_agent = x_f_state_to_draw[0][1]
@@ -178,11 +173,8 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 fig.canvas.draw()
                 data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                 data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-                #img = wandb.Image(data)
                 images.append(data)
-                #plt.close()
                 fig.clear()
-                #run.log({f"agent_state": img})
 
 
         #action = agent.act(state, False)
@@ -202,10 +194,7 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
         episode_constrained.append(info.get('cost', 0))
         episode_min_beam.append(env.environment.min_beam)
         if save_image:
-            #print("env.render(): ", env.render())
             images.append(env.render())
-        # else:
-        #     env.render(save_image=save_image)
         t += 1
         
     env.close()
@@ -235,8 +224,8 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
     total_distance = 0
     constraint_violation = 0
     
-    high_policy_memory = HighPolicyMemory(args, env)
-    """
+    #high_policy_memory = HighPolicyMemory(args, env)
+    
     vectorized = True
     high_policy_memory = HERReplayBuffer(
         max_size=args.replay_buffer_high_policy_size,
@@ -252,7 +241,7 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
         vectorized          = vectorized 
     )
     path_builder = PathBuilder()
-    """
+    
 
     memory = Memory(args, env, agent.device)
 
@@ -281,7 +270,7 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
             action, log_prob = agent.policy_old.act(np.concatenate([observation, goal]))
 
             # lst_states.append(state)
-            high_policy_memory.add(torch.Tensor(observation), torch.Tensor(goal))
+            #high_policy_memory.add(torch.Tensor(observation), torch.Tensor(goal))
 
             index = timestep % update_timestep
             memory.obs[index] = torch.Tensor(observation).to("cuda")
@@ -298,7 +287,7 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
             goal_time = time.time()
             batch_time += goal_time - start_time
 
-            """
+            
             path_builder.add_all(
                 observations=full_obs,
                 actions=action_step,
@@ -306,7 +295,7 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                 next_observations=full_next_obs,
                 terminals=[1.0*done]
             )
-            """
+            
             full_obs = full_next_obs
             
             memory.rewards[index] = reward
@@ -324,16 +313,18 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
 
             timestep += 1
 
+            # train high level policy
+            if timestep >= args.high_policy_start_timesteps:
+                stast_high_policy = agent.update_high_level_policy(high_policy_memory)
+
             # выполняем обновление
             if timestep % update_timestep == 0:
                 print(f"------ updating {args.name_save}------")
 
                 # train high level policy
-                if timestep >= args.high_policy_start_timesteps:
-                    stast_high_policy = agent.update_high_level_policy(high_policy_memory)
                 #if timestep >= args.high_policy_start_timesteps:
-                #    stast_high_policy = agent.update_high_level_policy(memory)
-
+                #    stast_high_policy = agent.update_high_level_policy(high_policy_memory)
+                
                 # train low level policy
                 if timestep >= args.high_policy_start_timesteps:
                     stast = agent.update_low_level_policy(memory, penalizing_ppo)
@@ -353,32 +344,6 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                                 'H_sampled_subgoal_x_max': stast_high_policy["H_sampled_subgoal_x_max"],
                                 'H_sampled_subgoal_x_mean': stast_high_policy["H_sampled_subgoal_x_mean"],
                                 'H_sampled_subgoal_x_min': stast_high_policy["H_sampled_subgoal_x_min"],
-
-                                # low level policy
-                                #"actor_new_logprobs": stast["actor_new_logprobs"],
-                                #"actor_logprobs_min": stast["actor_logprobs_min"],
-                                #"actor_logprobs_max": stast["actor_logprobs_max"],
-                                #"actor_logprobs": stast["actor_logprobs"],
-                                #"oldactor_logprobs": stast["oldactor_logprobs"],
-                                
-                                #'D_KL_mean': stast["D_KL_mean"],
-                                #'D_KL_min': stast["D_KL_min"],
-                                #'D_KL_max': stast["D_KL_max"],
-                                #'dist_entropy': stast["dist_entropy"],
-                                #'penalty_loss': stast["penalty_loss"],
-                                #'constrained_costs': stast["constrained_costs"],
-                                #'lyambda': stast["lagrange_multiplier"],
-                                #'action_means_linear_acc': stast["action_means"][0],
-                                #'action_mean_steering_vel': stast["action_means"][1],
-                                #'std_linear_acc': stast["logstd"][0],
-                                #'std_steering_vel': stast["logstd"][1],
-                                #'total_loss': stast["total_loss"],
-                                #'policy_loss': stast["policy_loss"],
-                                #'mse_loss': stast["mse_loss"],
-                                #'cmse_loss': stast["cmse_loss"],
-                                #'penalty_surr_loss': stast["penalty_surr_loss"],
-                                #'state_values': stast["state_values"],
-                                #'fps': update_timestep / batch_time,}
                                 }
                     for key in stast:
                         assert not(key in wandb_log), ""
@@ -461,10 +426,10 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
             """
 
             if done:
-                """
+                
                 high_policy_memory.add_path(path_builder.get_all_stacked())
                 path_builder = PathBuilder()
-                """
+                
 
                 total_distance += min_distance
                 counter_done += 1

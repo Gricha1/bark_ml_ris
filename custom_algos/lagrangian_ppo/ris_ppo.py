@@ -158,7 +158,7 @@ class RIS_PPO:
     def update_high_level_policy(self, memory):
         stats_log = {}
         
-        """ HER
+        # HER 
         batch_size = self.high_policy_batch_size
         batch = memory.random_batch(batch_size)
         state_batch         = batch["observations"]
@@ -169,10 +169,10 @@ class RIS_PPO:
         obs = state_batch
         goal = goal_batch
         subgoal = subgoal_batch
-        """
+        
 
-        obs, goal = memory.sample_batch()
-        subgoal = memory.random_state_batch()
+        #obs, goal = memory.sample_batch()
+        #subgoal = memory.random_state_batch()
         #obs = memory.obs.detach()
         #goal = memory.goal.detach()
         #subgoal = obs[torch.randperm(obs.size()[0])]
