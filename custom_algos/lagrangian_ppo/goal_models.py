@@ -6,22 +6,8 @@ import copy
 
 
 """ High-level policy """
-
-class LaplacePolicy(nn.Module):	
-    """
-	def __init__(self, state_dim, hidden_dims=[256, 256]):	
-		super(LaplacePolicy, self).__init__()	
-		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
-		for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
-			fc += [nn.Linear(hidden_dim_in, hidden_dim_out), nn.ReLU()]
-		self.fc = nn.Sequential(*fc)
-
-		self.mean = nn.Linear(hidden_dims[-1], state_dim)	
-		self.log_scale = nn.Linear(hidden_dims[-1], state_dim)	
-		self.LOG_SCALE_MIN = -20	
-		self.LOG_SCALE_MAX = 2	
-    """
-    def __init__(self, state_dim, hidden_dims=[256, 256]):
+"""
+def __init__(self, state_dim, hidden_dims=[256, 256]):
         super(LaplacePolicy, self).__init__()
         fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.Tanh()]
         for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
@@ -32,20 +18,32 @@ class LaplacePolicy(nn.Module):
 		#self.log_scale = nn.Linear(hidden_dims[-1], state_dim)
         self.LOG_SCALE_MIN = -20
         self.LOG_SCALE_MAX = 2
-    
+"""
+class LaplacePolicy(nn.Module):
+    def __init__(self, state_dim, hidden_dims=[256, 256]):
+        super(LaplacePolicy, self).__init__()
+        fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
+        for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
+            fc += [nn.Linear(hidden_dim_in, hidden_dim_out), nn.ReLU()]
+        self.fc = nn.Sequential(*fc)
+        self.mean = nn.Linear(hidden_dims[-1], state_dim)
+        self.log_scale = nn.Linear(hidden_dims[-1], state_dim)
+        self.LOG_SCALE_MIN = -20
+        self.LOG_SCALE_MAX = 2
+
     def forward(self, state, goal):
+        """
         h = self.fc( torch.cat([state, goal], -1) )
         mean, scale = h.chunk(2, dim=1)
         scale = scale.clamp(min=self.LOG_SCALE_MIN, max=self.LOG_SCALE_MAX).exp()
         distribution = torch.distributions.laplace.Laplace(mean, scale)
         return distribution
-
-		#h = self.fc( torch.cat([state, goal], -1) )	
-		#mean = self.mean(h)
-		#scale = self.log_scale(h).clamp(min=self.LOG_SCALE_MIN, max=self.LOG_SCALE_MAX).exp()	
-		#distribution = torch.distributions.laplace.Laplace(mean, scale)
-		#return distribution
-
+        """
+        h = self.fc( torch.cat([state, goal], -1) )
+        mean = self.mean(h)
+        scale = self.log_scale(h).clamp(min=self.LOG_SCALE_MIN, max=self.LOG_SCALE_MAX).exp()
+        distribution = torch.distributions.laplace.Laplace(mean, scale)
+        return distribution
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)

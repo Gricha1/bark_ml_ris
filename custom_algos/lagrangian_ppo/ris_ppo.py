@@ -10,7 +10,9 @@ from .goal_models import ActorCritic, Lyambda, LaplacePolicy
 
 
 class RIS_PPO:
-    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-4, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16, save_path=None):
+    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-4, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16, save_path=None, high_policy_batch_size=2024):
+        self.high_policy_batch_size = high_policy_batch_size
+
         self.lr = args.lr
         self.gamma = args.gamma
         self.eps_clip = args.eps_clip
@@ -156,6 +158,19 @@ class RIS_PPO:
     def update_high_level_policy(self, memory):
         stats_log = {}
         
+        """ HER
+        batch_size = self.high_policy_batch_size
+        batch = memory.random_batch(batch_size)
+        state_batch         = batch["observations"]
+        goal_batch          = batch["resampled_goals"]
+        state_batch         = torch.FloatTensor(state_batch)
+        goal_batch          = torch.FloatTensor(goal_batch)
+        subgoal_batch = torch.FloatTensor(memory.random_state_batch(batch_size))
+        obs = state_batch
+        goal = goal_batch
+        subgoal = subgoal_batch
+        """
+
         obs, goal = memory.sample_batch()
         subgoal = memory.random_state_batch()
         #obs = memory.obs.detach()

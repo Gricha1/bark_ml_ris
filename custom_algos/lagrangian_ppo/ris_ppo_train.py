@@ -7,6 +7,7 @@ import numpy as np
 import os
 import time
 import wandb
+from polamp_HER import HERReplayBuffer, PathBuilder
 
 class HighPolicyMemory:
     def __init__(self, args, env):
@@ -235,6 +236,24 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
     constraint_violation = 0
     
     high_policy_memory = HighPolicyMemory(args, env)
+    """
+    vectorized = True
+    high_policy_memory = HERReplayBuffer(
+        max_size=args.replay_buffer_high_policy_size,
+        env=env,
+        fraction_goals_are_rollout_goals = 0.2,
+        fraction_resampled_goals_are_env_goals = 0.0,
+        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
+        ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
+        desired_goal_keys   =["desired_goal", "state_desired_goal"],
+        observation_key     = 'observation',
+        desired_goal_key    = 'desired_goal',
+        achieved_goal_key   = 'achieved_goal',
+        vectorized          = vectorized 
+    )
+    path_builder = PathBuilder()
+    """
+
     memory = Memory(args, env, agent.device)
 
     batch_time = 0
@@ -247,6 +266,7 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
         lst_states = []
         start_time = time.time()
         observation = env.reset()
+        full_obs = observation # to HER
         goal = observation["desired_goal"]
         observation = observation["observation"]
         goal_time = time.time()
@@ -272,10 +292,22 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
             start_time = time.time()
 
             observation, reward, done, info = env.step(action_step)
+            full_next_obs = observation # to HER
             goal = observation["desired_goal"]
             observation = observation["observation"]
             goal_time = time.time()
             batch_time += goal_time - start_time
+
+            """
+            path_builder.add_all(
+                observations=full_obs,
+                actions=action_step,
+                rewards=reward,
+                next_observations=full_next_obs,
+                terminals=[1.0*done]
+            )
+            """
+            full_obs = full_next_obs
             
             memory.rewards[index] = reward
             memory.dones[index] = done
@@ -429,6 +461,11 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
             """
 
             if done:
+                """
+                high_policy_memory.add_path(path_builder.get_all_stacked())
+                path_builder = PathBuilder()
+                """
+
                 total_distance += min_distance
                 counter_done += 1
                 if info["geometirc_goal_achieved"]:

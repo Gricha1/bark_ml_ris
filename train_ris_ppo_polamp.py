@@ -95,7 +95,7 @@ parser.add_argument("--eval_freq",    default=2e5, type=float)
 args = parser.parse_args()
 print(f"args: {args}")
 
-agent = RIS_PPO(state_dim, goal_dim, action_dim, args, env.action_space.high, save_path=args.name_save)
+agent = RIS_PPO(state_dim, goal_dim, action_dim, args, env.action_space.high, save_path=args.name_save, high_policy_batch_size=args.high_policy_batch_size)
 if args.training:
     if args.using_wandb:
         project_name = "train_ris_ppo_polamp"
