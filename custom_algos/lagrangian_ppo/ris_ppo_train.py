@@ -314,7 +314,8 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
             timestep += 1
 
             # train high level policy
-            if timestep >= args.high_policy_start_timesteps:
+            if timestep >= args.high_policy_start_timesteps and (timestep % update_timestep) % 100 == 0:
+                print("update high level")
                 stast_high_policy = agent.update_high_level_policy(high_policy_memory)
 
             # выполняем обновление
@@ -330,21 +331,26 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                     stast = agent.update_low_level_policy(memory, penalizing_ppo)
 
                 if not wandb is None and timestep >= args.high_policy_start_timesteps:  
-                    wandb_log = { 
-                                # high level policy
-                                'H_train_adv': stast_high_policy["adv"],
-                                'H_subgoal_loss': stast_high_policy["subgoal_loss"],
-                                'H_sampled_subgoal_v': stast_high_policy["high_policy_v"],
-                                'H_target_subgoal_v': stast_high_policy["high_v"],
+                    try:
+                        stast_high_policy # is defined                 
+                        wandb_log = { 
+                                    # high level policy
+                                    'H_train_adv': stast_high_policy["adv"],
+                                    'H_subgoal_loss': stast_high_policy["subgoal_loss"],
+                                    'H_sampled_subgoal_v': stast_high_policy["high_policy_v"],
+                                    'H_target_subgoal_v': stast_high_policy["high_v"],
 
-                                'H_subgoal_x_max': stast_high_policy["H_subgoal_x_max"],
-                                'H_subgoal_x_mean': stast_high_policy["H_subgoal_x_mean"],
-                                'H_subgoal_x_min': stast_high_policy["H_subgoal_x_min"],
+                                    'H_subgoal_x_max': stast_high_policy["H_subgoal_x_max"],
+                                    'H_subgoal_x_mean': stast_high_policy["H_subgoal_x_mean"],
+                                    'H_subgoal_x_min': stast_high_policy["H_subgoal_x_min"],
 
-                                'H_sampled_subgoal_x_max': stast_high_policy["H_sampled_subgoal_x_max"],
-                                'H_sampled_subgoal_x_mean': stast_high_policy["H_sampled_subgoal_x_mean"],
-                                'H_sampled_subgoal_x_min': stast_high_policy["H_sampled_subgoal_x_min"],
-                                }
+                                    'H_sampled_subgoal_x_max': stast_high_policy["H_sampled_subgoal_x_max"],
+                                    'H_sampled_subgoal_x_mean': stast_high_policy["H_sampled_subgoal_x_mean"],
+                                    'H_sampled_subgoal_x_min': stast_high_policy["H_sampled_subgoal_x_min"],
+                                    }
+                    except:
+                        wandb_log = {}
+
                     for key in stast:
                         assert not(key in wandb_log), ""
                         wandb_log[key] = stast[key]
