@@ -119,6 +119,11 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
             y_goal = x_f_goal_to_draw[0][1]
             theta_goal = x_f_goal_to_draw[0][2]
             car_length = 0.5
+
+            # scale
+            plt.ylim(bottom=-2, top=36.)
+            plt.xlim(left=2, right=40.)
+
             plt.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
                     [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
             plt.scatter([x_agent], [y_agent], color="green", s=100)
@@ -157,6 +162,11 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 y_goal = x_f_goal_to_draw[0][1]
                 theta_goal = x_f_goal_to_draw[0][2]
                 car_length = 0.5
+
+                # scale
+                plt.ylim(bottom=-5, top=36.)
+                plt.xlim(left=-5, right=40.)
+                
                 plt.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
                         [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
                 plt.scatter([x_agent], [y_agent], color="green", s=100)
