@@ -36,9 +36,10 @@ train_env_name = "polamp_env-v0"
 test_env_name = train_env_name
 
 # Set seed
-#np.random.seed(args.seed)
-#random.seed(args.seed)
-#torch.manual_seed(args.seed)
+seed = 42
+np.random.seed(seed)
+random.seed(seed)
+torch.manual_seed(seed)
 
 # register polamp env
 register(

@@ -466,6 +466,7 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                 # get random validation task
                 val_key = "map0"
                 run = wandb
-                id = np.random.choice(list(range(len(test_env.valTasks[val_key]))))
+                #id = np.random.choice(list(range(len(test_env.valTasks[val_key]))))
+                id = 0
                 images, isDone, info, episode_cost, min_beam = validate(test_env, agent, test_env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key, run=run, save_subgoal_image=args.save_subgoals_image, save_subgoal_first_image=args.save_subgoal_first_image)
                 run.log({f"validation_video": wandb.Video(images, fps=10, format="gif")})
