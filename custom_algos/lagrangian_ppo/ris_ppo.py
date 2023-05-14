@@ -139,12 +139,12 @@ class RIS_PPO:
         debug_stats["actor_dist_steer_rate_max"] = action_stats["action_dist"].loc[:, 1].max().item()
         debug_stats["actor_dist_steer_rate_min"] = action_stats["action_dist"].loc[:, 1].min().item()
         # debug actor distibution std
-        #debug_stats["actor_std_acc_mean"] = action_stats["action_dist"].loc[:, 0].mean().item()
-        #debug_stats["actor_std_acc_max"] = action_stats["action_dist"].loc[:, 0].max().item()
-        #debug_stats["actor_std_acc_min"] = action_stats["action_dist"].loc[:, 0].min().item()
-        #debug_stats["actor_std_acc_steer_rate"] = action_stats["action_dist"].loc[:, 1].mean().item()
-        #debug_stats["actor_std_acc_steer_rate"] = action_stats["action_dist"].loc[:, 1].max().item()
-        #debug_stats["actor_std_acc_steer_rate"] = action_stats["action_dist"].loc[:, 1].min().item()
+        debug_stats["actor_std_acc_mean"] = action_stats["action_dist"].scale[:, 0].mean().item()
+        debug_stats["actor_std_acc_max"] = action_stats["action_dist"].scale[:, 0].max().item()
+        debug_stats["actor_std_acc_min"] = action_stats["action_dist"].scale[:, 0].min().item()
+        debug_stats["actor_std_acc_steer_rate_mean"] = action_stats["action_dist"].scale[:, 1].mean().item()
+        debug_stats["actor_std_acc_steer_rate_max"] = action_stats["action_dist"].scale[:, 1].max().item()
+        debug_stats["actor_std_acc_steer_rate_min"] = action_stats["action_dist"].scale[:, 1].min().item()
         
         # debug probs
         debug_stats["actor_logprobs"] = logprobs.mean().item()
