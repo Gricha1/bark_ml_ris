@@ -144,6 +144,7 @@ else:
     for val_key in val_keys:
         val_task_ids = list(range(len(env.valTasks[val_key])))
         #val_task_ids = [7, 9]
+        val_task_ids = [7]
         eval_tasks = len(val_task_ids)
         total_tasks += eval_tasks
         
@@ -165,6 +166,8 @@ else:
             # for id in range(5, 6):
                 # obs = env.reset(id=id, val_key=val_key)
                 images, isDone, info, episode_cost, min_beam = validate(env, agent, env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key, run=run, save_subgoal_image=args.save_subgoals_image, save_subgoal_first_image=args.save_subgoal_first_image)
+                print("episode_rewards:", info["episode_stats"]["rewards"])
+                print("dists_to_goal:", info["episode_stats"]["dists_to_goal"])
                 if isDone:
                     #total_distance += min_distance
                     #counter_done += 1
@@ -197,6 +200,7 @@ else:
                     
                     run.log({f"random_task": wandb.Video(images, fps=10, format="gif")})
         else:
+            # NOT WORKING
             for id in range(eval_tasks):
                 # obs = env.reset(id=id, val_key=val_key)
                 images, isDone, info, episode_cost, min_beam = validate(env, agent, env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key)

@@ -170,7 +170,6 @@ class RIS_PPO:
         goal = goal_batch
         subgoal = subgoal_batch
         
-
         #obs, goal = memory.sample_batch()
         #subgoal = memory.random_state_batch()
         #obs = memory.obs.detach()

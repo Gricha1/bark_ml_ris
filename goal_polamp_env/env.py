@@ -97,12 +97,15 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if info["geometirc_goal_achieved"] or self._max_episode_steps == self.step_counter:
       isDone = True
     
+    polamp_reward = reward
     if not info["geometirc_goal_achieved"]:
       reward = self.compute_rewards(np.array([1]), None).item()
     else:
       reward = 0.0
+    reward = polamp_reward
 
     info["agent_state"] = observation
+
     return obs_dict, reward, isDone, info
 
 

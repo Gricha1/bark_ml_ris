@@ -99,6 +99,9 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
     sum_reward = 0
     episode_constrained = []
     episode_min_beam = []
+    episode_stats = {}
+    episode_stats["rewards"] = []
+    episode_stats["dists_to_goal"] = []
 
     # debug subgoals
     if save_subgoal_first_image:
@@ -206,12 +209,17 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
         if save_image:
             images.append(env.render())
         t += 1
-        
+        episode_stats["rewards"].append(reward)
+        episode_stats["dists_to_goal"].append(info["dist_to_goal"])
+
     env.close()
     if save_subgoal_image:
         plt.close()
     if save_image or save_subgoal_image:
         images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
+
+    episode_stats["episode_cumul_reward"] = sum_reward
+    info["episode_stats"] = episode_stats
     return sum_reward if not save_image and not save_subgoal_image else images, isDone, info, np.mean(episode_constrained), np.min(episode_min_beam) 
 
     
