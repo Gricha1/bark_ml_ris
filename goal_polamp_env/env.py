@@ -102,7 +102,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       reward = self.compute_rewards(np.array([1]), None).item()
     else:
       reward = 0.0
-    reward = polamp_reward
+    #reward = polamp_reward
 
     info["agent_state"] = observation
 

@@ -10,7 +10,7 @@ from .goal_models import ActorCritic, Lyambda, LaplacePolicy
 
 
 class RIS_PPO:
-    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-4, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16, save_path=None, high_policy_batch_size=2024):
+    def __init__(self, state_dim, goal_dim, action_dim, args, action_space_high, h_lr=1e-3, alpha=0.1, Lambda=0.1, n_ensemble=10, epsilon=1e-16, save_path=None, high_policy_batch_size=2024):
         self.high_policy_batch_size = high_policy_batch_size
 
         self.lr = args.lr
@@ -192,7 +192,7 @@ class RIS_PPO:
                 policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
             else:
                 #policy_v = torch.cat([policy_v_1, policy_v_2], -1).abs().min(-1)[0]
-                policy_v = (torch.cat([policy_v_1, policy_v_2], -1) - 5).abs().min(-1)[0]
+                policy_v = (torch.cat([policy_v_1, policy_v_2], -1) - 25).abs().min(-1)[0]
 
 			# Compute subgoal distance loss
             v_1 = self.policy.value_layer(torch.cat((obs, subgoal), -1))
@@ -201,7 +201,7 @@ class RIS_PPO:
                 v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
             else:
                 #v = torch.cat([v_1, v_2], -1).abs().min(-1)[0]
-                v = (torch.cat([v_1, v_2], -1) - 5).abs().min(-1)[0]
+                v = (torch.cat([v_1, v_2], -1) - 25).abs().min(-1)[0]
 
             adv = - (v - policy_v)
             weight = F.softmax(adv/self.Lambda, dim=0)
