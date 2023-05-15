@@ -191,7 +191,8 @@ class RIS_PPO:
             if not dist_reward:
                 policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
             else:
-                policy_v = torch.cat([policy_v_1, policy_v_2], -1).abs().min(-1)[0]
+                #policy_v = torch.cat([policy_v_1, policy_v_2], -1).abs().min(-1)[0]
+                policy_v = (torch.cat([policy_v_1, policy_v_2], -1) - 5).abs().min(-1)[0]
 
 			# Compute subgoal distance loss
             v_1 = self.policy.value_layer(torch.cat((obs, subgoal), -1))
@@ -199,7 +200,8 @@ class RIS_PPO:
             if not dist_reward:
                 v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
             else:
-                v = torch.cat([v_1, v_2], -1).abs().min(-1)[0]
+                #v = torch.cat([v_1, v_2], -1).abs().min(-1)[0]
+                v = (torch.cat([v_1, v_2], -1) - 5).abs().min(-1)[0]
 
             adv = - (v - policy_v)
             weight = F.softmax(adv/self.Lambda, dim=0)
