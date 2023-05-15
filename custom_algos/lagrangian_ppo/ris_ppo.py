@@ -155,7 +155,7 @@ class RIS_PPO:
 
         return logprobs, state_values, const_state_value, dist_entropy, action_stats, D_KL, debug_stats
 
-    def update_high_level_policy(self, memory):
+    def update_high_level_policy(self, memory, dist_reward=False):
         stats_log = {}
         
         # HER 
@@ -188,12 +188,19 @@ class RIS_PPO:
 
             policy_v_1 = self.policy.value_layer(torch.cat((obs, new_subgoal), -1))
             policy_v_2 = self.policy.value_layer(torch.cat((new_subgoal, goal), -1))
-            policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+            if not dist_reward:
+                policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+            else:
+                policy_v = torch.cat([policy_v_1, policy_v_2], -1).abs().min(-1)[0]
 
 			# Compute subgoal distance loss
             v_1 = self.policy.value_layer(torch.cat((obs, subgoal), -1))
             v_2 = self.policy.value_layer(torch.cat((subgoal, goal), -1))
-            v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+            if not dist_reward:
+                v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+            else:
+                v = torch.cat([v_1, v_2], -1).abs().min(-1)[0]
+
             adv = - (v - policy_v)
             weight = F.softmax(adv/self.Lambda, dim=0)
 
