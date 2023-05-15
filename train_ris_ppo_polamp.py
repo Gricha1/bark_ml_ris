@@ -144,7 +144,7 @@ else:
     for val_key in val_keys:
         val_task_ids = list(range(len(env.valTasks[val_key])))
         #val_task_ids = [7, 9]
-        val_task_ids = [7]
+        val_task_ids = [12] #12 #18
         eval_tasks = len(val_task_ids)
         total_tasks += eval_tasks
         
@@ -191,13 +191,7 @@ else:
 
                 constrained_cost.append(episode_cost)
                 lst_min_beam.append(min_beam)
-                if args.save_image or args.save_subgoals_image:
-                    #wandb.init(config=environment_config, project="validation_custom_ppo")
-
-                    #print("type:", type(images[0]))
-                    #print("shape:", images[0].shape)
-                    #assert 1 == 0
-                    
+                if args.save_image or args.save_subgoals_image:                    
                     run.log({f"random_task": wandb.Video(images, fps=10, format="gif")})
         else:
             # NOT WORKING

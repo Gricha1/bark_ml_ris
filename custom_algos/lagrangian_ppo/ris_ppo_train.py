@@ -92,8 +92,11 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
     if save_image:
         images.append(env.render())
     if save_subgoal_image:
-        fig = plt.figure()
-        fig.add_subplot(111)
+        fig = plt.figure(figsize=[6.4*2, 4.8])
+        ax_states = fig.add_subplot(121)
+        ax_values = fig.add_subplot(122)
+        state_values = []
+        subgoal_values = []
     isDone = False
     t = 0
     sum_reward = 0
@@ -104,6 +107,7 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
     episode_stats["dists_to_goal"] = []
 
     # debug subgoals
+    """
     if save_subgoal_first_image:
         with torch.no_grad():
             encoded_state = torch.FloatTensor(state).to(agent.device).unsqueeze(0)
@@ -111,8 +115,6 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
             subgoal_distribution = agent.subgoal_net(encoded_state, encoded_goal)
             #subgoal = subgoal_distribution.rsample()
             subgoal = subgoal_distribution.loc
-            #fig = plt.figure()
-            #fig.add_subplot(111)
             x_f_state_to_draw = encoded_state.cpu()
             x_agent = x_f_state_to_draw[0][0]
             y_agent = x_f_state_to_draw[0][1]
@@ -122,29 +124,30 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
             y_goal = x_f_goal_to_draw[0][1]
             theta_goal = x_f_goal_to_draw[0][2]
             car_length = 0.5
-
-            # scale
+            
             plt.ylim(bottom=-2, top=36.)
             plt.xlim(left=2, right=40.)
-
-            plt.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
+            ax_states.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
                     [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
-            plt.scatter([x_agent], [y_agent], color="green", s=100)
-            plt.text(x_agent + 0.05, y_agent + 0.05, "agent")
+            ax_states.scatter([x_agent], [y_agent], color="green", s=100)
+            ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
 
-            plt.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
+            ax_states.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
                     [y_goal, y_goal + np.sin(theta_goal) * car_length], color="yellow", linewidth=3)
-            plt.scatter([x_goal], [y_goal], color="yellow", s=100)
-            plt.text(x_goal + 0.05, y_goal + 0.05, "goal")
+            ax_states.scatter([x_goal], [y_goal], color="yellow", s=100)
+            ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
 
-            plt.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
-            plt.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
+            ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+            ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
+
+            ax_values.plot([1,2,3],[-2,23,14])
 
             fig.canvas.draw()
             data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
             data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
             img = wandb.Image(data)
             run.log({f"agent_state": img})
+    """
 
     while not isDone and t < max_steps:
 
@@ -166,28 +169,45 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 theta_goal = x_f_goal_to_draw[0][2]
                 car_length = 0.5
 
-                # scale
-                plt.ylim(bottom=-5, top=36.)
-                plt.xlim(left=-5, right=40.)
-                
-                plt.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
+                #plt.ylim(bottom=-5, top=36.)
+                #plt.xlim(left=-5, right=40.)     
+                ax_states.set_ylim(bottom=-5, top=36.)
+                ax_states.set_xlim(left=-5, right=40.)
+                ax_states.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
                         [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
-                plt.scatter([x_agent], [y_agent], color="green", s=100)
-                plt.text(x_agent + 0.05, y_agent + 0.05, "agent")
-
-                plt.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
+                ax_states.scatter([x_agent], [y_agent], color="green", s=100)
+                ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
+                ax_states.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
                         [y_goal, y_goal + np.sin(theta_goal) * car_length], color="yellow", linewidth=3)
-                plt.scatter([x_goal], [y_goal], color="yellow", s=100)
-                plt.text(x_goal + 0.05, y_goal + 0.05, "goal")
+                ax_states.scatter([x_goal], [y_goal], color="yellow", s=100)
+                ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
+                ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
+ 
+                state_v = agent.policy.value_layer(torch.cat((encoded_state, encoded_goal), -1))
+                subgoal_v = agent.policy.value_layer(torch.cat((subgoal, encoded_goal), -1))
+                state_values.append(state_v[0][0].item())
+                subgoal_values.append(subgoal_v[0][0].item())
+                #plt.ylim(bottom=-5, top=36.)
+                #plt.xlim(left=0, right=max_steps)
+                ax_values.set_ylim(bottom=-5, top=36.)
+                ax_values.set_xlim(left=0, right=max_steps)
+                ax_values.plot(list(range(len(state_values))), state_values, label="V_state_to_goal")
+                ax_values.plot(list(range(len(subgoal_values))), subgoal_values, label="V_subgoal_to_goal")
+                ax_values.legend(loc="upper left")
 
-                plt.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
-                plt.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
+                #if len(state_values) <= 5:
+                #    print("state v:", state_values)
+                #    print("subgoal v:", subgoal_values)
+                #    assert 1 == 0
 
                 fig.canvas.draw()
                 data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                 data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                 images.append(data)
-                fig.clear()
+                #fig.clear()
+                ax_states.clear()
+                ax_values.clear()
 
 
         #action = agent.act(state, False)
@@ -260,7 +280,6 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
     )
     path_builder = PathBuilder()
     
-
     memory = Memory(args, env, agent.device)
 
     batch_time = 0
@@ -475,6 +494,6 @@ def ppo_batch_train(env, test_env, agent, args, wandb=None, saveImage=True):
                 val_key = "map0"
                 run = wandb
                 #id = np.random.choice(list(range(len(test_env.valTasks[val_key]))))
-                id = 0
+                id = 12
                 images, isDone, info, episode_cost, min_beam = validate(test_env, agent, test_env._max_episode_steps, save_image=args.save_image, id=id, val_key=val_key, run=run, save_subgoal_image=args.save_subgoals_image, save_subgoal_first_image=args.save_subgoal_first_image)
                 run.log({f"validation_video": wandb.Video(images, fps=10, format="gif")})
