@@ -92,6 +92,10 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
     if save_image:
         images.append(env.render())
     if save_subgoal_image:
+        env_min_x = -5
+        env_max_x = 40.
+        env_min_y = -5
+        env_max_y = 36.
         fig = plt.figure(figsize=[6.4*2, 4.8])
         ax_states = fig.add_subplot(121)
         ax_values = fig.add_subplot(122)
@@ -109,7 +113,6 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
 
     while not isDone and t < max_steps:
 
-        # debug subgoals
         if save_subgoal_image:
             with torch.no_grad():
                 encoded_state = torch.FloatTensor(state).to(agent.device).unsqueeze(0)
@@ -126,17 +129,13 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 y_goal = x_f_goal_to_draw[0][1]
                 theta_goal = x_f_goal_to_draw[0][2]
                 car_length = 0.5
-
-                #plt.ylim(bottom=-5, top=36.)
-                #plt.xlim(left=-5, right=40.)     
-                ax_states.set_ylim(bottom=-5, top=36.)
-                ax_states.set_xlim(left=-5, right=40.)
+     
+                ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
+                ax_states.set_xlim(left=env_min_x, right=env_max_x)
                 ax_states.plot([x_agent, x_agent + np.cos(theta_agent) * car_length], 
                         [y_agent, y_agent + np.sin(theta_agent) * car_length], color="green", linewidth=3)
                 ax_states.scatter([x_agent], [y_agent], color="green", s=100)
                 ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
-                #ax_states.plot([x_goal, x_goal + np.cos(theta_goal) * car_length], 
-                #        [y_goal, y_goal + np.sin(theta_goal) * car_length], color="yellow", linewidth=3)
                 ax_states.scatter([x_goal], [y_goal], color="yellow", s=100)
                 ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
                 ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
@@ -147,24 +146,46 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 subgoal_v = agent.policy.value_layer(torch.cat((subgoal, encoded_goal), -1))
                 state_values.append(state_v[0][0].item())
                 subgoal_values.append(subgoal_v[0][0].item())
-                #plt.ylim(bottom=-5, top=36.)
-                #plt.xlim(left=0, right=max_steps)
-                ax_values.set_ylim(bottom=-5, top=36.)
-                ax_values.set_xlim(left=0, right=max_steps)
-                ax_values.plot(list(range(len(state_values))), state_values, label="V_state_to_goal")
-                ax_values.plot(list(range(len(subgoal_values))), subgoal_values, label="V_subgoal_to_goal")
-                ax_values.legend(loc="upper left")
+                
+                ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
+                ax_values.set_xlim(left=env_min_x, right=env_max_x)
+                # create values grid
+                max_state_value = 1  
+                grid_states = []              
+                grid_goals = []
+                grid_resolution_x = 10
+                grid_resolution_y = 10
+                grid_dx = (env_max_x - env_min_x) / grid_resolution_x
+                grid_dy = (env_max_y - env_min_y) / grid_resolution_y
+                for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
+                    for grid_state_x in np.linspace(env_min_x + grid_dx/2, env_max_x - grid_dx/2, grid_resolution_x):
+                        grid_state = torch.FloatTensor(np.array([grid_state_x, grid_state_y, 0, 0, 0])).to(agent.device).unsqueeze(0)
+                        grid_states.append([grid_state_x, grid_state_y, 0, 0, 0])
+                grid_states = torch.FloatTensor(np.array(grid_states)).to(agent.device)
+                assert type(grid_states) == type(encoded_state), f"{type(grid_state)} == {type(encoded_state)}"                
+                grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(agent.device)
+                grid_vs = agent.policy.value_layer(torch.cat((grid_states, grid_goals), -1))
+                assert grid_goals.shape == grid_states.shape
+                grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
 
-                #if len(state_values) <= 5:
-                #    print("state v:", state_values)
-                #    print("subgoal v:", subgoal_values)
-                #    assert 1 == 0
+                img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_x])
+                cb = fig.colorbar(img)
+                ax_values.scatter([x_agent], [y_agent], color="green", s=100)
+                ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
+
+                #ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
+                #ax_values.set_xlim(left=0, right=max_steps)
+                #ax_values.plot(list(range(len(state_values))), state_values, label="V_state_to_goal")
+                #ax_values.plot(list(range(len(subgoal_values))), subgoal_values, label="V_subgoal_to_goal")
+                #ax_values.legend(loc="upper left")
 
                 fig.canvas.draw()
+                
                 data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                 data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                 images.append(data)
-                #fig.clear()
+                cb.remove()
                 ax_states.clear()
                 ax_values.clear()
 
