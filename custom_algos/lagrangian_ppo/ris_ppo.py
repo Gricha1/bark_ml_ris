@@ -417,8 +417,10 @@ class RIS_PPO:
             if not os.path.exists(folder_path):
                 os.makedirs(folder_path)
             self.policy.save(folder_path)
+            torch.save(self.subgoal_net.state_dict(), f'{folder_path}/subgoal.pkl')
             
     def load(self, folder_path):
         if folder_path is not None:
             folder_path = os.path.join('custom_train_dir', folder_path)
             self.policy.load(folder_path)
+            self.subgoal_net.load_state_dict(torch.load(f'{folder_path}/subgoal.pkl'))
