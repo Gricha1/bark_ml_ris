@@ -321,7 +321,7 @@ class RIS_PPO:
             surr2 = clamp_ratios * advantages
             #policy_loss = -torch.min(surr1, surr2).mean()
             policy_loss = -torch.min(surr1, surr2)
-            policy_loss += self.alpha*D_KL
+            #policy_loss += self.alpha*D_KL
             policy_loss = policy_loss.mean()
             loss = policy_loss - 0.01 * dist_entropy
 
