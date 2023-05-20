@@ -101,7 +101,7 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
         ax_values = fig.add_subplot(122)
         state_values = []
         subgoal_values = []
-        subgoals = []
+        #subgoals = []
     isDone = False
     t = 0
     sum_reward = 0
@@ -119,7 +119,21 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 encoded_goal = torch.FloatTensor(goal).to(agent.device).unsqueeze(0)
                 subgoal_distribution = agent.subgoal_net(encoded_state, encoded_goal)
                 subgoal = subgoal_distribution.loc
-                subgoals.append((subgoal[0][0].item(), subgoal[0][1].item()))
+                #subgoals.append((subgoal[0][0].item(), subgoal[0][1].item()))
+                def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
+                    if K == 0:
+                        return
+                    subgoal_distribution = agent.subgoal_net(encoded_state, encoded_goal)
+                    subgoal = subgoal_distribution.loc
+                    if add_to_end:
+                        subgoals.append(subgoal)
+                    else:
+                         subgoals.insert(0, subgoal)
+                    generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
+                    generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
+                subgoals = []
+                generate_subgoals(encoded_state, encoded_goal, subgoals, K=3)
+                
                 x_f_state_to_draw = encoded_state.cpu()
                 x_agent = x_f_state_to_draw[0][0]
                 y_agent = x_f_state_to_draw[0][1]
@@ -136,9 +150,10 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
                 ax_states.scatter([x_goal], [y_goal], color="yellow", s=100)
                 ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
-                ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
-                ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, "subgoal")
-                ax_states.plot([xy[0] for xy in subgoals], [xy[1] for xy in subgoals], color="orange")
+                for ind, subgoal in enumerate(subgoals):
+                    ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                    ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                #ax_states.plot([xy[0] for xy in subgoals], [xy[1] for xy in subgoals], color="orange")
  
                 state_v = agent.policy.value_layer(torch.cat((encoded_state, encoded_goal), -1))
                 subgoal_v = agent.policy.value_layer(torch.cat((subgoal, encoded_goal), -1))
@@ -169,7 +184,9 @@ def validate(env, agent, max_steps, save_image=False, id=None, val_key=None, run
                 img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
                 cb = fig.colorbar(img)
                 ax_values.scatter([x_agent], [y_agent], color="green", s=100)
-                ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                for ind, subgoal in enumerate(subgoals):
+                    ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                    ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                 ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
 
                 fig.canvas.draw()

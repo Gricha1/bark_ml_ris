@@ -11,6 +11,11 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     POLAMPEnvironment.__init__(self, full_env_name, config)
 
     self.reward_scale = 1
+    self.dataset_info = {}
+    env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # add -2 for visualization purpuse 
+                      "theta": (-1.5707963267948966, 1.5707963267948966), 
+                      "v": (0, 0), "steer": (0, 0)}
+    self.dataset_info["boundaries"] = env_boundaries
 
     observation = Box(-np.inf, np.inf, (5,), np.float32) 
     desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
@@ -33,9 +38,94 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def compute_rewards(self, new_actions, new_next_obs_dict):    
     return -1.0 * self.reward_scale * np.ones((new_actions.shape[0], 1))
 
+
+  def random_data_reset(self, task=None, grid_map=None, id=None, val_key=None):
+        # self.maps = dict(self.maps_init)
+        self.hardGoalReached = False
+        # if not grid_map is None:
+            # print(f"grid_map.resolution: {grid_map.resolution}")
+            # self.environment.reset(grid_map.resolution)
+
+        self.step_counter = 0
+        self.last_observations = []
+        # self.last_action = [0., 0.]
+        # self.obstacle_segments = []
+        # self.dyn_obstacle_segments = []
+        self.dynamic_obstacles = []
+        # self.dyn_acc = 0
+        # self.dyn_ang_vel = 0
+        self.collision_time = 0
+        # print(f"self.step_counter: {self.step_counter}")
+        # set new tasks
+        if id is None or val_key is None:
+            if task is None or grid_map is None:
+                self.map_key = self.lst_keys[np.random.randint(len(self.lst_keys))]
+                polygon_map = self.maps[self.map_key]
+                tasks = self.trainTasks[self.map_key]
+                id = np.random.randint(len(tasks))
+                current_task = {}
+                current_task["start"] = tasks[id][0]
+                current_task["goal"] = tasks[id][1]
+
+                # random sample state&goal
+                polygon_map = []
+                boundaries = [self.dataset_info["boundaries"]["x"], 
+                              self.dataset_info["boundaries"]["y"],
+                              self.dataset_info["boundaries"]["theta"],
+                              self.dataset_info["boundaries"]["v"],
+                              self.dataset_info["boundaries"]["steer"]]
+                current_task["start"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                                         for x, boundary in zip(np.random.random(5), boundaries)] 
+                current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                                         for x, boundary in zip(np.random.random(5), boundaries)] 
+          
+                # Checking if the task is correct
+                while not self.environment.set_polygon_task(current_task, polygon_map):
+                    print("------one more time------")
+                    self.map_key = self.lst_keys[np.random.randint(len(self.lst_keys))]
+                    polygon_map = self.maps[self.map_key]
+                    tasks = self.trainTasks[self.map_key]
+                    id = np.random.randint(len(tasks))
+                    current_task = {}
+                    current_task["start"] = tasks[id][0]
+                    current_task["goal"] = tasks[id][1]
+                # print(f"polygon_map: {polygon_map}")
+                # print(f"current_task: {current_task}")
+            else:
+                self.environment.set_task(task, grid_map)
+        else:
+            print("---------- Validating ----------")
+            self.map_key = val_key
+            polygon_map = self.maps[self.map_key]
+            tasks = self.valTasks[self.map_key]
+            current_task = {}
+            current_task["start"] = tasks[id][0]
+            current_task["goal"] = tasks[id][1]
+            self.environment.set_polygon_task(current_task, polygon_map)
+
+        
+        self.environment.reset(self.environment.occupancy_grid.resolution)
+        # We need to include debug for inference?
+        self.environment.agent.action = [0., 0.]
+        beams_observation = self.environment.get_observation(self.environment.agent.current_state)
+        extra_observation = self.environment.agent.getDiff()
+        
+        if len(self.last_observations) == 0:
+            for _ in range(self.frame_stack - 1):
+                self.last_observations.extend(beams_observation)
+                self.last_observations.extend(extra_observation)
+        observation = list(self.last_observations)
+        observation.extend(beams_observation)
+        observation.extend(extra_observation)
+
+        return np.array(observation, dtype=np.float32)
+
+
+
   def reset(self, **kwargs):
 
-    observed_state = POLAMPEnvironment.reset(self, **kwargs)
+    #observed_state = POLAMPEnvironment.reset(self, **kwargs)
+    observed_state = self.random_data_reset(self, **kwargs)
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
