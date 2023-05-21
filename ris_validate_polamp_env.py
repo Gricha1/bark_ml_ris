@@ -171,8 +171,8 @@ if __name__ == "__main__":
     eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length, images \
-                    = evalPolicy(policy, test_env, save_subgoal_image=False, 
-                                 render_env=True, video_task_id=18)    
+                    = evalPolicy(policy, test_env, save_subgoal_image=True, 
+                                 render_env=False, video_task_id=18)    
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)

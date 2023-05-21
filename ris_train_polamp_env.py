@@ -20,15 +20,6 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_task_id=12):
     assert save_subgoal_image != render_env, "only show subgoals video or render env"
-    # debug
-    state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
-    goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
-    max_state_vals = {}
-    min_state_vals = {}
-    max_goal_vals = {}
-    min_goal_vals = {}
-    mean_actions = {"a": [], "v_s": []}
-
     if render_env:
         images = []
         images.append(env.render())    
@@ -43,8 +34,14 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
         ax_values = fig.add_subplot(122)
         state_values = []
         subgoal_values = []
-        #subgoals = []
 
+    state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
+    goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
+    max_state_vals = {}
+    min_state_vals = {}
+    max_goal_vals = {}
+    min_goal_vals = {}
+    mean_actions = {"a": [], "v_s": []}
     final_distances = []
     successes = [] 
     acc_rewards = []
@@ -60,10 +57,8 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
         goal = obs["desired_goal"]
         t = 0
         acc_reward = 0
-        # debug
         state_distrs["start_x"].append(state[0])
 
-        # debug
         with torch.no_grad():
             encoded_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
             encoded_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
@@ -88,7 +83,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
                     encoded_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
                     subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
                     subgoal = subgoal_distribution.loc
-                    #subgoals.append((subgoal[0][0].item(), subgoal[0][1].item()))
                     def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
                         if K == 0:
                             return
@@ -103,31 +97,29 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
                     subgoals = []
                     generate_subgoals(encoded_state, encoded_goal, subgoals, K=3)
                     
-                    x_f_state_to_draw = encoded_state.cpu()
-                    x_agent = x_f_state_to_draw[0][0]
-                    y_agent = x_f_state_to_draw[0][1]
-                    theta_agent = x_f_state_to_draw[0][2]
-                    x_f_goal_to_draw = encoded_goal.cpu()
-                    x_goal = x_f_goal_to_draw[0][0]
-                    y_goal = x_f_goal_to_draw[0][1]
-                    theta_goal = x_f_goal_to_draw[0][2]
-                    car_length = 0.5
+                    x_agent = encoded_state.cpu()[0][0]
+                    y_agent = encoded_state.cpu()[0][1]
+                    theta_agent = encoded_state.cpu()[0][2]
+                    x_goal = encoded_goal.cpu()[0][0]
+                    y_goal = encoded_goal.cpu()[0][1]
+                    theta_goal = encoded_goal.cpu()[0][2]
+                    car_length = 2
         
                     ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_states.set_xlim(left=env_min_x, right=env_max_x)
                     ax_states.scatter([x_agent], [y_agent], color="green", s=100)
                     ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
+                    ax_states.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
+                                      [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
+                                      color="green", s=5)
                     ax_states.scatter([x_goal], [y_goal], color="yellow", s=100)
                     ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
+                    ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
+                                      [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
+                                      color="yellow", s=5)
                     for ind, subgoal in enumerate(subgoals):
                         ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
                         ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
-                    #ax_states.plot([xy[0] for xy in subgoals], [xy[1] for xy in subgoals], color="orange")
-    
-                    #state_v = agent.policy.value_layer(torch.cat((encoded_state, encoded_goal), -1))
-                    #subgoal_v = agent.policy.value_layer(torch.cat((subgoal, encoded_goal), -1))
-                    #state_values.append(state_v[0][0].item())
-                    #subgoal_values.append(subgoal_v[0][0].item())
                     
                     ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_values.set_xlim(left=env_min_x, right=env_max_x)
@@ -147,17 +139,21 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
                     assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
                     grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
                     assert grid_goals.shape == grid_states.shape
-                    #grid_vs = agent.policy.value_layer(torch.cat((grid_states, grid_goals), -1))
                     grid_vs = policy.value(grid_states, grid_goals)
                     grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
-
                     img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
                     cb = fig.colorbar(img)
                     ax_values.scatter([x_agent], [y_agent], color="green", s=100)
+                    ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
+                                      [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
+                                      color="black", s=5)
                     for ind, subgoal in enumerate(subgoals):
                         ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
                         ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                     ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
+                    ax_values.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
+                                      [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
+                                      color="black", s=5)
 
                     fig.canvas.draw()
                     
@@ -168,7 +164,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
                     ax_states.clear()
                     ax_values.clear()
 
-            # debug
             state_distrs["x"].append(state[0])
             state_distrs["y"].append(state[1])
             state_distrs["theta"].append(state[2])
@@ -182,7 +177,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
             goal_dists["goal_steer"].append(goal[4])
             
             action = policy.select_action(state, goal)
-            # debug
             mean_actions["a"].append(action[0])
             mean_actions["v_s"].append(action[1])
 
@@ -202,20 +196,17 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
                 images.append(env.render())
             t += 1
 
-        # debug
         final_distances.append(info["dist_to_goal"])
         successes.append(1.0 * info["geometirc_goal_achieved"])
         episode_lengths.append(info["last_step_num"])
         acc_rewards.append(acc_reward)        
-
-    # debug    
+  
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
     eval_reward = np.mean(acc_rewards)
     eval_subgoal_dist = np.mean(subgoal_max_dists)
     eval_episode_length = np.mean(episode_lengths)
 
-    # debug
     for key in state_distrs:
         max_state_vals["max_" + str(key)] = np.max(state_distrs[key])
         min_state_vals["min_" + str(key)] = np.min(state_distrs[key])
