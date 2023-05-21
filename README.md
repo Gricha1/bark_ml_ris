@@ -27,6 +27,8 @@ python origin_train_lagrangian_ppo.py --name_save test_PPO_2
 
 # goal polamp env
 cd usr/home/workspace/
+
+
 ## Train RIS_PPO
 python train_ris_ppo_polamp.py --name_save test_RIS_PPO_polamp_ex51
 
@@ -35,3 +37,8 @@ python train_ris_ppo_polamp.py --name_save test_RIS_PPO_polamp_ex51
 python train_ris_ppo_polamp.py --name_val test_RIS_PPO_polamp_ex51
 
 python utilite_video_generator.py 
+
+
+## Train RIS_SAC
+python ris_train_polamp_env.py --exp_name polamp_env_ex_1
+python ris_validate_polamp_env.py --exp_name polamp_env_ex_1

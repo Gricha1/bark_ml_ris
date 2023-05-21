@@ -18,7 +18,8 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, save_subgoal_image=True):
+def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_task_id=12):
+    assert save_subgoal_image != render_env, "only show subgoals video or render env"
     # debug
     state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
     goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
@@ -28,9 +29,11 @@ def evalPolicy(policy, env, save_subgoal_image=True):
     min_goal_vals = {}
     mean_actions = {"a": [], "v_s": []}
 
+    if render_env:
+        images = []
+        images.append(env.render())    
     if save_subgoal_image:
         images = []
-    if save_subgoal_image:
         env_min_x = -5
         env_max_x = 40.
         env_min_y = -5
@@ -62,8 +65,8 @@ def evalPolicy(policy, env, save_subgoal_image=True):
 
         # debug
         with torch.no_grad():
-            encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
-            encoded_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
+            encoded_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
+            encoded_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
             subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
             subgoal = subgoal_distribution.rsample()
             sub_x = subgoal.cpu()[0][0]
@@ -79,7 +82,7 @@ def evalPolicy(policy, env, save_subgoal_image=True):
             # normalize states
             #state = normalize_state(state, env_state_bounds, validate=True)
             #goal = normalize_state(goal, env_state_bounds, validate=True)
-            if save_subgoal_image and task_id == 12:
+            if save_subgoal_image and task_id == video_task_id:
                 with torch.no_grad():
                     encoded_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
                     encoded_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
@@ -195,6 +198,8 @@ def evalPolicy(policy, env, save_subgoal_image=True):
             next_state = next_obs["observation"]
             state = next_state
 
+            if render_env and task_id == video_task_id:
+                images.append(env.render())
             t += 1
 
         # debug
@@ -220,9 +225,10 @@ def evalPolicy(policy, env, save_subgoal_image=True):
         min_goal_vals["min_" + str(key)] = np.min(goal_dists[key])
         goal_dists[key] = np.mean(goal_dists[key])
 
+    env.close()
     if save_subgoal_image:
         plt.close()
-    if save_subgoal_image:
+    if save_subgoal_image or render_env:
         images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
 
     return eval_distance, success_rate, eval_reward, \
@@ -303,11 +309,9 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-
-
     parser.add_argument("--state_dim",          default=5, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
-    parser.add_argument("--wandb_project",      default="RIS_polamp_env_train", type=str)
+    parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)

@@ -21,7 +21,7 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-
+    """
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
     parser.add_argument("--epsilon",            default=1e-4, type=float)
@@ -54,6 +54,35 @@ if __name__ == "__main__":
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
     print(args)
+    """
+
+    parser.add_argument("--env",                default="polamp_env")
+    parser.add_argument("--test_env",           default="polamp_env")
+
+    parser.add_argument("--epsilon",            default=1e-16, type=float)
+    parser.add_argument("--distance_threshold", default=0.5, type=float)
+    parser.add_argument("--start_timesteps",    default=1e4, type=int) 
+    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
+    parser.add_argument("--max_timesteps",      default=5e6, type=int)
+    parser.add_argument("--batch_size",         default=2048, type=int)
+    parser.add_argument("--replay_buffer_size", default=1e6, type=int)
+    parser.add_argument("--n_eval",             default=5, type=int)
+    parser.add_argument("--device",             default="cuda")
+    parser.add_argument("--seed",               default=42, type=int)
+    parser.add_argument("--exp_name",           default="RIS_ant")
+    parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float)
+    parser.add_argument("--h_lr",               default=1e-4, type=float)
+    parser.add_argument("--q_lr",               default=1e-3, type=float)
+    parser.add_argument("--pi_lr",              default=1e-3, type=float)
+
+    parser.add_argument("--state_dim",          default=5, type=int)
+    parser.add_argument("--using_wandb",        default=True, type=bool)
+    parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
+    parser.add_argument('--log_loss', dest='log_loss', action='store_true')
+    parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
+    parser.set_defaults(log_loss=True)
+    args = parser.parse_args()
 
 
     with open("polamp_env/configs/train_configs.json", 'r') as f:
@@ -91,8 +120,8 @@ if __name__ == "__main__":
     test_env_name = train_env_name
 
     # Set seed
-    #np.random.seed(args.seed)
-    #random.seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     torch.manual_seed(args.seed)
 
     
@@ -135,9 +164,21 @@ if __name__ == "__main__":
 
     #validate_tasks = [17, 24, 32, 62, 98, 102, 106, 138, 194, 212, 219]
     #validate_tasks = list(range(num_val_tasks))
+    #validate_tasks = [1, 10, 25]
 
-    validate_tasks = [1, 10, 25]
+    from ris_train_polamp_env import evalPolicy
 
+    eval_distance, success_rate, eval_reward, \
+            eval_subgoal_dist, val_state, val_goal, \
+            mean_actions, eval_episode_length, images \
+                    = evalPolicy(policy, test_env, save_subgoal_image=False, 
+                                 render_env=True, video_task_id=18)    
+    wandb_log_dict = {}
+    wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
+    run.log(wandb_log_dict)
+    print("validation success rate:", success_rate)
+
+    """
     for task_id in validate_tasks:
         # Initialize environment
         obs = env.reset(id=task_id, val_key=val_key)
@@ -232,6 +273,7 @@ if __name__ == "__main__":
                 run.log({"validate_video": wandb.Video(video, fps=20)})
 
     print("failed tasks idxs:", failed_tasks_idx)
+    """
 
 
 
