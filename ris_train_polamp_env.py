@@ -18,7 +18,7 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_task_id=12):
+def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=True, video_task_id=12):
     assert save_subgoal_image != render_env, "only show subgoals video or render env"
     if render_env:
         images = []
@@ -47,7 +47,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
     acc_rewards = []
     subgoal_max_dists = []
     episode_lengths = []
-
     val_key = "map0"
     eval_tasks = len(env.valTasks[val_key])
     for task_id in range(eval_tasks):    
@@ -121,6 +120,30 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, video_tas
                         ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
                         ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                     
+                    if plot_obstacles:
+                        for obstacle in env.maps[val_key]:
+                            obstacle_x = obstacle[0]
+                            obstacle_y = obstacle[1]
+                            obstacle_theta = obstacle[2]
+                            obstacle_half_width = obstacle[3]
+                            obstacle_half_length = obstacle[3]
+                            assert obstacle_theta == 0.0, "didnt implement for other values"
+                            ax_states.scatter(np.linspace(obstacle_x - obstacle_half_length, obstacle_x - obstacle_half_length, 100), 
+                                            np.linspace(obstacle_y - obstacle_half_width, obstacle_y + obstacle_half_width, 100), 
+                                            color="blue", s=2)
+                            ax_states.scatter(np.linspace(obstacle_x - obstacle_half_length, obstacle_x + obstacle_half_length, 100), 
+                                            np.linspace(obstacle_y + obstacle_half_width, obstacle_y + obstacle_half_width, 100), 
+                                            color="blue", s=2)
+                            ax_states.scatter(np.linspace(obstacle_x + obstacle_half_length, obstacle_x + obstacle_half_length, 100), 
+                                            np.linspace(obstacle_y + obstacle_half_width, obstacle_y - obstacle_half_width, 100), 
+                                            color="blue", s=2)
+                            ax_states.scatter(np.linspace(obstacle_x + obstacle_half_length, obstacle_x - obstacle_half_length, 100), 
+                                            np.linspace(obstacle_y - obstacle_half_width, obstacle_y - obstacle_half_width, 100), 
+                                            color="blue", s=2)
+                            
+
+
+
                     ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_values.set_xlim(left=env_min_x, right=env_max_x)
                     max_state_value = 1  
@@ -254,34 +277,8 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
-
-    """
-    parser.add_argument("--epsilon",            default=1e-4, type=float)
-    parser.add_argument("--replay_buffer_goals",default=0.5, type=float)
-    parser.add_argument("--distance_threshold", default=0.05, type=float)
-    parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
-    parser.add_argument("--max_timesteps",      default=5e6, type=int)
-    parser.add_argument("--batch_size",         default=1024, type=int)
-    parser.add_argument("--replay_buffer_size", default=5e5, type=int)
-    parser.add_argument("--n_eval",             default=10, type=int)
-    parser.add_argument("--device",             default="cuda")
-    parser.add_argument("--seed",               default=42, type=int)
-    parser.add_argument("--exp_name",           default="RIS_sawyer")
-    parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=0.1, type=float)
-
-    parser.add_argument("--h_lr",               default=1e-4, type=float)
-    parser.add_argument("--q_lr",               default=1e-3, type=float)
-    parser.add_argument("--pi_lr",              default=1e-3, type=float)
-
-    #parser.add_argument("--h_lr",               default=1e-4, type=float)
-    #parser.add_argument("--q_lr",               default=1e-3, type=float)
-    #parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    """
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
@@ -314,7 +311,6 @@ if __name__ == "__main__":
 
     with open("polamp_env/configs/environment_configs.json", 'r') as f:
         our_env_config = json.load(f)
-        # print(our_env_config)
 
     with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
         reward_config = json.load(f)
@@ -325,7 +321,7 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
     # maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    maps["map0"] = []
+    #maps["map0"] = []
 
     args.evaluation = False
     environment_config = {

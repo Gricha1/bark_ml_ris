@@ -21,41 +21,6 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    """
-    parser.add_argument("--env",                default="polamp_env")
-    parser.add_argument("--test_env",           default="polamp_env")
-    parser.add_argument("--epsilon",            default=1e-4, type=float)
-    parser.add_argument("--replay_buffer_goals",default=0.5, type=float)
-    parser.add_argument("--distance_threshold", default=0.05, type=float)
-    parser.add_argument("--start_timesteps",    default=0, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
-    parser.add_argument("--max_timesteps",      default=5e6, type=int)
-    parser.add_argument("--batch_size",         default=1024, type=int)
-    parser.add_argument("--replay_buffer_size", default=5e5, type=int)
-    parser.add_argument("--n_eval",             default=10, type=int)
-    parser.add_argument("--device",             default="cuda")
-    parser.add_argument("--seed",               default=42, type=int)
-    parser.add_argument("--exp_name",           default="RIS_sawyer")
-    parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=0.1, type=float)
-
-    parser.add_argument("--h_lr",               default=1e-4, type=float)
-    parser.add_argument("--q_lr",               default=1e-3, type=float)
-    parser.add_argument("--pi_lr",              default=1e-3, type=float)
-    parser.add_argument("--state_dim",          default=5, type=int)
-
-    parser.add_argument("--no_video",           default=False, type=bool)
-    parser.add_argument("--validate_bad_cases", default=False, type=bool)
-    parser.add_argument("--using_wandb",        default=True, type=bool)
-    parser.add_argument("--wandb_project",      default="RIS_polamp_env_validate", type=str)
-
-    parser.add_argument('--log_loss', dest='log_loss', action='store_true')
-    parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
-    parser.set_defaults(log_loss=True)
-    args = parser.parse_args()
-    print(args)
-    """
-
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
 
@@ -84,13 +49,11 @@ if __name__ == "__main__":
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
 
-
     with open("polamp_env/configs/train_configs.json", 'r') as f:
         train_config = json.load(f)
 
     with open("polamp_env/configs/environment_configs.json", 'r') as f:
         our_env_config = json.load(f)
-        # print(our_env_config)
 
     with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
         reward_config = json.load(f)
@@ -101,8 +64,13 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1, dynamic=False)
     #maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    maps["map0"] = []
+    #maps["map0"] = []
 
+    # dataset info
+    print("dataset:", len(dataSet["obstacles"][0]["map0"]), #4 maps
+                      len(dataSet["obstacles"][1]["map0"]), #70 train tasks
+                      len(dataSet["obstacles"][2]["map0"])  #35 val tasks
+         )
 
     args.evaluation = False
     environment_config = {
@@ -124,7 +92,6 @@ if __name__ == "__main__":
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    
     # register polamp env
     register(
         id=train_env_name,
@@ -132,7 +99,6 @@ if __name__ == "__main__":
         kwargs={'full_env_name': "polamp_env", "config": args.other_keys}
     )
 
-    
     env         = gym.make(train_env_name)
     test_env    = gym.make(test_env_name)
     action_dim = env.action_space.shape[0]
@@ -154,7 +120,6 @@ if __name__ == "__main__":
         policy.load(folder)
         print("weights is loaded")
 
-
     success_rate = 0
     fail_rate = 0
     num_val_tasks = 35
@@ -171,8 +136,11 @@ if __name__ == "__main__":
     eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length, images \
-                    = evalPolicy(policy, test_env, save_subgoal_image=True, 
-                                 render_env=False, video_task_id=18)    
+                    = evalPolicy(policy, test_env, 
+                                 save_subgoal_image=False, 
+                                 render_env=True, 
+                                 plot_obstacles=True, 
+                                 video_task_id=18) #18
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)

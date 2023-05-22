@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from gym.spaces import *
 from polamp_env.lib.envs import POLAMPEnvironment
 
+from polamp_env.lib.structures import State
+
 
 class GCPOLAMPEnvironment(POLAMPEnvironment):
   def __init__(self, full_env_name, config):
@@ -39,7 +41,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     return -1.0 * self.reward_scale * np.ones((new_actions.shape[0], 1))
 
 
-  def random_data_reset(self, task=None, grid_map=None, id=None, val_key=None):
+  def random_data_reset(self, task=None, grid_map=None, id=None, val_key=None, static_obsts=False):
         # self.maps = dict(self.maps_init)
         self.hardGoalReached = False
         # if not grid_map is None:
@@ -67,21 +69,83 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 current_task["start"] = tasks[id][0]
                 current_task["goal"] = tasks[id][1]
 
-                # random sample state&goal
-                polygon_map = []
-                boundaries = [self.dataset_info["boundaries"]["x"], 
-                              self.dataset_info["boundaries"]["y"],
-                              self.dataset_info["boundaries"]["theta"],
-                              self.dataset_info["boundaries"]["v"],
-                              self.dataset_info["boundaries"]["steer"]]
-                current_task["start"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
-                                         for x, boundary in zip(np.random.random(5), boundaries)] 
-                current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
-                                         for x, boundary in zip(np.random.random(5), boundaries)] 
+                if not static_obsts:
+                  # random sample state&goal
+                  polygon_map = []
+                  boundaries = [self.dataset_info["boundaries"]["x"], 
+                                self.dataset_info["boundaries"]["y"],
+                                self.dataset_info["boundaries"]["theta"],
+                                self.dataset_info["boundaries"]["v"],
+                                self.dataset_info["boundaries"]["steer"]]
+                  current_task["start"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                                          for x, boundary in zip(np.random.random(5), boundaries)] 
+                  current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                                          for x, boundary in zip(np.random.random(5), boundaries)] 
+                else:
+                  # left - right 1
+                  # x = (-2)<=(+35), y = (33)<=(35), theta = (-0.35)<=(+0.35)
+                  # left - right 2
+                  # x = (-2)<=(+35), y = (+18)<=(+18.4), theta = (-0.35)<=(+0.1)
+                  # x = (-2)<=(+35), y = (+16)<=(+18), theta = (-0.35)<=(+0.35)
+                  # x = (-2)<=(+35), y = (+15.6)<=(+16), theta = (-0.1)<=(+0.35)
+                  # left - right 3
+                  # x = (-2)<=(+35), y = (-4)<=(0.5), theta = (-0.35)<=(+0.35)
+                  
+                  # up - down 1
+                  # x = (-5)<=(-2), y = (-3)<=(+33), theta = (np.pi/2 - 0.1)<=(np.pi/2 + 0.35)
+                  # up - down 2
+                  # x = (+18.5)<=(+19), y = (-3)<=(+33), theta = (np.pi/2 - 0.1)<=(np.pi/2 + 0.35)
+                  # x = (+17.5)<=(+18.5), y = (-3)<=(+33), theta = (np.pi/2 - 0.35)<=(np.pi/2 + 0.35)
+                  # x = (+17)<=(+17.5), y = (-3)<=(+33), theta = (np.pi/2 - 0.35)<=(np.pi/2 + 0.1)
+                  # up - down 3
+                  # x = (38)<=(40), y = (-3)<=(+33), theta = (np.pi/2 - 0.35)<=(np.pi/2 + 0.35)
+
+                  def get_random_sampled_state():
+                    dataset_info = {}
+                    env_boundaries = {"v": (0, 0), "steer": (0, 0)}
+                    dataset_info["boundaries"] = env_boundaries
+                    agent_horizontal_orientation = np.random.choice([False, True])
+                    goal_horizontal_orientation = np.random.choice([False, True])
+                    agent_left_to_right_down_to_up = np.random.choice([False, True])
+                    goal_left_to_right = np.random.choice([False, True])
+                    line = np.random.choice([1, 2, 3])
+                    if agent_horizontal_orientation:
+                      env_boundaries["x"] = (-2, 35)
+                      env_boundaries["theta"] = (-0.35, 0.35)
+                      if agent_left_to_right_down_to_up:
+                        env_boundaries["theta"] = (-0.35, 0.35)
+                      else:
+                        env_boundaries["theta"] = (np.pi - 0.35, np.pi + 0.35)
+                      if line == 1: env_boundaries["y"] = (33, 35)
+                      elif line == 2: env_boundaries["y"] = (16.5, 17.5)
+                      elif line == 3: env_boundaries["y"] = (-4, 0.5)
+                    else:
+                      env_boundaries["y"] = (-3, 33)
+                      if agent_left_to_right_down_to_up:
+                        env_boundaries["theta"] = (np.pi/2 - 0.35, np.pi/2 + 0.35)
+                      else:
+                        env_boundaries["theta"] = (-np.pi/2 - 0.35, -np.pi/2 + 0.35)
+                      if line == 1: env_boundaries["x"] = (-5, -2)
+                      elif line == 2: env_boundaries["x"] = (17.5, 18.5)
+                      elif line == 3: env_boundaries["x"] = (38, 40)
+
+                    boundaries = [dataset_info["boundaries"]["x"], 
+                                  dataset_info["boundaries"]["y"],
+                                  dataset_info["boundaries"]["theta"],
+                                  dataset_info["boundaries"]["v"],
+                                  dataset_info["boundaries"]["steer"]]
+                    task = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                            for x, boundary in zip(np.random.random(5), boundaries)] 
+
+                    return task
+
+                  current_task["start"] = get_random_sampled_state() 
+                  current_task["goal"] = get_random_sampled_state() 
           
                 # Checking if the task is correct
                 while not self.environment.set_polygon_task(current_task, polygon_map):
                     print("------one more time------")
+                    assert 1 == 0, "didnt load task"
                     self.map_key = self.lst_keys[np.random.randint(len(self.lst_keys))]
                     polygon_map = self.maps[self.map_key]
                     tasks = self.trainTasks[self.map_key]
@@ -103,7 +167,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
             current_task["goal"] = tasks[id][1]
             self.environment.set_polygon_task(current_task, polygon_map)
 
-        
         self.environment.reset(self.environment.occupancy_grid.resolution)
         # We need to include debug for inference?
         self.environment.agent.action = [0., 0.]
@@ -125,7 +188,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def reset(self, **kwargs):
 
     #observed_state = POLAMPEnvironment.reset(self, **kwargs)
-    observed_state = self.random_data_reset(self, **kwargs)
+    observed_state = self.random_data_reset(self, **kwargs, static_obsts=True)
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
@@ -144,6 +207,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_desired_goal" : state_desired_goal, 
                 "state_achieved_goal" : state_achieved_goal
               } 
+    
+    self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+    self.collision_state = None
 
     return obs_dict
 
@@ -194,7 +260,16 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       reward = 0.0
     #reward = polamp_reward
 
+    if "Collision" in info:
+      if self.collision_state is None:
+        self.collision_state = State(self.previous_agent_state)
+        self.collision_state.v = 0
+    
+    if self.collision_state is not None:
+      self.environment.agent.current_state = self.collision_state
+
     info["agent_state"] = observation
+    self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
 
     return obs_dict, reward, isDone, info
 
