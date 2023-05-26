@@ -18,7 +18,7 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=True, video_task_id=12):
+def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=False, video_task_id=12):
     assert save_subgoal_image != render_env, "only show subgoals video or render env"
     if render_env:
         images = []
@@ -94,7 +94,7 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                         generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
                         generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
                     subgoals = []
-                    generate_subgoals(encoded_state, encoded_goal, subgoals, K=3)
+                    generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
                     
                     x_agent = encoded_state.cpu()[0][0]
                     y_agent = encoded_state.cpu()[0][1]
@@ -103,47 +103,55 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                     y_goal = encoded_goal.cpu()[0][1]
                     theta_goal = encoded_goal.cpu()[0][2]
                     car_length = 2
-        
+
+                    current_state = env.environment.agent.current_state
+                    center_state = env.environment.agent.dynamic_model.shift_state(current_state)
+                    agentBB = env.environment.getBB(center_state, ego=True)
+                    ax_states.scatter(np.linspace(agentBB[0][0].x, agentBB[0][1].x, 500), 
+                                      np.linspace(agentBB[0][0].y, agentBB[0][1].y, 500), 
+                                      color="green", s=1)
+                    ax_states.scatter(np.linspace(agentBB[1][0].x, agentBB[1][1].x, 500), 
+                                      np.linspace(agentBB[1][0].y, agentBB[1][1].y, 500), 
+                                      color="green", s=1)
+                    ax_states.scatter(np.linspace(agentBB[2][0].x, agentBB[2][1].x, 500), 
+                                      np.linspace(agentBB[2][0].y, agentBB[2][1].y, 500), 
+                                      color="green", s=1)
+                    ax_states.scatter(np.linspace(agentBB[3][0].x, agentBB[3][1].x, 500), 
+                                      np.linspace(agentBB[3][0].y, agentBB[3][1].y, 500), 
+                                      color="green", s=1)
+                
+
                     ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_states.set_xlim(left=env_min_x, right=env_max_x)
-                    ax_states.scatter([x_agent], [y_agent], color="green", s=100)
+                    ax_states.scatter([x_agent], [y_agent], color="green", s=50)
                     ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
                     ax_states.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
                                       [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
                                       color="green", s=5)
-                    ax_states.scatter([x_goal], [y_goal], color="yellow", s=100)
+                    ax_states.scatter([x_goal], [y_goal], color="yellow", s=50)
                     ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
                     ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
                                       [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
                                       color="yellow", s=5)
                     for ind, subgoal in enumerate(subgoals):
-                        ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                        ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=50)
                         ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                     
                     if plot_obstacles:
-                        for obstacle in env.maps[val_key]:
-                            obstacle_x = obstacle[0]
-                            obstacle_y = obstacle[1]
-                            obstacle_theta = obstacle[2]
-                            obstacle_half_width = obstacle[3]
-                            obstacle_half_length = obstacle[3]
-                            assert obstacle_theta == 0.0, "didnt implement for other values"
-                            ax_states.scatter(np.linspace(obstacle_x - obstacle_half_length, obstacle_x - obstacle_half_length, 100), 
-                                            np.linspace(obstacle_y - obstacle_half_width, obstacle_y + obstacle_half_width, 100), 
-                                            color="blue", s=2)
-                            ax_states.scatter(np.linspace(obstacle_x - obstacle_half_length, obstacle_x + obstacle_half_length, 100), 
-                                            np.linspace(obstacle_y + obstacle_half_width, obstacle_y + obstacle_half_width, 100), 
-                                            color="blue", s=2)
-                            ax_states.scatter(np.linspace(obstacle_x + obstacle_half_length, obstacle_x + obstacle_half_length, 100), 
-                                            np.linspace(obstacle_y + obstacle_half_width, obstacle_y - obstacle_half_width, 100), 
-                                            color="blue", s=2)
-                            ax_states.scatter(np.linspace(obstacle_x + obstacle_half_length, obstacle_x - obstacle_half_length, 100), 
-                                            np.linspace(obstacle_y - obstacle_half_width, obstacle_y - obstacle_half_width, 100), 
-                                            color="blue", s=2)
-                            
-
-
-
+                        for obstacle in env.environment.obstacle_segments:
+                            ax_states.scatter(np.linspace(obstacle[0][0].x, obstacle[0][1].x, 500), 
+                                              np.linspace(obstacle[0][0].y, obstacle[0][1].y, 500), 
+                                              color="blue", s=1)
+                            ax_states.scatter(np.linspace(obstacle[1][0].x, obstacle[1][1].x, 500), 
+                                              np.linspace(obstacle[1][0].y, obstacle[1][1].y, 500), 
+                                              color="blue", s=1)
+                            ax_states.scatter(np.linspace(obstacle[2][0].x, obstacle[2][1].x, 500), 
+                                              np.linspace(obstacle[2][0].y, obstacle[2][1].y, 500), 
+                                              color="blue", s=1)
+                            ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
+                                              np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
+                                              color="blue", s=1)
+           
                     ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_values.set_xlim(left=env_min_x, right=env_max_x)
                     max_state_value = 1  
@@ -277,13 +285,14 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+    parser.add_argument("--train_static_env",   default=True, type=bool)
+
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
-
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
+    parser.add_argument("--eval_freq",          default=int(2e4), type=int)
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -296,7 +305,7 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
-
+    
     parser.add_argument("--state_dim",          default=5, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
@@ -321,7 +330,9 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
     # maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    #maps["map0"] = []
+    if not args.train_static_env:
+        maps["map0"] = []
+
 
     args.evaluation = False
     environment_config = {
@@ -332,6 +343,7 @@ if __name__ == "__main__":
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
         'evaluation': args.evaluation,
+        "train_static_env": args.train_static_env,
     }
     args.other_keys = environment_config
 
@@ -408,7 +420,6 @@ if __name__ == "__main__":
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
-        # debug
         print("step:", t, end=" ")
 
         # Select action
@@ -476,7 +487,7 @@ if __name__ == "__main__":
             eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length, images \
-                    = evalPolicy(policy, test_env)
+                    = evalPolicy(policy, test_env, plot_obstacles=args.train_static_env)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],

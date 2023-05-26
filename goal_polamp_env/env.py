@@ -14,6 +14,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     self.reward_scale = 1
     self.dataset_info = {}
+    self.train_static_env = config["train_static_env"]
     env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # add -2 for visualization purpuse 
                       "theta": (-1.5707963267948966, 1.5707963267948966), 
                       "v": (0, 0), "steer": (0, 0)}
@@ -105,7 +106,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                     env_boundaries = {"v": (0, 0), "steer": (0, 0)}
                     dataset_info["boundaries"] = env_boundaries
                     agent_horizontal_orientation = np.random.choice([False, True])
-                    goal_horizontal_orientation = np.random.choice([False, True])
                     agent_left_to_right_down_to_up = np.random.choice([False, True])
                     goal_left_to_right = np.random.choice([False, True])
                     line = np.random.choice([1, 2, 3])
@@ -188,7 +188,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def reset(self, **kwargs):
 
     #observed_state = POLAMPEnvironment.reset(self, **kwargs)
-    observed_state = self.random_data_reset(self, **kwargs, static_obsts=True)
+    observed_state = self.random_data_reset(self, **kwargs, static_obsts=self.train_static_env)
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state

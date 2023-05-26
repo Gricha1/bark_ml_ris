@@ -21,9 +21,10 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+    parser.add_argument("--validate_static_env",   default=True, type=bool)
+
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
-
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
@@ -64,7 +65,8 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1, dynamic=False)
     #maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    #maps["map0"] = []
+    if not args.validate_static_env:
+        maps["map0"] = []
 
     # dataset info
     print("dataset:", len(dataSet["obstacles"][0]["map0"]), #4 maps
@@ -81,6 +83,7 @@ if __name__ == "__main__":
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
         'evaluation': args.evaluation,
+        "train_static_env": None,
     }
     args.other_keys = environment_config
 
@@ -137,10 +140,10 @@ if __name__ == "__main__":
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length, images \
                     = evalPolicy(policy, test_env, 
-                                 save_subgoal_image=False, 
-                                 render_env=True, 
-                                 plot_obstacles=True, 
-                                 video_task_id=18) #18
+                                 save_subgoal_image=True, 
+                                 render_env=False, 
+                                 plot_obstacles=args.validate_static_env, 
+                                 video_task_id=12) #18
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)
