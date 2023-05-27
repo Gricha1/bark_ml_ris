@@ -276,11 +276,16 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     goal_batch          = batch["resampled_goals"]
     reward_batch        = batch["rewards"]
     done_batch          = batch["terminals"] 
+    current_step_batch  = batch["current_step"] 
+    collision_batch     = batch["collision"] 
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
-    reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance to goal
-    done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
-    reward_batch = - np.ones_like(done_batch) * env.reward_scale
+    reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
+    done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
+    reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
+                   + (current_step_batch - env._max_episode_steps) * collision_batch
+    #done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+    #reward_batch = - np.ones_like(done_batch) * env.reward_scale
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
@@ -386,7 +391,6 @@ if __name__ == "__main__":
         run = wandb.init(project=args.wandb_project)
     
     # Initialize policy
-    # normalize state
     env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
                         "v": 2.778, "steer": 0.7854}
     image_env = False
@@ -404,7 +408,7 @@ if __name__ == "__main__":
         fraction_goals_are_rollout_goals = 0.2,
         fraction_resampled_goals_are_env_goals = 0.0,
         fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        ob_keys_to_save     =["state_achieved_goal", "state_desired_goal"],
+        ob_keys_to_save     =["state_achieved_goal", "state_desired_goal", "current_step", "collision"],
         desired_goal_keys   =["desired_goal", "state_desired_goal"],
         observation_key     = 'observation',
         desired_goal_key    = 'desired_goal',
