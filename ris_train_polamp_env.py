@@ -29,6 +29,8 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
         env_max_x = 40.
         env_min_y = -5
         env_max_y = 36.
+        grid_resolution_x = 20
+        grid_resolution_y = 20
         fig = plt.figure(figsize=[6.4*2, 4.8])
         ax_states = fig.add_subplot(121)
         ax_values = fig.add_subplot(122)
@@ -166,8 +168,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                     max_state_value = 1  
                     grid_states = []              
                     grid_goals = []
-                    grid_resolution_x = 10
-                    grid_resolution_y = 10
                     grid_dx = (env_max_x - env_min_x) / grid_resolution_x
                     grid_dy = (env_max_y - env_min_y) / grid_resolution_y
                     for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
@@ -281,11 +281,13 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-    done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
-    reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
-                   + (current_step_batch - env._max_episode_steps) * collision_batch
-    #done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
-    #reward_batch = - np.ones_like(done_batch) * env.reward_scale
+    if env.train_static_env:
+        done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
+        reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
+                    + (current_step_batch - env._max_episode_steps) * collision_batch
+    else:
+        done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+        reward_batch = - np.ones_like(done_batch) * env.reward_scale
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)

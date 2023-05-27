@@ -272,7 +272,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       reward = 0.0
     #reward = polamp_reward
 
-    if "Collision" in info:
+    if self.train_static_env and "Collision" in info:
       isDone = True
       reward = self.step_counter - self._max_episode_steps
       #if self.not_collision_state is None:
