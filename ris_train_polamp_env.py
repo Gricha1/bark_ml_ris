@@ -487,7 +487,7 @@ if __name__ == "__main__":
             policy.train(state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             train_batch_time = time.time() - start_train_batch_time
             logger.store(train_batch_time = train_batch_time)
-            print("train", end=" ")
+            print("train", args.exp_name, end=" ")
 
         if done: 
             # Add path to replay buffer and reset path builder
