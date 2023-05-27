@@ -18,7 +18,7 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=False, video_task_id=12):
+def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}):
     assert save_subgoal_image != render_env, "only show subgoals video or render env"
     if render_env:
         images = []
@@ -120,7 +120,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                                       np.linspace(agentBB[3][0].y, agentBB[3][1].y, 500), 
                                       color="green", s=1)
                 
-
                     ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_states.set_xlim(left=env_min_x, right=env_max_x)
                     ax_states.scatter([x_agent], [y_agent], color="green", s=50)
@@ -151,7 +150,17 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                             ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
                                               np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
                                               color="blue", s=1)
-           
+
+                    if len(data_to_plot) != 0:
+                        if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
+                            ax_states.scatter(data_to_plot["dataset_x"], 
+                                              data_to_plot["dataset_y"], 
+                                              color="red", s=5)
+                        if "train_step_x" in data_to_plot and "train_step_y" in data_to_plot:
+                            ax_states.scatter(data_to_plot["train_step_x"], 
+                                              data_to_plot["train_step_y"], 
+                                              color="red", s=3)
+                            
                     ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_values.set_xlim(left=env_min_x, right=env_max_x)
                     max_state_value = 1  
@@ -333,7 +342,6 @@ if __name__ == "__main__":
     if not args.train_static_env:
         maps["map0"] = []
 
-
     args.evaluation = False
     environment_config = {
         'vehicle_config': car_config,
@@ -418,6 +426,12 @@ if __name__ == "__main__":
     old_success_rate = None
     save_policy_count = 0 
 
+    assert args.eval_freq > env._max_episode_steps, "logger is erased after each eval"
+    logger.store(dataset_x = state[0])
+    logger.store(dataset_y = state[1])
+    logger.store(train_step_x = state[0])
+    logger.store(train_step_y = state[1])
+
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
         print("step:", t, end=" ")
@@ -449,6 +463,8 @@ if __name__ == "__main__":
 
         state = next_state
         obs = next_obs
+        logger.store(train_step_x = state[0])
+        logger.store(train_step_y = state[1])
 
         # Train agent after collecting enough data
         if t >= args.batch_size and t >= args.start_timesteps:
@@ -465,7 +481,6 @@ if __name__ == "__main__":
             policy.train(state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             train_batch_time = time.time() - start_train_batch_time
             logger.store(train_batch_time = train_batch_time)
-            # debug
             print("train", end=" ")
 
         if done: 
@@ -481,13 +496,25 @@ if __name__ == "__main__":
             goal = obs["desired_goal"]
             episode_timesteps = 0
             episode_num += 1 
+            logger.store(dataset_x = state[0])
+            logger.store(dataset_y = state[1])
 
         if (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
+
+            #print("dataset_x:", logger.data["dataset_x"])
+            #print("dataset_y:", logger.data["dataset_y"])
+            #assert 1 == 0
+
             # Eval policy
             eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length, images \
-                    = evalPolicy(policy, test_env, plot_obstacles=args.train_static_env)
+                    = evalPolicy(policy, test_env, plot_obstacles=args.train_static_env, 
+                        data_to_plot={"dataset_x": logger.data["dataset_x"], 
+                                      "dataset_y": logger.data["dataset_y"],
+                                      "train_step_x": logger.data["train_step_x"], 
+                                      "train_step_y": logger.data["train_step_y"],
+                                      })
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
