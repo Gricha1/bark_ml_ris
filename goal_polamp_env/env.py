@@ -14,7 +14,11 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     self.reward_scale = 1
     self.dataset_info = {}
-    self.train_static_env = config["train_static_env"]
+    self.static_env = config["static_env"]    
+    self.test_0_collision = config["test_0_collision"]
+    self.test_1_collision = config["test_1_collision"]
+    self.test_2_collision = config["test_2_collision"] 
+    assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision + 1.0 * self.test_2_collision == 1.0
     env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # add -2 for visualization purpuse 
                       "theta": (-1.5707963267948966, 1.5707963267948966), 
                       "v": (0, 0), "steer": (0, 0)}
@@ -192,7 +196,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def reset(self, **kwargs):
 
     #observed_state = POLAMPEnvironment.reset(self, **kwargs)
-    observed_state = self.random_data_reset(self, **kwargs, static_obsts=self.train_static_env)
+    observed_state = self.random_data_reset(self, **kwargs, static_obsts=self.static_env)
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
@@ -218,6 +222,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     
     self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
     self.not_collision_state = None
+    if self.test_2_collision:
+      self.start_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
 
     return obs_dict
 
@@ -229,28 +235,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     #                     action[1] * agent.dynamic_model.max_ang_vel]
     #observed_state, reward, isDone, info = POLAMPEnvironment.step(self, normalized_action, **kwargs)
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
-
-    agent = self.environment.agent.current_state
-    goal = self.environment.agent.goal_state
-
-    observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-    desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
-    achieved_goal = observation
-    state_observation = observation
-    state_desired_goal = desired_goal
-    state_achieved_goal = achieved_goal
-    current_step = np.array([1.0 * self.step_counter])
-    collision = np.array([1.0 * ("Collision" in info)])
-
-    obs_dict = {"observation" : observation,
-                "desired_goal" : desired_goal,
-                "achieved_goal" : achieved_goal,
-                "state_observation" : state_observation,
-                "state_desired_goal" : state_desired_goal, 
-                "state_achieved_goal" : state_achieved_goal,
-                "current_step" : current_step,
-                "collision" : collision,
-              } 
 
     info["dist_to_goal"] = info["EuclideanDistance"]
     info["last_step_num"] = self.step_counter
@@ -272,49 +256,43 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       reward = 0.0
     #reward = polamp_reward
 
-    if self.train_static_env and "Collision" in info:
-      isDone = True
-      reward = self.step_counter - self._max_episode_steps
-      #if self.not_collision_state is None:
-      #  self.not_collision_state = State(self.previous_agent_state)
-      #  self.not_collision_state.v = 0
-    
-    #if self.not_collision_state is not None:
-    #  self.environment.agent.current_state = self.not_collision_state
+    if self.static_env and "Collision" in info:
+      if self.test_1_collision:
+        isDone = True
+        reward = self.step_counter - self._max_episode_steps
+      elif self.test_0_collision:
+        if self.not_collision_state is None:
+          self.not_collision_state = State(self.previous_agent_state)
+          self.not_collision_state.v = 0
+      elif self.test_2_collision:
+        self.environment.agent.current_state = State(self.start_state)
+    if self.test_0_collision:
+      if self.not_collision_state is not None:
+        self.environment.agent.current_state = self.not_collision_state
 
+    agent = self.environment.agent.current_state
+    goal = self.environment.agent.goal_state
+    observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+    desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
+    achieved_goal = observation
+    state_observation = observation
+    state_desired_goal = desired_goal
+    state_achieved_goal = achieved_goal
+    current_step = np.array([1.0 * self.step_counter])
+    collision = np.array([1.0 * ("Collision" in info)])
+    obs_dict = {"observation" : observation,
+                "desired_goal" : desired_goal,
+                "achieved_goal" : achieved_goal,
+                "state_observation" : state_observation,
+                "state_desired_goal" : state_desired_goal, 
+                "state_achieved_goal" : state_achieved_goal,
+                "current_step" : current_step,
+                "collision" : collision,
+              } 
     info["agent_state"] = observation
     self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
 
     return obs_dict, reward, isDone, info
-
-
-  def is_collision_state(self, state):
-    if not type(state) == type(State):
-      state = State(state)
-    assert type(state) == type(State), "incorrect type"
-    center_state = self.agent.dynamic_model.shift_state(state)
-    
-    if (self.agent.dynamic_model.min_dist_to_check_collision < self.min_beam):
-        return False
-
-    if len(self.obstacle_segments) > 0 or len(self.dyn_obstacle_segments) > 0:
-        bounding_box = self.getBB(center_state)
-        for i, obstacle in enumerate(self.obstacle_segments):
-            if i in self.lst_indexes:
-                if (intersectPolygons(obstacle, bounding_box)):
-                    return True
-                
-        for obstacle in self.dyn_obstacle_segments:
-            mid_x = (obstacle[0][0].x + obstacle[1][1].x) / 2.
-            mid_y = (obstacle[0][0].y + obstacle[1][1].y) / 2.
-            distance = math.hypot(mid_x - center_state.x, mid_y - center_state.y)
-            if (distance > (self.agent.dynamic_model.min_dist_to_check_collision * 2)):
-                continue
-            if (intersectPolygons(obstacle, bounding_box)):
-                return True
-        
-    return False
-
 
   # overload
   def render(self, mode="human", save_image=True):

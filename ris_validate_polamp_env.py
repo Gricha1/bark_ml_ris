@@ -21,7 +21,10 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    parser.add_argument("--validate_static_env",   default=True, type=bool)
+    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
+    parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
+    parser.add_argument("--test_2_collision",   default=True, type=bool) # collision = return to beggining of episode
+    parser.add_argument("--static_env",   default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
@@ -65,7 +68,7 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1, dynamic=False)
     #maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    if not args.validate_static_env:
+    if not args.static_env:
         maps["map0"] = []
 
     # dataset info
@@ -83,7 +86,10 @@ if __name__ == "__main__":
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
         'evaluation': args.evaluation,
-        "train_static_env": None,
+        "static_env": args.static_env,
+        "test_0_collision": args.test_0_collision,
+        "test_1_collision": args.test_1_collision,
+        "test_2_collision": args.test_2_collision,
     }
     args.other_keys = environment_config
 
@@ -142,7 +148,7 @@ if __name__ == "__main__":
                     = evalPolicy(policy, test_env, 
                                  save_subgoal_image=True, 
                                  render_env=False, 
-                                 plot_obstacles=args.validate_static_env, 
+                                 plot_obstacles=args.static_env, 
                                  video_task_id=12) #18
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")

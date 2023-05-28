@@ -136,7 +136,7 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                                       color="yellow", s=5)
                     for ind, subgoal in enumerate(subgoals):
                         ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=50)
-                        ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                        ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
                     
                     if plot_obstacles:
                         for obstacle in env.environment.obstacle_segments:
@@ -162,7 +162,10 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                             ax_states.scatter(data_to_plot["train_step_x"], 
                                               data_to_plot["train_step_y"], 
                                               color="red", s=3)
-                            
+
+                    ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+
+
                     ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_values.set_xlim(left=env_min_x, right=env_max_x)
                     max_state_value = 1  
@@ -275,13 +278,14 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     next_state_batch    = batch["next_observations"]
     goal_batch          = batch["resampled_goals"]
     reward_batch        = batch["rewards"]
-    done_batch          = batch["terminals"] 
-    current_step_batch  = batch["current_step"] 
-    collision_batch     = batch["collision"] 
+    done_batch          = batch["terminals"]
+    if env.static_env and env.test_1_collision: 
+        current_step_batch  = batch["current_step"] 
+        collision_batch     = batch["collision"] 
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-    if env.train_static_env:
+    if env.static_env and env.test_1_collision:
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
         reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
                     + (current_step_batch - env._max_episode_steps) * collision_batch
@@ -301,7 +305,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train_static_env",   default=True, type=bool)
+    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
+    parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
+    parser.add_argument("--test_2_collision",   default=True, type=bool) # collision = return to beggining of episode
+    parser.add_argument("--static_env",          default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
@@ -346,7 +353,7 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
     # maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    if not args.train_static_env:
+    if not args.static_env:
         maps["map0"] = []
 
     args.evaluation = False
@@ -358,7 +365,10 @@ if __name__ == "__main__":
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
         'evaluation': args.evaluation,
-        "train_static_env": args.train_static_env,
+        "static_env": args.static_env,
+        "test_0_collision": args.test_0_collision,
+        "test_1_collision": args.test_1_collision,
+        "test_2_collision": args.test_2_collision,
     }
     args.other_keys = environment_config
 
@@ -515,7 +525,7 @@ if __name__ == "__main__":
             eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
             mean_actions, eval_episode_length, images \
-                    = evalPolicy(policy, test_env, plot_obstacles=args.train_static_env, 
+                    = evalPolicy(policy, test_env, plot_obstacles=args.static_env, 
                         data_to_plot={"dataset_x": logger.data["dataset_x"], 
                                       "dataset_y": logger.data["dataset_y"],
                                       "train_step_x": logger.data["train_step_x"], 
