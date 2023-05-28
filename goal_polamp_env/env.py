@@ -221,8 +221,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
               } 
     
     self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-    self.not_collision_state = None
-    if self.test_2_collision:
+    if self.static_env and self.test_0_collision:
+      self.not_collision_state = None
+    if self.static_env and self.test_2_collision:
       self.start_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
 
     return obs_dict
@@ -266,7 +267,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
           self.not_collision_state.v = 0
       elif self.test_2_collision:
         self.environment.agent.current_state = State(self.start_state)
-    if self.test_0_collision:
+    if self.static_env and self.test_0_collision:
       if self.not_collision_state is not None:
         self.environment.agent.current_state = self.not_collision_state
 
