@@ -307,7 +307,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
-    parser.add_argument("--test_2_collision",   default=True, type=bool) # collision = return to beggining of episode
+    parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
+    parser.add_argument("--test_3_collision",   default=True, type=bool) # collision return to previous state & not freeze
     parser.add_argument("--static_env",          default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
@@ -369,6 +370,7 @@ if __name__ == "__main__":
         "test_0_collision": args.test_0_collision,
         "test_1_collision": args.test_1_collision,
         "test_2_collision": args.test_2_collision,
+        "test_3_collision": args.test_3_collision,
     }
     args.other_keys = environment_config
 

@@ -18,7 +18,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.test_0_collision = config["test_0_collision"]
     self.test_1_collision = config["test_1_collision"]
     self.test_2_collision = config["test_2_collision"] 
-    assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision + 1.0 * self.test_2_collision == 1.0
+    self.test_3_collision = config["test_3_collision"]
+    assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision + 1.0 * self.test_2_collision + 1.0 * self.test_3_collision == 1.0
     env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # add -2 for visualization purpuse 
                       "theta": (-1.5707963267948966, 1.5707963267948966), 
                       "v": (0, 0), "steer": (0, 0)}
@@ -220,7 +221,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision" : collision,
               } 
     
-    self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+    if self.static_env:
+      self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+      self.previous_agent_states = [self.previous_agent_state]
     if self.static_env and self.test_0_collision:
       self.not_collision_state = None
     if self.static_env and self.test_2_collision:
@@ -267,10 +270,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
           self.not_collision_state.v = 0
       elif self.test_2_collision:
         self.environment.agent.current_state = State(self.start_state)
+      elif self.test_3_collision:
+        self.environment.agent.current_state = State(self.previous_agent_states[-4])
+        self.environment.agent.current_state.v = 0
     if self.static_env and self.test_0_collision:
       if self.not_collision_state is not None:
         self.environment.agent.current_state = self.not_collision_state
-
+    
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
     observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
@@ -291,7 +297,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision" : collision,
               } 
     info["agent_state"] = observation
-    self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+    if self.static_env:
+      self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+      self.previous_agent_states.append(self.previous_agent_state)
 
     return obs_dict, reward, isDone, info
 
