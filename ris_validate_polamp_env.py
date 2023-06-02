@@ -21,10 +21,10 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
+    parser.add_argument("--test_0_collision",   default=True, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
     parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
-    parser.add_argument("--test_3_collision",   default=True, type=bool) # collision return to previous state & not freeze
+    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to previous state & not freeze
     parser.add_argument("--static_env",   default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
@@ -49,8 +49,8 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",          default=5, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
-    parser.add_argument('--log_loss', dest='log_loss', action='store_true')
-    parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
+    parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
+    parser.add_argument('--no-log_loss',        dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
 
@@ -146,16 +146,17 @@ if __name__ == "__main__":
 
     eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
-            mean_actions, eval_episode_length, images \
+            mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
                                  save_subgoal_image=True, 
                                  render_env=False, 
                                  plot_obstacles=args.static_env, 
-                                 video_task_id=18) # 18, 12
+                                 video_task_id=12) # 18, 12
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)
     print("validation success rate:", success_rate)
+    print([task[1] for task in validation_info if task[2] == "success"])
 
     """
     for task_id in validate_tasks:

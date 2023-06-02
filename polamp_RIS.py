@@ -230,7 +230,6 @@ class RIS(object):
 		critic_loss.backward()
 		if self.image_env: self.encoder_optimizer.step()
 
-		# debug
 		if self.logger is not None:
 			self.logger.store(
 				critic_value   = Q.mean().item(),

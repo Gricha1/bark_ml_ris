@@ -20,6 +20,7 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}):
     assert save_subgoal_image != render_env, "only show subgoals video or render env"
+    validation_info = {}
     if render_env:
         images = []
         images.append(env.render())    
@@ -49,6 +50,7 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
     acc_rewards = []
     subgoal_max_dists = []
     episode_lengths = []
+    task_statuses = []
     val_key = "map0"
     eval_tasks = len(env.valTasks[val_key])
     for task_id in range(eval_tasks):    
@@ -135,9 +137,13 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                                       [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
                                       color="yellow", s=5)
                     for ind, subgoal in enumerate(subgoals):
-                        ax_states.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=50)
-                        ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
-                    
+                        x_subgoal = subgoal.cpu()[0][0]
+                        y_subgoal = subgoal.cpu()[0][1]
+                        theta_subgoal = subgoal.cpu()[0][2]
+                        ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
+                        ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
+                                          [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
+                                          color="orange", s=5)
                     if plot_obstacles:
                         for obstacle in env.environment.obstacle_segments:
                             ax_states.scatter(np.linspace(obstacle[0][0].x, obstacle[0][1].x, 500), 
@@ -152,7 +158,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                             ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
                                               np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
                                               color="blue", s=1)
-
                     if len(data_to_plot) != 0:
                         if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
                             ax_states.scatter(data_to_plot["dataset_x"], 
@@ -162,10 +167,10 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                             ax_states.scatter(data_to_plot["train_step_x"], 
                                               data_to_plot["train_step_y"], 
                                               color="red", s=3)
-
                     ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                    ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
 
-
+                    # right plot
                     ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
                     ax_values.set_xlim(left=env_min_x, right=env_max_x)
                     max_state_value = 1  
@@ -240,10 +245,17 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
             t += 1
 
         final_distances.append(info["dist_to_goal"])
-        successes.append(1.0 * info["geometirc_goal_achieved"])
+        success = 1.0 * info["geometirc_goal_achieved"]
+        task_status = "success"
+        if env.static_env: 
+            if "Collision" in info:
+                task_status = "collision"
+                success = 0.0
+        successes.append(success)
         episode_lengths.append(info["last_step_num"])
-        acc_rewards.append(acc_reward)        
-  
+        acc_rewards.append(acc_reward)
+        task_statuses.append((val_key, task_id, task_status))
+
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
     eval_reward = np.mean(acc_rewards)
@@ -264,10 +276,12 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
         plt.close()
     if save_subgoal_image or render_env:
         images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
+    validation_info["task_statuses"] = task_statuses
+    validation_info["images"] = images
 
     return eval_distance, success_rate, eval_reward, \
            eval_subgoal_dist, [state_distrs, max_state_vals, min_state_vals], \
-           [goal_dists, max_goal_vals, min_goal_vals], mean_actions, eval_episode_length, images
+           [goal_dists, max_goal_vals, min_goal_vals], mean_actions, eval_episode_length, images, validation_info
 
 
 def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshold=0.05, device=torch.device("cuda")):
@@ -305,10 +319,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
+    parser.add_argument("--test_0_collision",   default=True, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
     parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
-    parser.add_argument("--test_3_collision",   default=True, type=bool) # collision return to previous state & not freeze
+    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to previous state & not freeze
     parser.add_argument("--static_env",          default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
@@ -526,7 +540,7 @@ if __name__ == "__main__":
             # Eval policy
             eval_distance, success_rate, eval_reward, \
             eval_subgoal_dist, val_state, val_goal, \
-            mean_actions, eval_episode_length, images \
+            mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, plot_obstacles=args.static_env, 
                         data_to_plot={"dataset_x": logger.data["dataset_x"], 
                                       "dataset_y": logger.data["dataset_y"],
