@@ -18,13 +18,13 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}):
-    assert save_subgoal_image != render_env, "only show subgoals video or render env"
+def evalPolicy(policy, env, plot_subgoals=True, plot_only_agent_values=False, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}, eval_strategy=None):
+    assert plot_subgoals != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
         images = []
         images.append(env.render())    
-    if save_subgoal_image:
+    if plot_subgoals:
         images = []
         env_min_x = -5
         env_max_x = 40.
@@ -32,11 +32,22 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
         env_max_y = 36.
         grid_resolution_x = 20
         grid_resolution_y = 20
-        fig = plt.figure(figsize=[6.4*2, 4.8])
-        ax_states = fig.add_subplot(121)
-        ax_values = fig.add_subplot(122)
-        state_values = []
-        subgoal_values = []
+        if plot_only_agent_values:
+            fig = plt.figure(figsize=[6.4 * 2, 4.8 * 3])
+            ax_states = fig.add_subplot(321)
+            ax_values_agent = fig.add_subplot(322)
+            ax_values_s = [ax_values_agent]
+        else:
+            fig = plt.figure(figsize=[6.4*2, 4.8*3])
+            ax_states = fig.add_subplot(321)
+            ax_values_agent = fig.add_subplot(322)
+            ax_values_left = fig.add_subplot(323)
+            ax_values_right = fig.add_subplot(324)
+            ax_values_down = fig.add_subplot(325)
+            ax_values_up = fig.add_subplot(326)
+            ax_values_s = [ax_values_agent, 
+                        ax_values_left, ax_values_right, 
+                        ax_values_down, ax_values_up]
 
     state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
     goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
@@ -44,11 +55,11 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
     min_state_vals = {}
     max_goal_vals = {}
     min_goal_vals = {}
+    action_info = {"max_linear_acc": None, "max_steer_rate": None, "min_linear_acc": None, "min_steer_rate": None}
     mean_actions = {"a": [], "v_s": []}
     final_distances = []
     successes = [] 
     acc_rewards = []
-    subgoal_max_dists = []
     episode_lengths = []
     task_statuses = []
     val_key = "map0"
@@ -62,43 +73,27 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
         acc_reward = 0
         state_distrs["start_x"].append(state[0])
 
-        with torch.no_grad():
-            encoded_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
-            encoded_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
-            subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-            subgoal = subgoal_distribution.rsample()
-            sub_x = subgoal.cpu()[0][0]
-            sub_y = subgoal.cpu()[0][1]
-            dist_to_state = np.sqrt((sub_x - encoded_state.cpu()[0][0]) ** 2 + \
-                                    (sub_y - encoded_state.cpu()[0][1]))
-            dist_to_goal = np.sqrt((sub_x - encoded_goal.cpu()[0][0]) ** 2 + \
-                                    (sub_y - encoded_goal.cpu()[0][1]))
-            subgoal_max_dists.append(max(dist_to_state, dist_to_goal))
-
         while not done:
-
-            # normalize states
-            #state = normalize_state(state, env_state_bounds, validate=True)
-            #goal = normalize_state(goal, env_state_bounds, validate=True)
-            if save_subgoal_image and task_id == video_task_id:
+            if plot_subgoals and task_id == video_task_id:
                 with torch.no_grad():
                     encoded_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
                     encoded_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
                     subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
                     subgoal = subgoal_distribution.loc
-                    def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
-                        if K == 0:
-                            return
-                        subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-                        subgoal = subgoal_distribution.loc
-                        if add_to_end:
-                            subgoals.append(subgoal)
-                        else:
-                            subgoals.insert(0, subgoal)
-                        generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
-                        generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
-                    subgoals = []
-                    generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
+                    if plot_subgoals:
+                        def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
+                            if K == 0:
+                                return
+                            subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
+                            subgoal = subgoal_distribution.loc
+                            if add_to_end:
+                                subgoals.append(subgoal)
+                            else:
+                                subgoals.insert(0, subgoal)
+                            generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
+                            generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
+                        subgoals = []
+                        generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
                     
                     x_agent = encoded_state.cpu()[0][0]
                     y_agent = encoded_state.cpu()[0][1]
@@ -136,14 +131,15 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                     ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
                                       [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
                                       color="yellow", s=5)
-                    for ind, subgoal in enumerate(subgoals):
-                        x_subgoal = subgoal.cpu()[0][0]
-                        y_subgoal = subgoal.cpu()[0][1]
-                        theta_subgoal = subgoal.cpu()[0][2]
-                        ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
-                        ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
-                                          [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
-                                          color="orange", s=5)
+                    if plot_subgoals:
+                        for ind, subgoal in enumerate(subgoals):
+                            x_subgoal = subgoal.cpu()[0][0]
+                            y_subgoal = subgoal.cpu()[0][1]
+                            theta_subgoal = subgoal.cpu()[0][2]
+                            ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
+                            ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
+                                            [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
+                                            color="orange", s=5)
                     if plot_obstacles:
                         for obstacle in env.environment.obstacle_segments:
                             ax_states.scatter(np.linspace(obstacle[0][0].x, obstacle[0][1].x, 500), 
@@ -167,50 +163,71 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
                             ax_states.scatter(data_to_plot["train_step_x"], 
                                               data_to_plot["train_step_y"], 
                                               color="red", s=3)
-                    ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                    if plot_subgoals:
+                        ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                     ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
 
-                    # right plot
-                    ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
-                    ax_values.set_xlim(left=env_min_x, right=env_max_x)
-                    max_state_value = 1  
-                    grid_states = []              
-                    grid_goals = []
-                    grid_dx = (env_max_x - env_min_x) / grid_resolution_x
-                    grid_dy = (env_max_y - env_min_y) / grid_resolution_y
-                    for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
-                        for grid_state_x in np.linspace(env_min_x + grid_dx/2, env_max_x - grid_dx/2, grid_resolution_x):
-                            grid_state = [grid_state_x, grid_state_y]
-                            grid_state.extend([0 for _ in range(len(state) - 2)])
-                            grid_states.append(grid_state)
-                    grid_states = torch.FloatTensor(np.array(grid_states)).to(policy.device)
-                    assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
-                    grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
-                    assert grid_goals.shape == grid_states.shape
-                    grid_vs = policy.value(grid_states, grid_goals)
-                    grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
-                    img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
-                    cb = fig.colorbar(img)
-                    ax_values.scatter([x_agent], [y_agent], color="green", s=100)
-                    ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
-                                      [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
-                                      color="black", s=5)
-                    for ind, subgoal in enumerate(subgoals):
-                        ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
-                        ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
-                    ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
-                    ax_values.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
-                                      [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
-                                      color="black", s=5)
+                    # values plot
+                    def plot_values(ax_values, theta):
+                        ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
+                        ax_values.set_xlim(left=env_min_x, right=env_max_x)
+                        max_state_value = 1  
+                        grid_states = []              
+                        grid_goals = []
+                        grid_dx = (env_max_x - env_min_x) / grid_resolution_x
+                        grid_dy = (env_max_y - env_min_y) / grid_resolution_y
+                        for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
+                            for grid_state_x in np.linspace(env_min_x + grid_dx/2, env_max_x - grid_dx/2, grid_resolution_x):
+                                if env.add_frame_stack:
+                                    agent_state = [grid_state_x, grid_state_y, theta]
+                                    agent_state.extend([0 for _ in range(env.agent_state_len - 3)])
+                                    grid_state = []
+                                    for _ in range(env.frame_stack):
+                                        grid_state.extend(agent_state)
+                                else:
+                                    grid_state = [grid_state_x, grid_state_y]
+                                    grid_state.extend([theta])
+                                    grid_state.extend([0 for _ in range(len(state) - 3)])
+                                grid_states.append(grid_state)
+                        grid_states = torch.FloatTensor(np.array(grid_states)).to(policy.device)
+                        assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
+                        grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
+                        assert grid_goals.shape == grid_states.shape
+                        grid_vs = policy.value(grid_states, grid_goals)
+                        grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
+                        img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
+                        cb = fig.colorbar(img)
+                        ax_values.scatter([np.linspace(env_max_x - 3.5, env_max_x - 3.5 + car_length*np.cos(theta), 100)], 
+                                          [np.linspace(env_max_y - 1.5, env_max_y - 1.5 + car_length*np.sin(theta), 100)], 
+                                          color="black", s=5)
+                        ax_values.scatter([env_max_x - 3.5], [env_max_y - 1.5], color="black", s=40)
+                        ax_values.scatter([x_agent], [y_agent], color="green", s=100)
+                        ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
+                                        [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
+                                        color="black", s=5)
+                        if plot_subgoals:
+                            for ind, subgoal in enumerate(subgoals):
+                                ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                                ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                                ax_values.scatter([np.linspace(subgoal.cpu()[0][0], subgoal.cpu()[0][0] + car_length*np.cos(subgoal.cpu()[0][2]), 100)], 
+                                            [np.linspace(subgoal.cpu()[0][1], subgoal.cpu()[0][1] + car_length*np.sin(subgoal.cpu()[0][2]), 100)], 
+                                            color="orange", s=5)
+                        ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
+                        ax_values.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
+                                        [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
+                                        color="black", s=5)
 
+                        return cb
+                    cbs = [plot_values(ax, theta=theta) for ax, theta in zip(ax_values_s, [theta_agent, np.pi, 0, np.pi/2, -np.pi/2])]
                     fig.canvas.draw()
-                    
                     data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                     images.append(data)
-                    cb.remove()
+                    for cb in cbs:
+                        cb.remove()
                     ax_states.clear()
-                    ax_values.clear()
+                    for ax_values in ax_values_s:
+                        ax_values.clear()
 
             state_distrs["x"].append(state[0])
             state_distrs["y"].append(state[1])
@@ -224,15 +241,23 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
             goal_dists["goal_v"].append(goal[3])
             goal_dists["goal_steer"].append(goal[4])
             
-            action = policy.select_action(state, goal)
+            if eval_strategy is None:
+                action = policy.select_action(state, goal)
+            else:
+                action = [-1, 0]
+            if action_info["max_linear_acc"] is None:
+                action_info["max_linear_acc"] = action[0]
+                action_info["max_steer_rate"] = action[1]
+                action_info["min_linear_acc"] = action[0]
+                action_info["min_steer_rate"] = action[1]
+            else:
+                action_info["max_linear_acc"] = max(action_info["max_linear_acc"], action[0])
+                action_info["max_steer_rate"] = max(action_info["max_steer_rate"], action[1])
+                action_info["min_linear_acc"] = min(action_info["min_linear_acc"], action[0])
+                action_info["min_steer_rate"] = min(action_info["min_steer_rate"], action[1])
             mean_actions["a"].append(action[0])
             mean_actions["v_s"].append(action[1])
 
-            # produce mean action
-            #    converted_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
-            #    converted_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
-            #    _, _, action = policy.actor.sample(converted_state, converted_goal)
-                #action = action.cpu().data.numpy().flatten()
             next_obs, reward, done, info = env.step(action) 
 
             acc_reward += reward
@@ -259,7 +284,6 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
     eval_reward = np.mean(acc_rewards)
-    eval_subgoal_dist = np.mean(subgoal_max_dists)
     eval_episode_length = np.mean(episode_lengths)
 
     for key in state_distrs:
@@ -272,15 +296,16 @@ def evalPolicy(policy, env, save_subgoal_image=True, render_env=False, plot_obst
         goal_dists[key] = np.mean(goal_dists[key])
 
     env.close()
-    if save_subgoal_image:
+    if plot_subgoals:
         plt.close()
-    if save_subgoal_image or render_env:
+    if plot_subgoals or render_env:
         images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
     validation_info["task_statuses"] = task_statuses
     validation_info["images"] = images
+    validation_info["action_info"] = action_info
 
     return eval_distance, success_rate, eval_reward, \
-           eval_subgoal_dist, [state_distrs, max_state_vals, min_state_vals], \
+           [state_distrs, max_state_vals, min_state_vals], \
            [goal_dists, max_goal_vals, min_goal_vals], mean_actions, eval_episode_length, images, validation_info
 
 
@@ -319,11 +344,14 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--test_0_collision",   default=True, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
     parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
     parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to previous state & not freeze
-    parser.add_argument("--static_env",          default=True, type=bool)
+    parser.add_argument("--her_corrections",    default=False, type=bool) # dont add collision states to HER
+    parser.add_argument("--add_frame_stack",    default=True, type=bool) # add frame stack to goal&state
+    parser.add_argument("--static_env",         default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
@@ -342,9 +370,9 @@ if __name__ == "__main__":
     parser.add_argument("--Lambda",             default=0.1, type=float)
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
-    parser.add_argument("--pi_lr",              default=1e-3, type=float)
+    parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--state_dim",          default=5, type=int)
+    parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -366,7 +394,6 @@ if __name__ == "__main__":
         car_config = json.load(f)
 
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
-    # maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
     if not args.static_env:
         maps["map0"] = []
@@ -385,6 +412,7 @@ if __name__ == "__main__":
         "test_1_collision": args.test_1_collision,
         "test_2_collision": args.test_2_collision,
         "test_3_collision": args.test_3_collision,
+        "add_frame_stack": args.add_frame_stack,
     }
     args.other_keys = environment_config
 
@@ -463,6 +491,7 @@ if __name__ == "__main__":
     logger.store(dataset_y = state[1])
     logger.store(train_step_x = state[0])
     logger.store(train_step_y = state[1])
+    buffer_size = 0 # for args.her_corrections
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
@@ -485,21 +514,39 @@ if __name__ == "__main__":
 
         next_state = next_obs["observation"]
 
-        path_builder.add_all(
-            observations=obs,
-            actions=action,
-            rewards=reward,
-            next_observations=next_obs,
-            terminals=[1.0*done]
-        )
+        transition_added = False # for args.her_corrections
+        if args.her_corrections:
+            if next_obs["collision_happend_on_trajectory"] == 0.0:
+                buffer_size += 1 # for args.her_corrections
+                transition_added = True # for args.her_corrections
+                path_builder.add_all(
+                    observations=obs,
+                    actions=action,
+                    rewards=reward,
+                    next_observations=next_obs,
+                    terminals=[1.0*done]
+                )
+        else:
+            buffer_size += 1 # for args.her_corrections
+            transition_added = True # for args.her_corrections
+            path_builder.add_all(
+                observations=obs,
+                actions=action,
+                rewards=reward,
+                next_observations=next_obs,
+                terminals=[1.0*done]
+            )
 
+        if args.static_env and args.her_corrections:
+            print("collission:", next_obs["collision_happend_on_trajectory"], end=" ")
+        
         state = next_state
         obs = next_obs
         logger.store(train_step_x = state[0])
         logger.store(train_step_y = state[1])
 
         # Train agent after collecting enough data
-        if t >= args.batch_size and t >= args.start_timesteps:
+        if t >= args.batch_size and t >= args.start_timesteps and buffer_size >= args.start_timesteps and transition_added: # for args.her_corrections
             state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
                 replay_buffer, 
                 batch_size=args.batch_size, 
@@ -532,16 +579,12 @@ if __name__ == "__main__":
             logger.store(dataset_y = state[1])
 
         if (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
-
-            #print("dataset_x:", logger.data["dataset_x"])
-            #print("dataset_y:", logger.data["dataset_y"])
-            #assert 1 == 0
-
             # Eval policy
             eval_distance, success_rate, eval_reward, \
-            eval_subgoal_dist, val_state, val_goal, \
+            val_state, val_goal, \
             mean_actions, eval_episode_length, images, validation_info \
-                    = evalPolicy(policy, test_env, plot_obstacles=args.static_env, 
+                    = evalPolicy(policy, test_env, plot_obstacles=args.static_env,
+                        plot_only_agent_values=True, 
                         data_to_plot={"dataset_x": logger.data["dataset_x"], 
                                       "dataset_y": logger.data["dataset_y"],
                                       "train_step_x": logger.data["train_step_x"], 
@@ -602,7 +645,6 @@ if __name__ == "__main__":
                      'train_subgoal_data_y_max': sum(logger.data["train_subgoal_data_y_max"][-args.eval_freq:]) / args.eval_freq,
                      'train_subgoal_data_y_min': sum(logger.data["train_subgoal_data_y_min"][-args.eval_freq:]) / args.eval_freq,
                      'train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
-
                     }
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
@@ -624,8 +666,6 @@ if __name__ == "__main__":
 
             # clean log buffer
             logger.data = dict()
-            # debug
             print("eval", end=" ")
         
-        # debug
         print()

@@ -21,11 +21,14 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+    
     parser.add_argument("--test_0_collision",   default=True, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
     parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
     parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to previous state & not freeze
-    parser.add_argument("--static_env",   default=True, type=bool)
+    parser.add_argument("--her_corrections",    default=False, type=bool) # dont add collision states to HER
+    parser.add_argument("--add_frame_stack",    default=True, type=bool) # dont add collision states to HER
+    parser.add_argument("--static_env",         default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
@@ -46,7 +49,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--state_dim",          default=5, type=int)
+    parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
@@ -92,6 +95,7 @@ if __name__ == "__main__":
         "test_1_collision": args.test_1_collision,
         "test_2_collision": args.test_2_collision,
         "test_3_collision": args.test_3_collision,
+        "add_frame_stack": args.add_frame_stack,
     }
     args.other_keys = environment_config
 
@@ -145,116 +149,19 @@ if __name__ == "__main__":
     from ris_train_polamp_env import evalPolicy
 
     eval_distance, success_rate, eval_reward, \
-            eval_subgoal_dist, val_state, val_goal, \
-            mean_actions, eval_episode_length, images, validation_info \
+    val_state, val_goal, \
+    mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
-                                 save_subgoal_image=True, 
+                                 plot_subgoals=True, 
                                  render_env=False, 
+                                 plot_only_agent_values=True,
                                  plot_obstacles=args.static_env, 
-                                 video_task_id=12) # 18, 12
+                                 video_task_id=12, eval_strategy=None) # 18, 12
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)
     print("validation success rate:", success_rate)
+    print("action info:", validation_info["action_info"])
     print([task[1] for task in validation_info if task[2] == "success"])
 
-    """
-    for task_id in validate_tasks:
-        # Initialize environment
-        obs = env.reset(id=task_id, val_key=val_key)
-
-        # debug
-        print("task id:", task_id, "obs_x:", obs["observation"][0])
-        if not args.no_video:
-            images = []
-
-        done = False
-        state = obs["observation"]
-        goal = obs["desired_goal"]
-        t = 0
-
-        # debug subgoals
-        with torch.no_grad():
-            encoded_state = torch.FloatTensor(state).to(args.device).unsqueeze(0)
-            encoded_goal = torch.FloatTensor(goal).to(args.device).unsqueeze(0)
-            subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-            subgoal = subgoal_distribution.rsample()
-
-            fig = plt.figure()
-            fig.add_subplot(111)
-            x_f_state_to_draw = encoded_state.cpu()
-            x_f_goal_to_draw = encoded_goal.cpu()
-            plt.scatter([x_f_state_to_draw[0][0], x_f_goal_to_draw[0][0]], 
-                        [x_f_state_to_draw[0][1], x_f_goal_to_draw[0][1]])
-
-            dx = x_f_state_to_draw[0][0] - x_f_goal_to_draw[0][0]
-            dy = x_f_state_to_draw[0][1] - x_f_goal_to_draw[0][1]
-            euc_dist = np.sqrt(dx ** 2 - dy ** 2)
-            K =  euc_dist / policy.value(encoded_state, encoded_goal)
-            euc_state_to_subgoal = policy.value(encoded_state, subgoal) * K
-            euc_subgoal_to_goal = policy.value(subgoal, encoded_goal) * K
-            circle_state_subgoal = plt.Circle((x_f_state_to_draw[0][0], x_f_state_to_draw[0][1]), 
-                                              euc_state_to_subgoal, color='b', fill=False)
-            circle_goal_subgoal = plt.Circle((x_f_goal_to_draw[0][0], x_f_goal_to_draw[0][1]), 
-                                             euc_subgoal_to_goal, color='g', fill=False)
-            ax = fig.gca()
-            ax.add_patch(circle_state_subgoal)
-            ax.add_patch(circle_goal_subgoal)
-            plt.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]])
-            if not args.no_video:
-                fig.canvas.draw()
-                data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-                data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-                img = wandb.Image(data)
-                run.log({f"agent_state": img})
-
-
-        while not done:
-            t += 1
-            # debug
-            print("step:", t, end=" ")
-        
-            action = policy.select_action(state, goal)
-            # debug
-            #action = np.array([1, -0.5])
-            print("action:", action, end=" ")
-
-            # Perform action
-            next_obs, reward, done, info = env.step(action) 
-            print("reward:", reward, 
-                  "dist to goal:", info["dist_to_goal"], 
-                  "agent theta:", info["agent_state"][2],
-                  "agent steer:", info["agent_state"][4],
-                  "episode ends:", done)
-            print("current step in env:", info["last_step_num"])
-
-            if done:
-                if info["geometirc_goal_achieved"]: success_rate += 1
-                else: 
-                    fail_rate += 1
-                    failed_tasks_idx.append(task_id)
-                run.log({f"success_rate": success_rate / len(validate_tasks)})
-                run.log({f"fail_rate": fail_rate / len(validate_tasks)})
-                run.log({f"task count": len(validate_tasks)})
-                
-            next_state = next_obs["observation"]
-
-            state = next_state
-            obs = next_obs
-            
-            if not args.no_video:
-                image = env.render()
-                images.append(image)
-             
-        if not args.no_video:    
-            from utilite_video_generator import create_video_from_imgs
-            video = create_video_from_imgs(images) 
-            if args.using_wandb:   
-                run.log({"validate_video": wandb.Video(video, fps=20)})
-
-    print("failed tasks idxs:", failed_tasks_idx)
-    """
-
-
-
-
+    

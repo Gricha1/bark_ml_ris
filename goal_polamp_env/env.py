@@ -13,26 +13,37 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     POLAMPEnvironment.__init__(self, full_env_name, config)
 
     self.reward_scale = 1
-    self.dataset_info = {}
     self.static_env = config["static_env"]    
     self.test_0_collision = config["test_0_collision"]
     self.test_1_collision = config["test_1_collision"]
     self.test_2_collision = config["test_2_collision"] 
     self.test_3_collision = config["test_3_collision"]
-    assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision + 1.0 * self.test_2_collision + 1.0 * self.test_3_collision == 1.0
-    env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # add -2 for visualization purpuse 
-                      "theta": (-1.5707963267948966, 1.5707963267948966), 
-                      "v": (0, 0), "steer": (0, 0)}
-    self.dataset_info["boundaries"] = env_boundaries
+    self.add_frame_stack = config["add_frame_stack"]
+    if self.add_frame_stack:
+      self.agent_state_len = 5
+    assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision \
+           + 1.0 * self.test_2_collision + 1.0 * self.test_3_collision \
+           + 1.0 * self.static_env == 2.0 or not self.static_env
 
-    observation = Box(-np.inf, np.inf, (5,), np.float32) 
-    desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
-    achieved_goal = Box(-np.inf, np.inf, (5,), np.float32)
-    state_observation = observation 
-    state_desired_goal = desired_goal 
-    state_achieved_goal = achieved_goal 
-    current_step = Box(0.0, np.inf, (1,), np.float32)
-    collision = Box(0.0, 1.0, (1,), np.float32)
+    if self.add_frame_stack:
+      observation = Box(-np.inf, np.inf, (5 * self.frame_stack,), np.float32) 
+      desired_goal = Box(-np.inf, np.inf, (5 * self.frame_stack,), np.float32) 
+      achieved_goal = Box(-np.inf, np.inf, (5 * self.frame_stack,), np.float32)
+      state_observation = observation 
+      state_desired_goal = desired_goal 
+      state_achieved_goal = achieved_goal 
+      current_step = Box(0.0, np.inf, (1 * self.frame_stack,), np.float32)
+      collision = Box(0.0, 1.0, (1 * self.frame_stack,), np.float32)
+    else:
+      observation = Box(-np.inf, np.inf, (5,), np.float32) 
+      desired_goal = Box(-np.inf, np.inf, (5,), np.float32) 
+      achieved_goal = Box(-np.inf, np.inf, (5,), np.float32)
+      state_observation = observation 
+      state_desired_goal = desired_goal 
+      state_achieved_goal = achieved_goal 
+      current_step = Box(0.0, np.inf, (1,), np.float32)
+      collision = Box(0.0, 1.0, (1,), np.float32)
+    collision_happend_on_trajectory = Box(0.0, 1.0, (1,), np.float32)
 
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
@@ -42,6 +53,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_achieved_goal" : state_achieved_goal,
                 "current_step" : current_step,
                 "collision" : collision,
+                "collision_happend_on_trajectory": collision_happend_on_trajectory,
               } 
 
 
@@ -82,6 +94,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 if not static_obsts:
                   # random sample state&goal
                   polygon_map = []
+                  env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # random dataset
+                      "theta": (-1.5707963267948966, 1.5707963267948966), 
+                      "v": (0, 0), "steer": (0, 0)}
+                  self.dataset_info["boundaries"] = env_boundaries
                   boundaries = [self.dataset_info["boundaries"]["x"], 
                                 self.dataset_info["boundaries"]["y"],
                                 self.dataset_info["boundaries"]["theta"],
@@ -92,24 +108,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                   current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                           for x, boundary in zip(np.random.random(5), boundaries)] 
                 else:
-                  # left - right 1
-                  # x = (-2)<=(+35), y = (33)<=(35), theta = (-0.35)<=(+0.35)
-                  # left - right 2
-                  # x = (-2)<=(+35), y = (+18)<=(+18.4), theta = (-0.35)<=(+0.1)
-                  # x = (-2)<=(+35), y = (+16)<=(+18), theta = (-0.35)<=(+0.35)
-                  # x = (-2)<=(+35), y = (+15.6)<=(+16), theta = (-0.1)<=(+0.35)
-                  # left - right 3
-                  # x = (-2)<=(+35), y = (-4)<=(0.5), theta = (-0.35)<=(+0.35)
-                  
-                  # up - down 1
-                  # x = (-5)<=(-2), y = (-3)<=(+33), theta = (np.pi/2 - 0.1)<=(np.pi/2 + 0.35)
-                  # up - down 2
-                  # x = (+18.5)<=(+19), y = (-3)<=(+33), theta = (np.pi/2 - 0.1)<=(np.pi/2 + 0.35)
-                  # x = (+17.5)<=(+18.5), y = (-3)<=(+33), theta = (np.pi/2 - 0.35)<=(np.pi/2 + 0.35)
-                  # x = (+17)<=(+17.5), y = (-3)<=(+33), theta = (np.pi/2 - 0.35)<=(np.pi/2 + 0.1)
-                  # up - down 3
-                  # x = (38)<=(40), y = (-3)<=(+33), theta = (np.pi/2 - 0.35)<=(np.pi/2 + 0.35)
-
                   def get_random_sampled_state():
                     dataset_info = {}
                     env_boundaries = {"v": (0, 0), "steer": (0, 0)}
@@ -192,8 +190,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
         return np.array(observation, dtype=np.float32)
 
-
-
   def reset(self, **kwargs):
 
     #observed_state = POLAMPEnvironment.reset(self, **kwargs)
@@ -201,15 +197,34 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-
-    observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-    desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
-    achieved_goal = observation
-    state_observation = observation
-    state_desired_goal = desired_goal
-    state_achieved_goal = achieved_goal
-    current_step = np.array([0.0])
-    collision = np.array([0.0])
+    if self.add_frame_stack:
+      agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      observation = []
+      goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+      desired_goal = []
+      current_step = [0.0 for _ in range(self.frame_stack)]
+      collision = [0.0 for _ in range(self.frame_stack)]
+      for _ in range(self.frame_stack):
+        observation.extend(agent_state)
+        desired_goal.extend(goal_state)
+      observation = np.array(observation)
+      desired_goal = np.array(desired_goal)
+      achieved_goal = observation
+      state_observation = observation
+      state_desired_goal = desired_goal
+      state_achieved_goal = achieved_goal
+      current_step = np.array([current_step])
+      collision = np.array([collision])
+    else:
+      observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+      desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
+      achieved_goal = observation
+      state_observation = observation
+      state_desired_goal = desired_goal
+      state_achieved_goal = achieved_goal
+      current_step = np.array([0.0])
+      collision = np.array([0.0])
+    self.collision_happend_on_trajectory = False
 
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
@@ -219,16 +234,20 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_achieved_goal" : state_achieved_goal,
                 "current_step" : current_step,
                 "collision" : collision,
+                "collision_happend_on_trajectory": self.collision_happend_on_trajectory,
               } 
     
-    if self.static_env:
-      self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-      self.previous_agent_states = [self.previous_agent_state]
+    if self.add_frame_stack:
+      self.previous_agent_collisions = [self.collision_happend_on_trajectory for _ in range(self.frame_stack)]
+      self.previous_agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      self.previous_agent_states = [self.previous_agent_state for _ in range(self.frame_stack)]
+    else:
+      self.previous_agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      self.previous_agent_states = [self.previous_agent_state] 
     if self.static_env and self.test_0_collision:
       self.not_collision_state = None
     if self.static_env and self.test_2_collision:
       self.start_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-
     return obs_dict
 
     
@@ -261,6 +280,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     #reward = polamp_reward
 
     if self.static_env and "Collision" in info:
+      self.collision_happend_on_trajectory = True
       if self.test_1_collision:
         isDone = True
         reward = self.step_counter - self._max_episode_steps
@@ -279,14 +299,33 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-    desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
-    achieved_goal = observation
-    state_observation = observation
-    state_desired_goal = desired_goal
-    state_achieved_goal = achieved_goal
-    current_step = np.array([1.0 * self.step_counter])
-    collision = np.array([1.0 * ("Collision" in info)])
+    if self.add_frame_stack:
+      observation = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+      desired_goal = []
+      current_step = [0.0 for _ in range(self.frame_stack)] # incorrect TODO
+      collision = [0.0 for _ in range(self.frame_stack)] # incorrect TODO
+      for i in range(1, self.frame_stack):
+        observation.extend(self.previous_agent_states[-i])
+      for _ in range(self.frame_stack):
+        desired_goal.extend(goal_state)
+      observation = np.array(observation)
+      desired_goal = np.array(desired_goal)
+      achieved_goal = observation
+      state_observation = observation
+      state_desired_goal = desired_goal
+      state_achieved_goal = achieved_goal
+      current_step = np.array([current_step])
+      collision = np.array([collision])
+    else:
+      observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+      desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])
+      achieved_goal = observation
+      state_observation = observation
+      state_desired_goal = desired_goal
+      state_achieved_goal = achieved_goal
+      current_step = np.array([1.0 * self.step_counter])
+      collision = np.array([1.0 * ("Collision" in info)])
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
                 "achieved_goal" : achieved_goal,
@@ -295,9 +334,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_achieved_goal" : state_achieved_goal,
                 "current_step" : current_step,
                 "collision" : collision,
+                "collision_happend_on_trajectory": 1.0 * self.collision_happend_on_trajectory,
               } 
     info["agent_state"] = observation
-    if self.static_env:
+    if self.add_frame_stack:
+      self.previous_agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      self.previous_agent_states.append(self.previous_agent_state)
+    else:
       self.previous_agent_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
       self.previous_agent_states.append(self.previous_agent_state)
 
@@ -366,8 +409,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 self.drawObstacles(obstacle_segment, "-b")
         else:
             print(f"self.environment.occupancy_grid.resolution: {self.environment.occupancy_grid.resolution}")
-            # print(f"self.environment.occupancy_grid.width: {self.environment.occupancy_grid.width}")
-            # print(f"self.environment.occupancy_grid.height: {self.environment.occupancy_grid.height}")
             for id, cell in enumerate(self.environment.occupancy_grid.map):
                 if cell >= 80:
                     # print(f"cell: {cell}")
@@ -383,12 +424,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         action = self.environment.agent.action
         linear_velocity = current_state = self.environment.agent.current_state.v
         steering_angle = current_state = self.environment.agent.current_state.steer * 180 / math.pi
-        # dx = self.goal.x - self.current_state.x
-        # dy = self.goal.y - self.current_state.y
-        # theta = radToDeg(self.current_state.theta)
-        # v = mToKm(self.current_state.v)
-        # delta = radToDeg(self.current_state.steer)
-        
+
         ax.set_title('lin-acc: {:.2f}, ang-vel: {:.2f}, lin-vel: {:.2f}, steer: {:.1f}, t: {:.0f}'.format(action[0], action[1], linear_velocity, steering_angle, self.step_counter))
           
         if save_image:
@@ -398,11 +434,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
             plt.close('all')
             return image
         else:
-            # plt.pause(0.1)
             plt.show()
-            # plt.pause(0.1)
-            # plt.close('all')
-            # plt.close('all')
 
     
    
