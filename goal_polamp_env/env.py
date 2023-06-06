@@ -13,17 +13,19 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     POLAMPEnvironment.__init__(self, full_env_name, config)
 
     self.reward_scale = 1
+    self.collision_reward = -8
     self.static_env = config["static_env"]    
     self.test_0_collision = config["test_0_collision"]
     self.test_1_collision = config["test_1_collision"]
     self.test_2_collision = config["test_2_collision"] 
     self.test_3_collision = config["test_3_collision"]
+    self.test_4_collision = config["test_4_collision"]
     self.add_frame_stack = config["add_frame_stack"]
     if self.add_frame_stack:
       self.agent_state_len = 5
     assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision \
            + 1.0 * self.test_2_collision + 1.0 * self.test_3_collision \
-           + 1.0 * self.static_env == 2.0 or not self.static_env
+           + 1.0 * self.test_4_collision + 1.0 * self.static_env == 2.0 or not self.static_env
 
     if self.add_frame_stack:
       observation = Box(-np.inf, np.inf, (5 * self.frame_stack,), np.float32) 
@@ -61,7 +63,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def compute_rewards(self, new_actions, new_next_obs_dict):    
     return -1.0 * self.reward_scale * np.ones((new_actions.shape[0], 1))
-
 
   def random_data_reset(self, task=None, grid_map=None, id=None, val_key=None, static_obsts=False):
         # self.maps = dict(self.maps_init)
@@ -250,7 +251,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       self.start_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
     return obs_dict
 
-    
   def step(self, action, **kwargs):
     # normalized actions = [-1:1, -1:1]
     agent = self.environment.agent
@@ -293,6 +293,11 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       elif self.test_3_collision:
         self.environment.agent.current_state = State(self.previous_agent_states[-4])
         self.environment.agent.current_state.v = 0
+      elif self.test_4_collision:
+        reward += self.collision_reward
+        self.not_collision_state = State(self.previous_agent_state)
+        self.not_collision_state.v = 0
+        self.environment.agent.current_state = self.not_collision_state
     if self.static_env and self.test_0_collision:
       if self.not_collision_state is not None:
         self.environment.agent.current_state = self.not_collision_state

@@ -18,7 +18,7 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, plot_subgoals=True, plot_only_agent_values=False, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}, eval_strategy=None):
+def evalPolicy(policy, env, plot_subgoals=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}, eval_strategy=None):
     assert plot_subgoals != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
@@ -165,6 +165,7 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_only_agent_values=False, re
                                               color="red", s=3)
                     if plot_subgoals:
                         ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                    ax_states.text(env_max_x - 10, env_max_y - 1.5, f"R:{acc_reward}")
                     ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
 
                     # values plot
@@ -318,7 +319,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     goal_batch          = batch["resampled_goals"]
     reward_batch        = batch["rewards"]
     done_batch          = batch["terminals"]
-    if env.static_env and env.test_1_collision: 
+    if env.static_env and (env.test_1_collision or env.test_4_collision): 
         current_step_batch  = batch["current_step"] 
         collision_batch     = batch["collision"] 
 
@@ -327,10 +328,18 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     if env.static_env and env.test_1_collision:
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
         reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
-                    + (current_step_batch - env._max_episode_steps) * collision_batch
+                     + (env.collision_reward) * collision_batch
+    elif env.static_env and env.test_4_collision:
+        done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+        reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
+                     + (current_step_batch - env._max_episode_steps) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.reward_scale
+
+    #print("debug:")
+    #print(reward_batch[collision_batch == 1.0])
+    #assert 1 == 0
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
@@ -345,12 +354,13 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--test_0_collision",   default=True, type=bool) # collision return to previous state & freeze
+    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
     parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
-    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to previous state & not freeze
+    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to 4 previous state & not freeze
+    parser.add_argument("--test_4_collision",   default=True, type=bool) # collision r = -20, continue episode
     parser.add_argument("--her_corrections",    default=False, type=bool) # dont add collision states to HER
-    parser.add_argument("--add_frame_stack",    default=True, type=bool) # add frame stack to goal&state
+    parser.add_argument("--add_frame_stack",    default=False, type=bool) # add frame stack to goal&state
     parser.add_argument("--static_env",         default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
@@ -372,7 +382,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--state_dim",          default=20, type=int)
+    parser.add_argument("--state_dim",          default=5, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -412,6 +422,7 @@ if __name__ == "__main__":
         "test_1_collision": args.test_1_collision,
         "test_2_collision": args.test_2_collision,
         "test_3_collision": args.test_3_collision,
+        "test_4_collision": args.test_4_collision,
         "add_frame_stack": args.add_frame_stack,
     }
     args.other_keys = environment_config

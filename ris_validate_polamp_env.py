@@ -22,12 +22,13 @@ from polamp_env.lib.utils_operations import generateDataSet
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--test_0_collision",   default=True, type=bool) # collision return to previous state & freeze
+    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
     parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
     parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
-    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to previous state & not freeze
+    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to 4 previous state & not freeze
+    parser.add_argument("--test_4_collision",   default=True, type=bool) # collision r = -20, continue episode
     parser.add_argument("--her_corrections",    default=False, type=bool) # dont add collision states to HER
-    parser.add_argument("--add_frame_stack",    default=True, type=bool) # dont add collision states to HER
+    parser.add_argument("--add_frame_stack",    default=False, type=bool) # add frame stack to goal&state
     parser.add_argument("--static_env",         default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
@@ -49,7 +50,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--state_dim",          default=20, type=int)
+    parser.add_argument("--state_dim",          default=5, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
@@ -95,6 +96,7 @@ if __name__ == "__main__":
         "test_1_collision": args.test_1_collision,
         "test_2_collision": args.test_2_collision,
         "test_3_collision": args.test_3_collision,
+        "test_4_collision": args.test_4_collision,
         "add_frame_stack": args.add_frame_stack,
     }
     args.other_keys = environment_config
