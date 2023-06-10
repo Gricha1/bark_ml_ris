@@ -11,16 +11,18 @@ from polamp_env.lib.structures import State
 class GCPOLAMPEnvironment(POLAMPEnvironment):
   def __init__(self, full_env_name, config):
     POLAMPEnvironment.__init__(self, full_env_name, config)
-
-    self.reward_scale = 1
-    self.collision_reward = -8
-    self.static_env = config["static_env"]    
-    self.test_0_collision = config["test_0_collision"]
-    self.test_1_collision = config["test_1_collision"]
-    self.test_2_collision = config["test_2_collision"] 
-    self.test_3_collision = config["test_3_collision"]
-    self.test_4_collision = config["test_4_collision"]
-    self.add_frame_stack = config["add_frame_stack"]
+    goal_env_config = config["goal_our_env_config"]
+    self.reward_scale = goal_env_config["reward_scale"]
+    self.collision_reward = goal_env_config["collision_reward"]
+    self.static_env = goal_env_config["static_env"]    
+    self.test_0_collision = goal_env_config["test_0_collision"]
+    self.test_1_collision = goal_env_config["test_1_collision"]
+    self.test_2_collision = goal_env_config["test_2_collision"] 
+    self.test_3_collision = goal_env_config["test_3_collision"]
+    self.test_4_collision = goal_env_config["test_4_collision"]
+    self.her_corrections = goal_env_config["her_corrections"]
+    self.add_frame_stack = goal_env_config["add_frame_stack"]
+    self.teleport_back_on_collision = goal_env_config["teleport_back_on_collision"]
     if self.add_frame_stack:
       self.agent_state_len = 5
     assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision \
@@ -291,13 +293,17 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       elif self.test_2_collision:
         self.environment.agent.current_state = State(self.start_state)
       elif self.test_3_collision:
-        self.environment.agent.current_state = State(self.previous_agent_states[-4])
-        self.environment.agent.current_state.v = 0
+        if self.teleport_back_on_collision:
+          self.environment.agent.current_state = State(self.previous_agent_states[-4])
+          self.environment.agent.current_state.v = 0
       elif self.test_4_collision:
         reward += self.collision_reward
-        self.not_collision_state = State(self.previous_agent_state)
-        self.not_collision_state.v = 0
-        self.environment.agent.current_state = self.not_collision_state
+        if self.teleport_back_on_collision:
+          self.environment.agent.current_state = State(self.previous_agent_states[-4])
+          self.environment.agent.current_state.v = 0
+        else:
+          self.environment.agent.current_state = State(self.previous_agent_state)
+          self.environment.agent.current_state.v = 0
     if self.static_env and self.test_0_collision:
       if self.not_collision_state is not None:
         self.environment.agent.current_state = self.not_collision_state
@@ -308,8 +314,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       observation = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
       goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
       desired_goal = []
-      current_step = [0.0 for _ in range(self.frame_stack)] # incorrect TODO
-      collision = [0.0 for _ in range(self.frame_stack)] # incorrect TODO
+      current_step = [1.0 * self.step_counter for _ in range(self.frame_stack)] # for last state
+      collision = [1.0 * ("Collision" in info) for _ in range(self.frame_stack)] # for last state
       for i in range(1, self.frame_stack):
         observation.extend(self.previous_agent_states[-i])
       for _ in range(self.frame_stack):

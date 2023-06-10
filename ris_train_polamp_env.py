@@ -19,6 +19,7 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 
 def evalPolicy(policy, env, plot_subgoals=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}, eval_strategy=None):
+    plot_obstacles = env.static_env
     assert plot_subgoals != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
@@ -321,7 +322,11 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     done_batch          = batch["terminals"]
     if env.static_env and (env.test_1_collision or env.test_4_collision): 
         current_step_batch  = batch["current_step"] 
-        collision_batch     = batch["collision"] 
+        collision_batch     = batch["collision"]
+        if env.add_frame_stack:
+            current_step_batch  = current_step_batch[:, 0:1]
+            collision_batch     = collision_batch[:, 0:1]
+    
 
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
@@ -337,10 +342,6 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.reward_scale
 
-    #print("debug:")
-    #print(reward_batch[collision_batch == 1.0])
-    #assert 1 == 0
-
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
     action_batch        = torch.FloatTensor(action_batch).to(device)
@@ -353,15 +354,6 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-
-    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
-    parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
-    parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
-    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to 4 previous state & not freeze
-    parser.add_argument("--test_4_collision",   default=True, type=bool) # collision r = -20, continue episode
-    parser.add_argument("--her_corrections",    default=False, type=bool) # dont add collision states to HER
-    parser.add_argument("--add_frame_stack",    default=False, type=bool) # add frame stack to goal&state
-    parser.add_argument("--static_env",         default=True, type=bool)
 
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
@@ -382,7 +374,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--state_dim",          default=5, type=int)
+    parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -390,6 +382,9 @@ if __name__ == "__main__":
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
     print(args)
+
+    with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
+        goal_our_env_config = json.load(f)
 
     with open("polamp_env/configs/train_configs.json", 'r') as f:
         train_config = json.load(f)
@@ -405,7 +400,7 @@ if __name__ == "__main__":
 
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
     maps, trainTask, valTasks = dataSet["obstacles"]
-    if not args.static_env:
+    if not goal_our_env_config["static_env"]:
         maps["map0"] = []
 
     args.evaluation = False
@@ -417,13 +412,7 @@ if __name__ == "__main__":
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
         'evaluation': args.evaluation,
-        "static_env": args.static_env,
-        "test_0_collision": args.test_0_collision,
-        "test_1_collision": args.test_1_collision,
-        "test_2_collision": args.test_2_collision,
-        "test_3_collision": args.test_3_collision,
-        "test_4_collision": args.test_4_collision,
-        "add_frame_stack": args.add_frame_stack,
+        'goal_our_env_config' : goal_our_env_config,
     }
     args.other_keys = environment_config
 
@@ -526,7 +515,7 @@ if __name__ == "__main__":
         next_state = next_obs["observation"]
 
         transition_added = False # for args.her_corrections
-        if args.her_corrections:
+        if env.her_corrections:
             if next_obs["collision_happend_on_trajectory"] == 0.0:
                 buffer_size += 1 # for args.her_corrections
                 transition_added = True # for args.her_corrections
@@ -548,7 +537,7 @@ if __name__ == "__main__":
                 terminals=[1.0*done]
             )
 
-        if args.static_env and args.her_corrections:
+        if env.static_env and env.her_corrections:
             print("collission:", next_obs["collision_happend_on_trajectory"], end=" ")
         
         state = next_state
@@ -594,8 +583,7 @@ if __name__ == "__main__":
             eval_distance, success_rate, eval_reward, \
             val_state, val_goal, \
             mean_actions, eval_episode_length, images, validation_info \
-                    = evalPolicy(policy, test_env, plot_obstacles=args.static_env,
-                        plot_only_agent_values=True, 
+                    = evalPolicy(policy, test_env, plot_only_agent_values=True, 
                         data_to_plot={"dataset_x": logger.data["dataset_x"], 
                                       "dataset_y": logger.data["dataset_y"],
                                       "train_step_x": logger.data["train_step_x"], 

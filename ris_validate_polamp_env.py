@@ -22,15 +22,6 @@ from polamp_env.lib.utils_operations import generateDataSet
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--test_0_collision",   default=False, type=bool) # collision return to previous state & freeze
-    parser.add_argument("--test_1_collision",   default=False, type=bool) # collision r = cur_step - max_step
-    parser.add_argument("--test_2_collision",   default=False, type=bool) # collision = return to beggining of episode
-    parser.add_argument("--test_3_collision",   default=False, type=bool) # collision return to 4 previous state & not freeze
-    parser.add_argument("--test_4_collision",   default=True, type=bool) # collision r = -20, continue episode
-    parser.add_argument("--her_corrections",    default=False, type=bool) # dont add collision states to HER
-    parser.add_argument("--add_frame_stack",    default=False, type=bool) # add frame stack to goal&state
-    parser.add_argument("--static_env",         default=True, type=bool)
-
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
     parser.add_argument("--epsilon",            default=1e-16, type=float)
@@ -50,13 +41,16 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--state_dim",          default=5, type=int)
+    parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss',        dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
+
+    with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
+        goal_our_env_config = json.load(f)
 
     with open("polamp_env/configs/train_configs.json", 'r') as f:
         train_config = json.load(f)
@@ -73,7 +67,7 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1, dynamic=False)
     #maps, trainTask, valTasks = dataSet["empty"]
     maps, trainTask, valTasks = dataSet["obstacles"]
-    if not args.static_env:
+    if not goal_our_env_config["static_env"]:
         maps["map0"] = []
 
     # dataset info
@@ -91,13 +85,7 @@ if __name__ == "__main__":
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
         'evaluation': args.evaluation,
-        "static_env": args.static_env,
-        "test_0_collision": args.test_0_collision,
-        "test_1_collision": args.test_1_collision,
-        "test_2_collision": args.test_2_collision,
-        "test_3_collision": args.test_3_collision,
-        "test_4_collision": args.test_4_collision,
-        "add_frame_stack": args.add_frame_stack,
+        'goal_our_env_config' : goal_our_env_config,
     }
     args.other_keys = environment_config
 
@@ -156,8 +144,7 @@ if __name__ == "__main__":
                     = evalPolicy(policy, test_env, 
                                  plot_subgoals=True, 
                                  render_env=False, 
-                                 plot_only_agent_values=True,
-                                 plot_obstacles=args.static_env, 
+                                 plot_only_agent_values=True, 
                                  video_task_id=12, eval_strategy=None) # 18, 12
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")

@@ -1,0 +1,14 @@
+{
+    "teleport_back_on_collision": true,
+    "test_0_collision": false,
+    "test_1_collision": false,
+    "test_2_collision": false,
+    "test_3_collision": false,
+    "test_4_collision": true,
+    "her_corrections": false,
+    "add_frame_stack": true,
+    "static_env": true,
+    "reward_scale": 1,
+    "collision_reward": -2,
+    "add_ppo_reward": true
+}
