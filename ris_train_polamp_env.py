@@ -246,7 +246,7 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_only_agent_values=False, pl
             if eval_strategy is None:
                 action = policy.select_action(state, goal)
             else:
-                action = [-1, 0]
+                action = eval_strategy
             if action_info["max_linear_acc"] is None:
                 action_info["max_linear_acc"] = action[0]
                 action_info["max_steer_rate"] = action[1]

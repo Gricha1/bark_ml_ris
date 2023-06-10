@@ -23,6 +23,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.her_corrections = goal_env_config["her_corrections"]
     self.add_frame_stack = goal_env_config["add_frame_stack"]
     self.teleport_back_on_collision = goal_env_config["teleport_back_on_collision"]
+    self.add_ppo_reward = goal_env_config["add_ppo_reward"]
+
     if self.add_frame_stack:
       self.agent_state_len = 5
     assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision \
@@ -279,13 +281,15 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       reward = self.compute_rewards(np.array([1]), None).item()
     else:
       reward = 0.0
-    #reward = polamp_reward
+
+    if self.add_ppo_reward:
+      reward = polamp_reward
 
     if self.static_env and "Collision" in info:
       self.collision_happend_on_trajectory = True
       if self.test_1_collision:
         isDone = True
-        reward = self.step_counter - self._max_episode_steps
+        reward += self.step_counter - self._max_episode_steps
       elif self.test_0_collision:
         if self.not_collision_state is None:
           self.not_collision_state = State(self.previous_agent_state)
