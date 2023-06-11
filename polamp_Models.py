@@ -101,19 +101,20 @@ def weights_init_encoder(m):
 		nn.init.orthogonal_(m.weight.data[:, :, mid, mid], gain)
 
 class Encoder(nn.Module):
-	def __init__(self, n_channels=3, state_dim=16):
+	def __init__(self, input_dim, n_channels=3, state_dim=16):
 		super(Encoder, self).__init__()
-		self.encoder_conv = nn.Sequential(
-			nn.Conv2d(n_channels, 32, 3, 2), nn.ReLU(),
-			nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
-			nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
-			nn.Conv2d(32, 32, 3, 1), nn.ReLU()
-		)
-		self.fc = nn.Linear(32*7*7, state_dim)
+		#self.encoder_conv = nn.Sequential(
+		#	nn.Conv2d(n_channels, 32, 3, 2), nn.ReLU(),
+		#	nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
+		#	nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
+		#	nn.Conv2d(32, 32, 3, 1), nn.ReLU()
+		#)
+		#self.fc = nn.Linear(32*7*7, state_dim)
+		self.fc = nn.Linear(input_dim, state_dim)
 		self.apply(weights_init_encoder)
 
 	def forward(self, x):
-		h = self.encoder_conv(x).view(x.size(0), -1)
-		state = self.fc(h)
+		#h = self.encoder_conv(x).view(x.size(0), -1)
+		state = self.fc(x)
 		return state
 

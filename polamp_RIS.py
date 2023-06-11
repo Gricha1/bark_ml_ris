@@ -22,7 +22,7 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, image_env=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None):		
 
 		# normalize states
 		self.env_state_bounds = env_state_bounds
@@ -44,9 +44,9 @@ class RIS(object):
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
 		# Encoder (for vision-based envs)
-		self.image_env = image_env
-		if self.image_env:
-			self.encoder = Encoder(state_dim=state_dim).to(device)
+		self.use_encoder = use_encoder
+		if self.use_encoder:
+			self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim).to(device)
 			self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=enc_lr)
 
 		# Actor-Critic Hyperparameters
@@ -71,29 +71,29 @@ class RIS(object):
 		torch.save(self.actor.state_dict(),		 folder + "actor.pth")
 		torch.save(self.critic.state_dict(),		folder + "critic.pth")
 		torch.save(self.subgoal_net.state_dict(),   folder + "subgoal_net.pth")
-		if self.image_env:
+		if self.use_encoder:
 			torch.save(self.encoder.state_dict(), folder + "encoder.pth")
 		if save_optims:
 			torch.save(self.actor_optimizer.state_dict(), 	folder + "actor_opti.pth")
 			torch.save(self.critic_optimizer.state_dict(), 	folder + "critic_opti.pth")
 			torch.save(self.subgoal_optimizer.state_dict(), folder + "subgoal_opti.pth")
-			if self.image_env:
+			if self.use_encoder:
 				torch.save(self.encoder_optimizer.state_dict(), folder + "encoder_opti")
 
 	def load(self, folder):
 		self.actor.load_state_dict(torch.load(folder+"actor.pth", map_location=self.device))
 		self.critic.load_state_dict(torch.load(folder+"critic.pth", map_location=self.device))
 		self.subgoal_net.load_state_dict(torch.load(folder+"subgoal_net.pth", map_location=self.device))
-		if self.image_env:
+		if self.use_encoder:
 			self.encoder.load_state_dict(torch.load(folder+"encoder.pth", map_location=self.device))
 
 	def select_action(self, state, goal):
 		with torch.no_grad():
 			state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
 			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
-			if self.image_env:
-				state = state.view(1, 3, 84, 84)
-				goal = goal.view(1, 3, 84, 84)
+			if self.use_encoder:
+				#state = state.view(1, 3, 84, 84)
+				#goal = goal.view(1, 3, 84, 84)
 				state = self.encoder(state)
 				goal = self.encoder(goal)
 			action, _, _ = self.actor.sample(state, goal)
@@ -193,17 +193,17 @@ class RIS(object):
 		#goal = normalize_state(goal, self.env_state_bounds)
 		#subgoal = normalize_state(subgoal, self.env_state_bounds)
 		
-		if self.image_env:
-			state = state.view(-1, 3, 84, 84)
-			next_state = next_state.view(-1, 3, 84, 84)
-			goal = goal.view(-1, 3, 84, 84)
-			subgoal = subgoal.view(-1, 3, 84, 84)
+		if self.use_encoder:
+			#state = state.view(-1, 3, 84, 84)
+			#next_state = next_state.view(-1, 3, 84, 84)
+			#goal = goal.view(-1, 3, 84, 84)
+			#subgoal = subgoal.view(-1, 3, 84, 84)
 
 			# Data augmentation
-			state = random_translate(state, pad=8)
-			next_state = random_translate(next_state, pad=8)
-			goal = random_translate(goal, pad=8)
-			subgoal = random_translate(subgoal, pad=8)
+			#state = random_translate(state, pad=8)
+			#next_state = random_translate(next_state, pad=8)
+			#goal = random_translate(goal, pad=8)
+			#subgoal = random_translate(subgoal, pad=8)
 
 			# Stop gradient for subgoal goal and next state
 			state = self.encoder(state)
@@ -225,10 +225,10 @@ class RIS(object):
 		critic_loss = 0.5 * (Q - target_Q).pow(2).sum(-1).mean()
 
 		# Optimize the critic
-		if self.image_env: self.encoder_optimizer.zero_grad()
+		if self.use_encoder: self.encoder_optimizer.zero_grad()
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
-		if self.image_env: self.encoder_optimizer.step()
+		if self.use_encoder: self.encoder_optimizer.step()
 
 		if self.logger is not None:
 			self.logger.store(
@@ -239,7 +239,7 @@ class RIS(object):
 		self.critic_optimizer.step()
 
 		# Stop backpropagation to encoder
-		if self.image_env:
+		if self.use_encoder:
 			state = state.detach()
 			goal = goal.detach()
 			subgoal = subgoal.detach()

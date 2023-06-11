@@ -41,6 +41,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
+    parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
@@ -107,7 +108,11 @@ if __name__ == "__main__":
     env         = gym.make(train_env_name)
     test_env    = gym.make(test_env_name)
     action_dim = env.action_space.shape[0]
-    state_dim = args.state_dim 
+    env_obs_dim = env.observation_space["observation"].shape[0]
+    if args.use_encoder:
+        state_dim = args.state_dim 
+    else:
+        state_dim = env_obs_dim
 
     folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
     load_results = os.path.isdir(folder)
@@ -119,7 +124,15 @@ if __name__ == "__main__":
         run = wandb.init(project=args.wandb_project)
     
     # Initialize policy
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha, Lambda=args.Lambda, h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=1e-3, device=args.device, logger=logger if args.log_loss else None)
+    env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
+                        "v": 2.778, "steer": 0.7854}
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha,
+                 use_encoder=args.use_encoder,
+                 Lambda=args.Lambda, epsilon=args.epsilon,
+                 h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
+                 device=args.device, logger=logger if args.log_loss else None, 
+                 env_state_bounds=env_state_bounds,
+                 env_obs_dim=env_obs_dim)
 
     if load_results:
         policy.load(folder)
@@ -142,7 +155,8 @@ if __name__ == "__main__":
     val_state, val_goal, \
     mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
-                                 plot_subgoals=True, 
+                                 plot_subgoals=True,
+                                 plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
                                  video_task_id=12, eval_strategy=None) # 18, 12
