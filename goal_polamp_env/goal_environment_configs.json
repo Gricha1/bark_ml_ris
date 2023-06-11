@@ -8,7 +8,8 @@
     "her_corrections": false,
     "add_frame_stack": true,
     "static_env": true,
-    "reward_scale": 1,
+    "abs_time_step_reward": 0.1,
     "collision_reward": -8,
-    "add_ppo_reward": true
+    "goal_reward": 20,
+    "add_ppo_reward": false
 }

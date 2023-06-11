@@ -327,20 +327,26 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
             current_step_batch  = current_step_batch[:, 0:1]
             collision_batch     = collision_batch[:, 0:1]
     
-
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
     if env.static_env and env.test_1_collision:
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
-        reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
-                     + (env.collision_reward) * collision_batch
+        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
+                    + (current_step_batch - env._max_episode_steps) * collision_batch
     elif env.static_env and env.test_4_collision:
-        done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
-        reward_batch = (- np.ones_like(done_batch) * env.reward_scale) * (1.0 - collision_batch) \
-                     + (current_step_batch - env._max_episode_steps) * collision_batch
+        if env.add_ppo_reward:
+            done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+            reward_batch = env.HER_reward(state=state_batch, action=action_batch, 
+                                          next_state=next_state_batch, goal=goal_batch, 
+                                          collision=collision_batch, goal_was_reached=done_batch, 
+                                          step_counter=current_step_batch)
+        else:
+            done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+            reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
+                            + (env.collision_reward) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
-        reward_batch = - np.ones_like(done_batch) * env.reward_scale
+        reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
 
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
@@ -349,6 +355,11 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     next_state_batch    = torch.FloatTensor(next_state_batch).to(device)
     done_batch          = torch.FloatTensor(done_batch).to(device)
     goal_batch          = torch.FloatTensor(goal_batch).to(device)
+
+
+    print("max reward:", reward_batch[:, 0].max().item(), end=" ")
+    print("min reward:", reward_batch[:, 0].min().item(), end=" ")
+
 
     return state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch
 

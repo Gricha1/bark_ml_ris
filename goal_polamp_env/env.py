@@ -12,8 +12,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def __init__(self, full_env_name, config):
     POLAMPEnvironment.__init__(self, full_env_name, config)
     goal_env_config = config["goal_our_env_config"]
-    self.reward_scale = goal_env_config["reward_scale"]
+    self.abs_time_step_reward = goal_env_config["abs_time_step_reward"]
     self.collision_reward = goal_env_config["collision_reward"]
+    self.goal_reward = goal_env_config["goal_reward"]
     self.static_env = goal_env_config["static_env"]    
     self.test_0_collision = goal_env_config["test_0_collision"]
     self.test_1_collision = goal_env_config["test_1_collision"]
@@ -66,7 +67,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.observation_space = gym.spaces.dict.Dict(obs_dict)
 
   def compute_rewards(self, new_actions, new_next_obs_dict):    
-    return -1.0 * self.reward_scale * np.ones((new_actions.shape[0], 1))
+    return -1.0 * self.abs_time_step_reward * np.ones((new_actions.shape[0], 1))
 
   def random_data_reset(self, task=None, grid_map=None, id=None, val_key=None, static_obsts=False):
         # self.maps = dict(self.maps_init)
@@ -360,6 +361,66 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       self.previous_agent_states.append(self.previous_agent_state)
 
     return obs_dict, reward, isDone, info
+
+
+  def HER_reward(self, state, action, next_state, goal, collision, goal_was_reached, step_counter):
+
+    #previous_delta = self.agent.get_previous_goal_distance()
+    #new_delta = self.agent.get_goal_distance()
+    #reward = []
+    #reward.append(-1 if collision else 0)
+
+    # reward collision & goal reached
+    reward = goal_was_reached * self.goal_reward
+    reward += collision * self.collision_reward
+    # distance reward
+    previous_delta = np.hypot(state[:, 0:1] - goal[:, 0:1], state[:, 1:2] - goal[:, 1:2])
+    new_delta = np.hypot(next_state[:, 0:1] - goal[:, 0:1], next_state[:, 1:2] - goal[:, 1:2])
+    new_delta[new_delta < 0.5] = 0.5
+    reward += 1.0 * (((step_counter + 1) % self.environment.UPDATE_SPARSE) == 0) \
+                  * ((previous_delta - new_delta) * self.environment.occupancy_grid.resolution)
+    # timestep reward
+    reward += -1.0 * (((step_counter + 1) % self.environment.UPDATE_SPARSE) == 0) \
+                  * self.abs_time_step_reward
+
+    #if goal_was_reached:
+    #    reward.append(1)
+    #else:
+    #    reward.append(0)
+
+    #if self.clearance_is_enough:
+    #    reward.append(0)
+    #else:
+    #    reward.append(-1)
+    """
+    if not ((step_counter + 1) % self.UPDATE_SPARSE):
+        if (new_delta < 0.5):
+            new_delta = 0.5
+        reward.append(-1)
+        # if self.with_potential:
+        #     reward.append((previous_delta - new_delta) / new_delta)
+        # else:
+        # print(f"previous_delta - new_delta: {previous_delta - new_delta}")
+        reward.append((previous_delta - new_delta) * self.occupancy_grid.resolution)
+        reward.append(0 if self.agent.current_state.v >= 0 else -1)
+        reward.append(-1 if self.agent.overSpeeding else 0)
+        reward.append(-1 if self.agent.overSteering else 0)
+        #Penalizing only for acceleration
+        # reward.append(0)
+        # Updating the current state
+        self.agent.old_state = self.agent.current_state
+    else:
+        reward.append(0)
+        reward.append(0)
+        reward.append(0)
+        reward.append(0)
+        reward.append(0)
+
+    # print(f"self.reward_weights: {self.reward_weights}")
+    # print(f"reward: {reward}")
+    return np.matmul(self.reward_weights, reward)
+    """
+    return reward
 
   # overload
   def render(self, mode="human", save_image=True):
