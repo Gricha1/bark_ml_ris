@@ -12,9 +12,14 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def __init__(self, full_env_name, config):
     POLAMPEnvironment.__init__(self, full_env_name, config)
     goal_env_config = config["goal_our_env_config"]
-    self.abs_time_step_reward = goal_env_config["abs_time_step_reward"]
-    self.collision_reward = goal_env_config["collision_reward"]
-    self.goal_reward = goal_env_config["goal_reward"]
+    self.abs_time_step_reward = self.reward_config["timeStep"]
+    self.collision_reward = -self.reward_config["collision"]
+    self.goal_reward = self.reward_config["goal"]
+    assert self.reward_config["clearance"] \
+           == self.reward_config["reverse"] \
+           == self.reward_config["overSpeeding"] \
+           == self.reward_config["overSteering"] \
+           == 0.0, "didnt implement these rewards"
     self.static_env = goal_env_config["static_env"]  
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
     self.test_0_collision = goal_env_config["test_0_collision"]

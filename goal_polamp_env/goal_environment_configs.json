@@ -7,11 +7,8 @@
     "test_3_collision": false,
     "test_4_collision": true,
     "her_corrections": false,
-    "add_frame_stack": true,
+    "add_frame_stack": false,
     "static_env": true,
-    "abs_time_step_reward": 0.1,
-    "collision_reward": -8,
-    "goal_reward": 20,
-    "add_ppo_reward": true,
-    "use_lidar_data": true
+    "add_ppo_reward": false,
+    "use_lidar_data": false
 }

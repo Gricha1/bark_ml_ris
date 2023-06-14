@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--use_encoder",        default=True, type=bool)
+    parser.add_argument("--use_encoder",        default=False, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
                                  plot_subgoals=True,
-                                 plot_value_function=False, 
+                                 plot_value_function=True, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
                                  video_task_id=12, eval_strategy=None) # 18, 12
