@@ -99,12 +99,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                   env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # random dataset
                       "theta": (-1.5707963267948966, 1.5707963267948966), 
                       "v": (0, 0), "steer": (0, 0)}
-                  self.dataset_info["boundaries"] = env_boundaries
-                  boundaries = [self.dataset_info["boundaries"]["x"], 
-                                self.dataset_info["boundaries"]["y"],
-                                self.dataset_info["boundaries"]["theta"],
-                                self.dataset_info["boundaries"]["v"],
-                                self.dataset_info["boundaries"]["steer"]]
+                  dataset_info = {}
+                  dataset_info["boundaries"] = env_boundaries
+                  boundaries = [dataset_info["boundaries"]["x"], 
+                                dataset_info["boundaries"]["y"],
+                                dataset_info["boundaries"]["theta"],
+                                dataset_info["boundaries"]["v"],
+                                dataset_info["boundaries"]["steer"]]
                   current_task["start"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                           for x, boundary in zip(np.random.random(5), boundaries)] 
                   current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 

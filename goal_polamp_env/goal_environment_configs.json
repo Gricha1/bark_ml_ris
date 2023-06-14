@@ -8,7 +8,7 @@
     "test_4_collision": true,
     "her_corrections": false,
     "add_frame_stack": false,
-    "static_env": true,
+    "static_env": false,
     "add_ppo_reward": false,
     "use_lidar_data": false
 }
