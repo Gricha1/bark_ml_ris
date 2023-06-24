@@ -21,44 +21,58 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            == self.reward_config["overSteering"] \
            == 0.0, "didnt implement these rewards"
     self.static_env = goal_env_config["static_env"]  
+    self.dataset = goal_env_config["dataset"]
+    self.random_train_dataset = goal_env_config["random_train_dataset"]
+    assert self.dataset == "maps" or self.dataset == "ris_dataset_v1", "not impemented other datasets for random sampling"
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
     self.test_0_collision = goal_env_config["test_0_collision"]
     self.test_1_collision = goal_env_config["test_1_collision"]
     self.test_2_collision = goal_env_config["test_2_collision"] 
     self.test_3_collision = goal_env_config["test_3_collision"]
-    self.test_4_collision = goal_env_config["test_4_collision"]
-    self.her_corrections = goal_env_config["her_corrections"]
+    self.test_4_collision = goal_env_config["test_4_collision"]  # collision = step back (self.teleport_back_steps) steps
+    assert not (self.random_train_dataset and self.test_4_collision), "cant spawn into obst"
+    self.inside_obstacles_movement = goal_env_config["inside_obstacles_movement"]
+    self.her_corrections = goal_env_config["her_corrections"] # when step: add obs,a,next_obs to trajectory, to add less equal data(when freeze on collision)
     self.add_frame_stack = goal_env_config["add_frame_stack"]
     self.teleport_back_on_collision = goal_env_config["teleport_back_on_collision"]
     self.teleport_back_steps = goal_env_config["teleport_back_steps"]
     self.add_ppo_reward = goal_env_config["add_ppo_reward"]
+    self.PPO_agent_observation = goal_env_config["PPO_agent_observation"]
 
+    assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
+    assert self.test_4_collision == self.teleport_back_on_collision, "this implemented together"
     assert not (self.static_env == False and self.use_lidar_data == True)
     if self.add_frame_stack:
       self.agent_state_len = 5
-    assert 1.0 * self.test_0_collision + 1.0 * self.test_1_collision \
+    assert 1.0 * self.inside_obstacles_movement + 1.0 * self.test_0_collision \
+           + 1.0 * self.test_1_collision \
            + 1.0 * self.test_2_collision + 1.0 * self.test_3_collision \
            + 1.0 * self.test_4_collision + 1.0 * self.static_env == 2.0 or not self.static_env
-
+    self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
+    if self.PPO_agent_observation:
+      observation_size = 10
+    else:
+      observation_size = 5
     if self.add_frame_stack:
-      observation = Box(-np.inf, np.inf, (5 * self.frame_stack if not self.use_lidar_data else self.frame_stack * (5 + self.n_beams),), np.float32) 
-      desired_goal = Box(-np.inf, np.inf, (5 * self.frame_stack if not self.use_lidar_data else self.frame_stack * (5 + self.n_beams),), np.float32) 
-      achieved_goal = Box(-np.inf, np.inf, (5 * self.frame_stack if not self.use_lidar_data else self.frame_stack * (5 + self.n_beams),), np.float32)
-      state_observation = observation 
-      state_desired_goal = desired_goal 
-      state_achieved_goal = achieved_goal 
+      observation = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
+      desired_goal = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
+      achieved_goal = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
       current_step = Box(0.0, np.inf, (1 * self.frame_stack,), np.float32)
       collision = Box(0.0, 1.0, (1 * self.frame_stack,), np.float32)
     else:
-      observation = Box(-np.inf, np.inf, (5 if not self.use_lidar_data else 5 + self.n_beams,), np.float32) 
-      desired_goal = Box(-np.inf, np.inf, (5 if not self.use_lidar_data else 5 + self.n_beams,), np.float32) 
-      achieved_goal = Box(-np.inf, np.inf, (5 if not self.use_lidar_data else 5 + self.n_beams,), np.float32)
-      state_observation = observation 
-      state_desired_goal = desired_goal 
-      state_achieved_goal = achieved_goal 
+      observation = Box(-np.inf, np.inf, (observation_size if not self.use_lidar_data else observation_size + self.n_beams,), np.float32) 
+      desired_goal = Box(-np.inf, np.inf, (observation_size if not self.use_lidar_data else observation_size + self.n_beams,), np.float32) 
+      achieved_goal = Box(-np.inf, np.inf, (observation_size if not self.use_lidar_data else observation_size + self.n_beams,), np.float32)
       current_step = Box(0.0, np.inf, (1,), np.float32)
       collision = Box(0.0, 1.0, (1,), np.float32)
     collision_happend_on_trajectory = Box(0.0, 1.0, (1,), np.float32)
+    if self.PPO_agent_observation:
+      state_observation = Box(-np.inf, np.inf, (5,), np.float32) 
+      state_desired_goal = Box(-np.inf, np.inf, (5,), np.float32)  
+    else:
+      state_observation = observation 
+      state_desired_goal = desired_goal 
+    state_achieved_goal = state_observation
 
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
@@ -93,7 +107,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 current_task["start"] = tasks[id][0]
                 current_task["goal"] = tasks[id][1]
 
-                if not static_obsts:
+                if not static_obsts or self.random_train_dataset:
                   # random sample state&goal
                   polygon_map = []
                   env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # random dataset
@@ -111,43 +125,106 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                   current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                           for x, boundary in zip(np.random.random(5), boundaries)] 
                 else:
-                  def get_random_sampled_state():
-                    dataset_info = {}
-                    env_boundaries = {"v": (0, 0), "steer": (0, 0)}
-                    dataset_info["boundaries"] = env_boundaries
-                    agent_horizontal_orientation = np.random.choice([False, True])
-                    agent_left_to_right_down_to_up = np.random.choice([False, True])
-                    goal_left_to_right = np.random.choice([False, True])
-                    line = np.random.choice([1, 2, 3])
-                    if agent_horizontal_orientation:
-                      env_boundaries["x"] = (-2, 35)
-                      env_boundaries["theta"] = (-0.35, 0.35)
-                      if agent_left_to_right_down_to_up:
+                  if self.dataset == "maps":
+                    def get_random_sampled_state():
+                      dataset_info = {}
+                      env_boundaries = {"v": (0, 0), "steer": (0, 0)}
+                      dataset_info["boundaries"] = env_boundaries
+                      agent_horizontal_orientation = np.random.choice([False, True])
+                      agent_left_to_right_down_to_up = np.random.choice([False, True])
+                      goal_left_to_right = np.random.choice([False, True])
+                      line = np.random.choice([1, 2, 3])
+                      if agent_horizontal_orientation:
+                        env_boundaries["x"] = (-2, 35)
                         env_boundaries["theta"] = (-0.35, 0.35)
+                        if agent_left_to_right_down_to_up:
+                          env_boundaries["theta"] = (-0.35, 0.35)
+                        else:
+                          env_boundaries["theta"] = (np.pi - 0.35, np.pi + 0.35)
+                        if line == 1: env_boundaries["y"] = (33, 35)
+                        elif line == 2: env_boundaries["y"] = (16.5, 17.5)
+                        elif line == 3: env_boundaries["y"] = (-4, 0.5)
                       else:
-                        env_boundaries["theta"] = (np.pi - 0.35, np.pi + 0.35)
-                      if line == 1: env_boundaries["y"] = (33, 35)
-                      elif line == 2: env_boundaries["y"] = (16.5, 17.5)
-                      elif line == 3: env_boundaries["y"] = (-4, 0.5)
-                    else:
-                      env_boundaries["y"] = (-3, 33)
-                      if agent_left_to_right_down_to_up:
-                        env_boundaries["theta"] = (np.pi/2 - 0.35, np.pi/2 + 0.35)
+                        env_boundaries["y"] = (-3, 33)
+                        if agent_left_to_right_down_to_up:
+                          env_boundaries["theta"] = (np.pi/2 - 0.35, np.pi/2 + 0.35)
+                        else:
+                          env_boundaries["theta"] = (-np.pi/2 - 0.35, -np.pi/2 + 0.35)
+                        if line == 1: env_boundaries["x"] = (-5, -2)
+                        elif line == 2: env_boundaries["x"] = (17.5, 18.5)
+                        elif line == 3: env_boundaries["x"] = (38, 40)
+                      boundaries = [dataset_info["boundaries"]["x"], 
+                                    dataset_info["boundaries"]["y"],
+                                    dataset_info["boundaries"]["theta"],
+                                    dataset_info["boundaries"]["v"],
+                                    dataset_info["boundaries"]["steer"]]
+                      task = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                              for x, boundary in zip(np.random.random(5), boundaries)] 
+
+                      return task
+                  elif self.dataset == "ris_dataset_v1":
+                    # theta = 0, np.pi
+                    # case1: x = -2, 35; y = 26.5, 35
+                    # case2: x = 27, 35; y = 4.5, 26.5
+                    # case3: x = -2, 35; y = -3, 4.5
+                    # case4: x = -2, 6; y = 4.5, 26.5
+
+                    # theta = -np.pi/2, np.pi/2
+                    # case1: x = -2, 35; y = 29, 35  ++++
+                    # case2: x = 23.5, 35; y = 2, 29  ++++
+                    # case3: x = -2, 35; y = -3, 2   ++++
+                    # case4: x = -2, 11; y = 2, 29 ++++
+
+
+                    def get_random_sampled_state():
+                      dataset_info = {}
+                      env_boundaries = {"v": (0, 0), "steer": (0, 0)}
+                      dataset_info["boundaries"] = env_boundaries
+                      geometric_case = np.random.choice([1, 2, 3, 4])
+                      agent_horizontal_orientation = np.random.choice([False, True])
+                      if agent_horizontal_orientation:
+                        env_boundaries["theta"] = np.random.choice([0, np.pi])
+                        env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
+                        if geometric_case == 1:
+                          env_boundaries["x"] = (-2, 35)    
+                          env_boundaries["y"] = (26.5, 35)
+                        elif geometric_case == 2:
+                          env_boundaries["x"] = (27, 35)    
+                          env_boundaries["y"] = (4.5, 26.5)
+                        elif geometric_case == 3:
+                          env_boundaries["x"] = (-2, 35)      
+                          env_boundaries["y"] = (-3, 4.5)
+                        elif geometric_case == 4:
+                          env_boundaries["x"] = (-2, 6)      
+                          env_boundaries["y"] = (4.5, 26.5)
+                        else: assert 1 == 0
                       else:
-                        env_boundaries["theta"] = (-np.pi/2 - 0.35, -np.pi/2 + 0.35)
-                      if line == 1: env_boundaries["x"] = (-5, -2)
-                      elif line == 2: env_boundaries["x"] = (17.5, 18.5)
-                      elif line == 3: env_boundaries["x"] = (38, 40)
+                        env_boundaries["theta"] = np.random.choice([-np.pi/2, np.pi/2])
+                        env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
+                        if geometric_case == 1:
+                          env_boundaries["x"] = (-2, 35)    
+                          env_boundaries["y"] = (29, 35)
+                        elif geometric_case == 2:
+                          env_boundaries["x"] = (23.5, 35)    
+                          env_boundaries["y"] = (2, 29)
+                        elif geometric_case == 3:
+                          env_boundaries["x"] = (-2, 35)      
+                          env_boundaries["y"] = (-3, 2)
+                        elif geometric_case == 4:
+                          env_boundaries["x"] = (-2, 11)      
+                          env_boundaries["y"] = (2, 29)
+                        else: assert 1 == 0
+                      boundaries = [dataset_info["boundaries"]["x"], 
+                                    dataset_info["boundaries"]["y"],
+                                    dataset_info["boundaries"]["theta"],
+                                    dataset_info["boundaries"]["v"],
+                                    dataset_info["boundaries"]["steer"]]
+                      task = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                              for x, boundary in zip(np.random.random(5), boundaries)] 
+                      return task
 
-                    boundaries = [dataset_info["boundaries"]["x"], 
-                                  dataset_info["boundaries"]["y"],
-                                  dataset_info["boundaries"]["theta"],
-                                  dataset_info["boundaries"]["v"],
-                                  dataset_info["boundaries"]["steer"]]
-                    task = [(boundary[1] - boundary[0]) * x + boundary[0] 
-                            for x, boundary in zip(np.random.random(5), boundaries)] 
-
-                    return task
+                  else:
+                    assert 1 == 0
 
                   current_task["start"] = get_random_sampled_state() 
                   current_task["goal"] = get_random_sampled_state() 
@@ -155,7 +232,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 # Checking if the task is correct
                 while not self.environment.set_polygon_task(current_task, polygon_map):
                     print("------one more time------")
-                    assert 1 == 0, "didnt load task"
+                    assert 1 == 0, "didnt load task, initial state is collided"
                     self.map_key = self.lst_keys[np.random.randint(len(self.lst_keys))]
                     polygon_map = self.maps[self.map_key]
                     tasks = self.trainTasks[self.map_key]
@@ -200,12 +277,19 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    # POLAMPenvironment return always:
+    # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
+    polamp_observation_size = len(observed_state.tolist()) // self.frame_stack
+    if self.PPO_agent_observation:
+      agent_state = self.environment.agent.getDiff()
+      goal_state = [0, 0, 0, 0, 0, goal.theta, goal.v, goal.steer, 0, 0]
+    else:
+      agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
-        beams_observation = self.environment.get_observation(State(agent_state))
+        beams_observation = self.environment.get_observation(self.environment.agent.current_state)
         agent_state.extend(beams_observation.tolist())
-        beams_observation = self.environment.get_observation(State(goal_state))
+        beams_observation = self.environment.get_observation(self.environment.agent.goal_state)
         goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
       observation = []
@@ -218,22 +302,22 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       observation = np.array(observation)
       desired_goal = np.array(desired_goal)
       achieved_goal = observation
-      state_observation = observation
-      state_desired_goal = desired_goal
-      state_achieved_goal = achieved_goal
       current_step = np.array([current_step])
       collision = np.array([collision])
     else:
       observation = np.array(agent_state)
       desired_goal = np.array(goal_state)
       achieved_goal = observation
-      state_observation = observation
-      state_desired_goal = desired_goal
-      state_achieved_goal = achieved_goal
       current_step = np.array([0.0])
       collision = np.array([0.0])
     self.collision_happend_on_trajectory = False
-
+    if self.PPO_agent_observation:
+      state_observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+      state_desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])  
+    else:
+      state_observation = observation 
+      state_desired_goal = desired_goal 
+    state_achieved_goal = state_observation
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
                 "achieved_goal" : achieved_goal,
@@ -245,12 +329,14 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision_happend_on_trajectory": self.collision_happend_on_trajectory,
               } 
     
-    self.previous_agent_state = agent_state
+    self.previous_agent_state = self.environment.agent.current_state
+    self.previous_agent_states = [self.previous_agent_state]
+    self.previous_agent_observation = agent_state
     if self.add_frame_stack:
       self.previous_agent_collisions = [self.collision_happend_on_trajectory for _ in range(self.frame_stack)]
-      self.previous_agent_states = [self.previous_agent_state for _ in range(self.frame_stack)]
+      self.previous_agent_observations = [self.previous_agent_observation for _ in range(self.frame_stack)]
     else:
-      self.previous_agent_states = [self.previous_agent_state] 
+      self.previous_agent_observations = [self.previous_agent_observation] 
     if self.static_env and self.test_0_collision:
       self.not_collision_state = None
     if self.static_env and self.test_2_collision:
@@ -260,17 +346,18 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def step(self, action, **kwargs):
     # normalized actions = [-1:1, -1:1]
-    agent = self.environment.agent
-    #normalized_action = [action[0] * agent.dynamic_model.max_acc, 
+    # normalized_action = [action[0] * agent.dynamic_model.max_acc, 
     #                     action[1] * agent.dynamic_model.max_ang_vel]
-    #observed_state, reward, isDone, info = POLAMPEnvironment.step(self, normalized_action, **kwargs)
+    # observed_state, reward, isDone, info = POLAMPEnvironment.step(self, normalized_action, **kwargs)
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
 
+    assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
     info["dist_to_goal"] = info["EuclideanDistance"]
     info["last_step_num"] = self.step_counter
 
     isDone = False
-    distance_to_goal = self.environment.get_goal_distance()
+    #distance_to_goal = self.environment.get_goal_distance()
+    distance_to_goal = info["EuclideanDistance"]
     if distance_to_goal < self.SOFT_EPS:
       info["geometirc_goal_achieved"] = True
     else:
@@ -290,7 +377,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     if self.static_env and "Collision" in info:
       self.collision_happend_on_trajectory = True
-      if self.test_1_collision:
+      if self.inside_obstacles_movement:
+        if not self.add_ppo_reward:
+          reward += self.collision_reward
+      elif self.test_1_collision:
         isDone = True
         reward += self.step_counter - self._max_episode_steps
       elif self.test_0_collision:
@@ -301,13 +391,15 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         self.environment.agent.current_state = State(self.start_state)
       elif self.test_3_collision:
         if self.teleport_back_on_collision:
-          self.environment.agent.current_state = State(self.previous_agent_states[-self.teleport_back_steps])
+          self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]
           self.environment.agent.current_state.v = 0
       elif self.test_4_collision:
         reward += self.collision_reward
         if self.teleport_back_on_collision:
-          self.environment.agent.current_state = State(self.previous_agent_states[-self.teleport_back_steps])
+          steer_angle_when_collide = self.environment.agent.current_state.steer
+          self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]
           self.environment.agent.current_state.v = 0
+          self.environment.agent.current_state.steer = steer_angle_when_collide
         else:
           self.environment.agent.current_state = State(self.previous_agent_state)
           self.environment.agent.current_state.v = 0
@@ -317,12 +409,19 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    # POLAMPenvironment return always:
+    # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
+    polamp_observation_size = len(observed_state.tolist()) // self.frame_stack
+    if self.PPO_agent_observation:
+      agent_state = self.environment.agent.getDiff()
+      goal_state = [0, 0, 0, 0, 0, goal.theta, goal.v, goal.steer, 0, 0]
+    else:
+      agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+      goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
-        beams_observation = self.environment.get_observation(State(agent_state))
+        beams_observation = self.environment.get_observation(self.environment.agent.current_state)
         agent_state.extend(beams_observation.tolist())
-        beams_observation = self.environment.get_observation(State(goal_state))
+        beams_observation = self.environment.get_observation(self.environment.agent.goal_state)
         goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
       observation = agent_state.copy()
@@ -331,26 +430,27 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       current_step = [1.0 * self.step_counter for _ in range(self.frame_stack)] # for last state
       collision = [1.0 * ("Collision" in info) for _ in range(self.frame_stack)] # for last state
       for i in range(1, self.frame_stack):
-        observation.extend(self.previous_agent_states[-i])
+        observation.extend(self.previous_agent_observations[-i])
       for _ in range(self.frame_stack):
         desired_goal.extend(goal_state)
       observation = np.array(observation)
       desired_goal = np.array(desired_goal)
       achieved_goal = observation
-      state_observation = observation
-      state_desired_goal = desired_goal
-      state_achieved_goal = achieved_goal
       current_step = np.array([current_step])
       collision = np.array([collision])
     else:
       observation = np.array(agent_state)
       desired_goal = np.array(goal_state)
       achieved_goal = observation
-      state_observation = observation
-      state_desired_goal = desired_goal
-      state_achieved_goal = achieved_goal
       current_step = np.array([1.0 * self.step_counter])
       collision = np.array([1.0 * ("Collision" in info)])
+    if self.PPO_agent_observation:
+      state_observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
+      state_desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])  
+    else:
+      state_observation = observation 
+      state_desired_goal = desired_goal 
+    state_achieved_goal = state_observation
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
                 "achieved_goal" : achieved_goal,
@@ -361,13 +461,17 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision" : collision,
                 "collision_happend_on_trajectory": 1.0 * self.collision_happend_on_trajectory,
               } 
-    info["agent_state"] = observation
-    self.previous_agent_state = agent_state
+    info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+    info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    self.previous_agent_state = self.environment.agent.current_state
+    self.previous_agent_observation = agent_state
     self.previous_agent_states.append(self.previous_agent_state)
-    if len(self.previous_agent_states) > self.frame_stack and len(self.previous_agent_states) > self.teleport_back_steps:
+    self.previous_agent_observations.append(self.previous_agent_observation)
+    if len(self.previous_agent_observations) > self.frame_stack:
+      self.previous_agent_observations.pop(0)
+    if len(self.previous_agent_states) > self.teleport_back_steps:
       self.previous_agent_states.pop(0)
       
-    
     return obs_dict, reward, isDone, info
 
 

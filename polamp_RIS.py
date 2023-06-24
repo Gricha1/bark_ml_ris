@@ -22,8 +22,9 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False):		
 
+		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		# normalize states
 		self.env_state_bounds = env_state_bounds
 

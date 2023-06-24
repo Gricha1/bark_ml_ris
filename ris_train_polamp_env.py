@@ -18,14 +18,14 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=12, data_to_plot={}, eval_strategy=None):
+def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_function=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=0, data_to_plot={}, show_data_to_plot=True, eval_strategy=None):
     plot_obstacles = env.static_env
-    assert plot_subgoals != render_env, "only show subgoals video or render env"
+    assert plot_full_env != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
         images = []
         images.append(env.render())    
-    if plot_subgoals:
+    if plot_full_env:
         images = []
         env_min_x = -5
         env_max_x = 40.
@@ -71,6 +71,11 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
     eval_tasks = len(env.valTasks[val_key])
     for task_id in range(eval_tasks):    
         obs = env.reset(id=task_id, val_key=val_key)
+        info = {}
+        agent = env.environment.agent.current_state
+        goal = env.environment.agent.goal_state
+        info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+        info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
         done = False
         state = obs["observation"]
         goal = obs["desired_goal"]
@@ -79,7 +84,7 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
         state_distrs["start_x"].append(state[0])
 
         while not done:
-            if (plot_subgoals or plot_value_function) and task_id == video_task_id:
+            if (plot_full_env or plot_value_function) and task_id == video_task_id:
                 with torch.no_grad():
                     to_torch_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
                     to_torch_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
@@ -106,12 +111,12 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
                         subgoals = []
                         generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
                     
-                    x_agent = to_torch_state.cpu()[0][0]
-                    y_agent = to_torch_state.cpu()[0][1]
-                    theta_agent = to_torch_state.cpu()[0][2]
-                    x_goal = to_torch_goal.cpu()[0][0]
-                    y_goal = to_torch_goal.cpu()[0][1]
-                    theta_goal = to_torch_goal.cpu()[0][2]
+                    x_agent = info["agent_state"][0]
+                    y_agent = info["agent_state"][1]
+                    theta_agent = info["agent_state"][2]
+                    x_goal = info["goal_state"][0]
+                    y_goal = info["goal_state"][1]
+                    theta_goal = info["goal_state"][2]
                     car_length = 2
 
                     current_state = env.environment.agent.current_state
@@ -144,9 +149,14 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
                                       color="yellow", s=5)
                     if plot_subgoals:
                         for ind, subgoal in enumerate(subgoals):
-                            x_subgoal = subgoal.cpu()[0][0]
-                            y_subgoal = subgoal.cpu()[0][1]
-                            theta_subgoal = subgoal.cpu()[0][2]
+                            if env.PPO_agent_observation:
+                                x_subgoal = subgoal.cpu()[0][0]
+                                y_subgoal = subgoal.cpu()[0][1]
+                                theta_subgoal = subgoal.cpu()[0][2]
+                            else:
+                                x_subgoal = subgoal.cpu()[0][0]
+                                y_subgoal = subgoal.cpu()[0][1]
+                                theta_subgoal = subgoal.cpu()[0][2]
                             ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
                             ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                             [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
@@ -165,7 +175,7 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
                             ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
                                               np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
                                               color="blue", s=1)
-                    if len(data_to_plot) != 0:
+                    if len(data_to_plot) != 0 and show_data_to_plot:
                         if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
                             ax_states.scatter(data_to_plot["dataset_x"], 
                                               data_to_plot["dataset_y"], 
@@ -242,8 +252,6 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
                         for ax_values in ax_values_s:
                             ax_values.clear()
                     ax_states.clear()
-                    #for ax_values in ax_values_s:
-                    #    ax_values.clear()
 
             state_distrs["x"].append(state[0])
             state_distrs["y"].append(state[1])
@@ -312,9 +320,9 @@ def evalPolicy(policy, env, plot_subgoals=True, plot_value_function=True, plot_o
         goal_dists[key] = np.mean(goal_dists[key])
 
     env.close()
-    if plot_subgoals:
+    if plot_full_env:
         plt.close()
-    if plot_subgoals or render_env:
+    if plot_full_env or render_env:
         images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
     validation_info["task_statuses"] = task_statuses
     validation_info["images"] = images
@@ -334,7 +342,9 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
     goal_batch          = batch["resampled_goals"]
     reward_batch        = batch["rewards"]
     done_batch          = batch["terminals"]
-    if env.static_env and (env.test_1_collision or env.test_4_collision): 
+    agent_state_batch   = batch["state_observation"]
+    goal_state_batch    = batch["state_desired_goal"]
+    if env.static_env and (env.test_1_collision or env.test_4_collision or env.inside_obstacles_movement): 
         current_step_batch  = batch["current_step"] 
         collision_batch     = batch["collision"]
         if env.add_frame_stack:
@@ -342,7 +352,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
             collision_batch     = collision_batch[:, 0:1]
     
     # Compute sparse rewards: -1 for all actions until the goal is reached
-    reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
+    if env.PPO_agent_observation:
+        reward_batch = np.sqrt(np.power(np.array(agent_state_batch - goal_state_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
+    else:
+        reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
     if env.static_env and env.test_1_collision:
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
         reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
@@ -358,6 +371,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
             done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
             reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                             + (env.collision_reward) * collision_batch
+    elif env.static_env and env.inside_obstacles_movement:
+        done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
+                        + (env.collision_reward) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
@@ -375,12 +392,15 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshol
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--env",                default="polamp_env")
-    parser.add_argument("--test_env",           default="polamp_env")
+    parser.add_argument("--env",                  default="polamp_env")
+    parser.add_argument("--test_env",             default="polamp_env")
+    parser.add_argument("--dataset",              default="ris_dataset_v1")
+    parser.add_argument("--random_train_dataset", default=False)
+
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e4), type=int)
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -419,8 +439,10 @@ if __name__ == "__main__":
     with open("polamp_env/configs/car_configs.json", 'r') as f:
         car_config = json.load(f)
 
-    dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1)
+    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=1, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
+    goal_our_env_config["dataset"] = args.dataset
+    goal_our_env_config["random_train_dataset"] = args.random_train_dataset
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []
 
@@ -479,7 +501,7 @@ if __name__ == "__main__":
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_state_bounds=env_state_bounds,
-                 env_obs_dim=env_obs_dim)
+                 env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward)
 
     # Initialize replay buffer and path_builder
     replay_buffer = HERReplayBuffer(
@@ -488,7 +510,9 @@ if __name__ == "__main__":
         fraction_goals_are_rollout_goals = 0.2,
         fraction_resampled_goals_are_env_goals = 0.0,
         fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        ob_keys_to_save     =["state_achieved_goal", "state_desired_goal", "current_step", "collision"],
+        #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal", "current_step", "collision"],
+        #desired_goal_keys   =["desired_goal", "state_desired_goal"],
+        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision"],
         desired_goal_keys   =["desired_goal", "state_desired_goal"],
         observation_key     = 'observation',
         desired_goal_key    = 'desired_goal',
@@ -511,8 +535,6 @@ if __name__ == "__main__":
     save_policy_count = 0 
 
     assert args.eval_freq > env._max_episode_steps, "logger is erased after each eval"
-    logger.store(dataset_x = state[0])
-    logger.store(dataset_y = state[1])
     logger.store(train_step_x = state[0])
     logger.store(train_step_y = state[1])
     buffer_size = 0 # for args.her_corrections
@@ -537,6 +559,7 @@ if __name__ == "__main__":
         logger.store(step_time = step_time)
 
         next_state = next_obs["observation"]
+        next_agent_state = next_obs["state_observation"]
 
         transition_added = False # for args.her_corrections
         if env.her_corrections:
@@ -565,9 +588,10 @@ if __name__ == "__main__":
             print("collission:", next_obs["collision_happend_on_trajectory"], end=" ")
         
         state = next_state
+        agent_state = next_agent_state
         obs = next_obs
-        logger.store(train_step_x = state[0])
-        logger.store(train_step_y = state[1])
+        logger.store(train_step_x = agent_state[0])
+        logger.store(train_step_y = agent_state[1])
 
         # Train agent after collecting enough data
         if t >= args.batch_size and t >= args.start_timesteps and buffer_size >= args.start_timesteps and transition_added: # for args.her_corrections
@@ -608,15 +632,17 @@ if __name__ == "__main__":
             val_state, val_goal, \
             mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
-                                plot_subgoals=True,
+                                plot_full_env=True,
+                                plot_subgoals=False,
                                 plot_value_function=False,
                                 render_env=False,
                                 plot_only_agent_values=True, 
-                                data_to_plot={"dataset_x": logger.data["dataset_x"], 
-                                              "dataset_y": logger.data["dataset_y"],
+                                data_to_plot={
                                               "train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"],
-                                      })
+                                              },
+                                video_task_id=len(dataSet["obstacles"][2]["map0"])-1,
+                                show_data_to_plot=True)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],

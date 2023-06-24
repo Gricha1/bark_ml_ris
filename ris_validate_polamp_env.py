@@ -24,6 +24,9 @@ if __name__ == "__main__":
     
     parser.add_argument("--env",                default="polamp_env")
     parser.add_argument("--test_env",           default="polamp_env")
+    parser.add_argument("--dataset",            default="ris_dataset_v1")
+    parser.add_argument("--random_train_dataset",  default=False)
+
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
@@ -65,9 +68,10 @@ if __name__ == "__main__":
     with open("polamp_env/configs/car_configs.json", 'r') as f:
         car_config = json.load(f)
 
-    dataSet = generateDataSet(our_env_config, name_folder="maps", total_maps=1, dynamic=False)
-    #maps, trainTask, valTasks = dataSet["empty"]
+    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=1, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
+    goal_our_env_config["dataset"] = args.dataset
+    goal_our_env_config["random_train_dataset"] = args.random_train_dataset
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []
 
@@ -155,11 +159,13 @@ if __name__ == "__main__":
     val_state, val_goal, \
     mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
-                                 plot_subgoals=True,
-                                 plot_value_function=True, 
+                                 plot_full_env=True,
+                                 plot_subgoals=False,
+                                 plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
-                                 video_task_id=12, eval_strategy=None) # 18, 12
+                                 video_task_id=len(dataSet["obstacles"][2]["map0"])-1, 
+                                 eval_strategy=[1,-0.5]) # 18, 12
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)

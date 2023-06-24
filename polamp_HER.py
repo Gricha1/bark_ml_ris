@@ -343,6 +343,8 @@ class HERReplayBuffer():
             'indices': np.array(indices).reshape(-1, 1),
             "current_step": new_next_obs_dict["current_step"],
             "collision": new_next_obs_dict["collision"],
+            "state_observation": new_next_obs_dict["state_observation"],
+            "state_desired_goal": new_next_obs_dict["state_desired_goal"],
         }
         return batch
 

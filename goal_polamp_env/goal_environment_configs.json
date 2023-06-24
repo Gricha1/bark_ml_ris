@@ -6,9 +6,11 @@
     "test_2_collision": false,
     "test_3_collision": false,
     "test_4_collision": true,
+    "inside_obstacles_movement": false,
     "her_corrections": false,
-    "add_frame_stack": false,
-    "static_env": false,
+    "add_frame_stack": true,
+    "static_env": true,
     "add_ppo_reward": false,
-    "use_lidar_data": false
+    "use_lidar_data": true,
+    "PPO_agent_observation": true
 }
