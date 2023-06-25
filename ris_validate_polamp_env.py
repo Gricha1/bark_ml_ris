@@ -22,9 +22,9 @@ from polamp_env.lib.utils_operations import generateDataSet
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--env",                default="polamp_env")
-    parser.add_argument("--test_env",           default="polamp_env")
-    parser.add_argument("--dataset",            default="ris_dataset_v1")
+    parser.add_argument("--env",                   default="polamp_env")
+    parser.add_argument("--test_env",              default="polamp_env")
+    parser.add_argument("--dataset",               default="ris_dataset_v1")
     parser.add_argument("--random_train_dataset",  default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)

@@ -20,6 +20,7 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_function=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=0, data_to_plot={}, show_data_to_plot=True, eval_strategy=None):
     plot_obstacles = env.static_env
+    assert (policy.use_encoder and not plot_subgoals) or not policy.use_encoder, "cant plot subgoals with encoder"
     assert plot_full_env != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
@@ -150,6 +151,7 @@ def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_f
                     if plot_subgoals:
                         for ind, subgoal in enumerate(subgoals):
                             if env.PPO_agent_observation:
+                                assert 1 == 0, "didnt implement"
                                 x_subgoal = subgoal.cpu()[0][0]
                                 y_subgoal = subgoal.cpu()[0][1]
                                 theta_subgoal = subgoal.cpu()[0][2]
@@ -400,7 +402,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
+    parser.add_argument("--eval_freq",          default=int(2e4), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -633,7 +635,7 @@ if __name__ == "__main__":
             mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
                                 plot_full_env=True,
-                                plot_subgoals=False,
+                                plot_subgoals=True,
                                 plot_value_function=False,
                                 render_env=False,
                                 plot_only_agent_values=True, 

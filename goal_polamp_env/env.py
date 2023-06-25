@@ -41,7 +41,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
     assert self.test_4_collision == self.teleport_back_on_collision, "this implemented together"
-    assert not (self.static_env == False and self.use_lidar_data == True)
+    #assert not (self.static_env == False and self.use_lidar_data == True)
     if self.add_frame_stack:
       self.agent_state_len = 5
     assert 1.0 * self.inside_obstacles_movement + 1.0 * self.test_0_collision \
