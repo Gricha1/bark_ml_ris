@@ -18,7 +18,7 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_function=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=0, data_to_plot={}, show_data_to_plot=True, eval_strategy=None):
+def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_function=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=0, video_task_map="map0", data_to_plot={}, show_data_to_plot=True, eval_strategy=None):
     plot_obstacles = env.static_env
     assert (policy.use_encoder and not plot_subgoals) or not policy.use_encoder, "cant plot subgoals with encoder"
     assert plot_full_env != render_env, "only show subgoals video or render env"
@@ -68,244 +68,247 @@ def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_f
     acc_rewards = []
     episode_lengths = []
     task_statuses = []
-    val_key = "map0"
-    eval_tasks = len(env.valTasks[val_key])
-    for task_id in range(eval_tasks):    
-        obs = env.reset(id=task_id, val_key=val_key)
-        info = {}
-        agent = env.environment.agent.current_state
-        goal = env.environment.agent.goal_state
-        info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-        info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
-        done = False
-        state = obs["observation"]
-        goal = obs["desired_goal"]
-        t = 0
-        acc_reward = 0
-        state_distrs["start_x"].append(state[0])
 
-        while not done:
-            if (plot_full_env or plot_value_function) and task_id == video_task_id:
-                with torch.no_grad():
-                    to_torch_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
-                    to_torch_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
-                    if policy.use_encoder:
-                        encoded_state = policy.encoder(to_torch_state)
-                        encoded_goal = policy.encoder(to_torch_goal)
-                    else:
-                        encoded_state = to_torch_state
-                        encoded_goal = to_torch_goal
-                    subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-                    subgoal = subgoal_distribution.loc
-                    if plot_subgoals:
-                        def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
-                            if K == 0:
-                                return
-                            subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-                            subgoal = subgoal_distribution.loc
-                            if add_to_end:
-                                subgoals.append(subgoal)
-                            else:
-                                subgoals.insert(0, subgoal)
-                            generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
-                            generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
-                        subgoals = []
-                        generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
+    for val_key in env.maps.keys():
+        #val_key = "map0"
+        eval_tasks = len(env.valTasks[val_key])
+        for task_id in range(eval_tasks):    
+            obs = env.reset(id=task_id, val_key=val_key)
+            info = {}
+            agent = env.environment.agent.current_state
+            goal = env.environment.agent.goal_state
+            info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+            info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+            done = False
+            state = obs["observation"]
+            goal = obs["desired_goal"]
+            t = 0
+            acc_reward = 0
+            state_distrs["start_x"].append(state[0])
+
+            while not done:
+                if (plot_full_env or plot_value_function) and task_id == video_task_id and val_key == video_task_map:
+                    with torch.no_grad():
+                        to_torch_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
+                        to_torch_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
+                        if policy.use_encoder:
+                            encoded_state = policy.encoder(to_torch_state)
+                            encoded_goal = policy.encoder(to_torch_goal)
+                        else:
+                            encoded_state = to_torch_state
+                            encoded_goal = to_torch_goal
+                        subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
+                        subgoal = subgoal_distribution.loc
+                        if plot_subgoals:
+                            def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
+                                if K == 0:
+                                    return
+                                subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
+                                subgoal = subgoal_distribution.loc
+                                if add_to_end:
+                                    subgoals.append(subgoal)
+                                else:
+                                    subgoals.insert(0, subgoal)
+                                generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
+                                generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
+                            subgoals = []
+                            generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
+                        
+                        x_agent = info["agent_state"][0]
+                        y_agent = info["agent_state"][1]
+                        theta_agent = info["agent_state"][2]
+                        x_goal = info["goal_state"][0]
+                        y_goal = info["goal_state"][1]
+                        theta_goal = info["goal_state"][2]
+                        car_length = 2
+
+                        current_state = env.environment.agent.current_state
+                        center_state = env.environment.agent.dynamic_model.shift_state(current_state)
+                        agentBB = env.environment.getBB(center_state, ego=True)
+                        ax_states.scatter(np.linspace(agentBB[0][0].x, agentBB[0][1].x, 500), 
+                                        np.linspace(agentBB[0][0].y, agentBB[0][1].y, 500), 
+                                        color="green", s=1)
+                        ax_states.scatter(np.linspace(agentBB[1][0].x, agentBB[1][1].x, 500), 
+                                        np.linspace(agentBB[1][0].y, agentBB[1][1].y, 500), 
+                                        color="green", s=1)
+                        ax_states.scatter(np.linspace(agentBB[2][0].x, agentBB[2][1].x, 500), 
+                                        np.linspace(agentBB[2][0].y, agentBB[2][1].y, 500), 
+                                        color="green", s=1)
+                        ax_states.scatter(np.linspace(agentBB[3][0].x, agentBB[3][1].x, 500), 
+                                        np.linspace(agentBB[3][0].y, agentBB[3][1].y, 500), 
+                                        color="green", s=1)
                     
-                    x_agent = info["agent_state"][0]
-                    y_agent = info["agent_state"][1]
-                    theta_agent = info["agent_state"][2]
-                    x_goal = info["goal_state"][0]
-                    y_goal = info["goal_state"][1]
-                    theta_goal = info["goal_state"][2]
-                    car_length = 2
-
-                    current_state = env.environment.agent.current_state
-                    center_state = env.environment.agent.dynamic_model.shift_state(current_state)
-                    agentBB = env.environment.getBB(center_state, ego=True)
-                    ax_states.scatter(np.linspace(agentBB[0][0].x, agentBB[0][1].x, 500), 
-                                      np.linspace(agentBB[0][0].y, agentBB[0][1].y, 500), 
-                                      color="green", s=1)
-                    ax_states.scatter(np.linspace(agentBB[1][0].x, agentBB[1][1].x, 500), 
-                                      np.linspace(agentBB[1][0].y, agentBB[1][1].y, 500), 
-                                      color="green", s=1)
-                    ax_states.scatter(np.linspace(agentBB[2][0].x, agentBB[2][1].x, 500), 
-                                      np.linspace(agentBB[2][0].y, agentBB[2][1].y, 500), 
-                                      color="green", s=1)
-                    ax_states.scatter(np.linspace(agentBB[3][0].x, agentBB[3][1].x, 500), 
-                                      np.linspace(agentBB[3][0].y, agentBB[3][1].y, 500), 
-                                      color="green", s=1)
-                
-                    ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
-                    ax_states.set_xlim(left=env_min_x, right=env_max_x)
-                    ax_states.scatter([x_agent], [y_agent], color="green", s=50)
-                    ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
-                    ax_states.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
-                                      [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
-                                      color="green", s=5)
-                    ax_states.scatter([x_goal], [y_goal], color="yellow", s=50)
-                    ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
-                    ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
-                                      [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
-                                      color="yellow", s=5)
-                    if plot_subgoals:
-                        for ind, subgoal in enumerate(subgoals):
-                            if env.PPO_agent_observation:
-                                assert 1 == 0, "didnt implement"
-                                x_subgoal = subgoal.cpu()[0][0]
-                                y_subgoal = subgoal.cpu()[0][1]
-                                theta_subgoal = subgoal.cpu()[0][2]
-                            else:
-                                x_subgoal = subgoal.cpu()[0][0]
-                                y_subgoal = subgoal.cpu()[0][1]
-                                theta_subgoal = subgoal.cpu()[0][2]
-                            ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
-                            ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
-                                            [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
-                                            color="orange", s=5)
-                    if plot_obstacles:
-                        for obstacle in env.environment.obstacle_segments:
-                            ax_states.scatter(np.linspace(obstacle[0][0].x, obstacle[0][1].x, 500), 
-                                              np.linspace(obstacle[0][0].y, obstacle[0][1].y, 500), 
-                                              color="blue", s=1)
-                            ax_states.scatter(np.linspace(obstacle[1][0].x, obstacle[1][1].x, 500), 
-                                              np.linspace(obstacle[1][0].y, obstacle[1][1].y, 500), 
-                                              color="blue", s=1)
-                            ax_states.scatter(np.linspace(obstacle[2][0].x, obstacle[2][1].x, 500), 
-                                              np.linspace(obstacle[2][0].y, obstacle[2][1].y, 500), 
-                                              color="blue", s=1)
-                            ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
-                                              np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
-                                              color="blue", s=1)
-                    if len(data_to_plot) != 0 and show_data_to_plot:
-                        if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
-                            ax_states.scatter(data_to_plot["dataset_x"], 
-                                              data_to_plot["dataset_y"], 
-                                              color="red", s=5)
-                        if "train_step_x" in data_to_plot and "train_step_y" in data_to_plot:
-                            ax_states.scatter(data_to_plot["train_step_x"], 
-                                              data_to_plot["train_step_y"], 
-                                              color="red", s=3)
-                    if plot_subgoals:
-                        ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
-                    ax_states.text(env_max_x - 10, env_max_y - 1.5, f"R:{acc_reward}")
-                    ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
-
-                    # values plot
-                    if plot_value_function:
-                        def plot_values(ax_values, theta):
-                            ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
-                            ax_values.set_xlim(left=env_min_x, right=env_max_x)
-                            max_state_value = 1  
-                            grid_states = []              
-                            grid_goals = []
-                            grid_dx = (env_max_x - env_min_x) / grid_resolution_x
-                            grid_dy = (env_max_y - env_min_y) / grid_resolution_y
-                            for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
-                                for grid_state_x in np.linspace(env_min_x + grid_dx/2, env_max_x - grid_dx/2, grid_resolution_x):
-                                    if env.add_frame_stack:
-                                        agent_state = [grid_state_x, grid_state_y, theta]
-                                        agent_state.extend([0 for _ in range(env.agent_state_len - 3)])
-                                        grid_state = []
-                                        for _ in range(env.frame_stack):
-                                            grid_state.extend(agent_state)
-                                    else:
-                                        grid_state = [grid_state_x, grid_state_y]
-                                        grid_state.extend([theta])
-                                        grid_state.extend([0 for _ in range(len(state) - 3)])
-                                    grid_states.append(grid_state)
-                            grid_states = torch.FloatTensor(np.array(grid_states)).to(policy.device)
-                            assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
-                            grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
-                            assert grid_goals.shape == grid_states.shape
-                            grid_vs = policy.value(grid_states, grid_goals)
-                            grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
-                            img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
-                            cb = fig.colorbar(img)
-                            ax_values.scatter([np.linspace(env_max_x - 3.5, env_max_x - 3.5 + car_length*np.cos(theta), 100)], 
-                                            [np.linspace(env_max_y - 1.5, env_max_y - 1.5 + car_length*np.sin(theta), 100)], 
-                                            color="black", s=5)
-                            ax_values.scatter([env_max_x - 3.5], [env_max_y - 1.5], color="black", s=40)
-                            ax_values.scatter([x_agent], [y_agent], color="green", s=100)
-                            ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
-                                            [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
-                                            color="black", s=5)
-                            if plot_subgoals:
-                                for ind, subgoal in enumerate(subgoals):
-                                    ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
-                                    ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
-                                    ax_values.scatter([np.linspace(subgoal.cpu()[0][0], subgoal.cpu()[0][0] + car_length*np.cos(subgoal.cpu()[0][2]), 100)], 
-                                                [np.linspace(subgoal.cpu()[0][1], subgoal.cpu()[0][1] + car_length*np.sin(subgoal.cpu()[0][2]), 100)], 
+                        ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
+                        ax_states.set_xlim(left=env_min_x, right=env_max_x)
+                        ax_states.scatter([x_agent], [y_agent], color="green", s=50)
+                        ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
+                        ax_states.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
+                                        [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
+                                        color="green", s=5)
+                        ax_states.scatter([x_goal], [y_goal], color="yellow", s=50)
+                        ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
+                        ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
+                                        [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
+                                        color="yellow", s=5)
+                        if plot_subgoals:
+                            for ind, subgoal in enumerate(subgoals):
+                                if env.PPO_agent_observation:
+                                    assert 1 == 0, "didnt implement"
+                                    x_subgoal = subgoal.cpu()[0][0]
+                                    y_subgoal = subgoal.cpu()[0][1]
+                                    theta_subgoal = subgoal.cpu()[0][2]
+                                else:
+                                    x_subgoal = subgoal.cpu()[0][0]
+                                    y_subgoal = subgoal.cpu()[0][1]
+                                    theta_subgoal = subgoal.cpu()[0][2]
+                                ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
+                                ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
+                                                [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
                                                 color="orange", s=5)
-                            ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
-                            ax_values.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
-                                            [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
-                                            color="black", s=5)
+                        if plot_obstacles:
+                            for obstacle in env.environment.obstacle_segments:
+                                ax_states.scatter(np.linspace(obstacle[0][0].x, obstacle[0][1].x, 500), 
+                                                np.linspace(obstacle[0][0].y, obstacle[0][1].y, 500), 
+                                                color="blue", s=1)
+                                ax_states.scatter(np.linspace(obstacle[1][0].x, obstacle[1][1].x, 500), 
+                                                np.linspace(obstacle[1][0].y, obstacle[1][1].y, 500), 
+                                                color="blue", s=1)
+                                ax_states.scatter(np.linspace(obstacle[2][0].x, obstacle[2][1].x, 500), 
+                                                np.linspace(obstacle[2][0].y, obstacle[2][1].y, 500), 
+                                                color="blue", s=1)
+                                ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
+                                                np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
+                                                color="blue", s=1)
+                        if len(data_to_plot) != 0 and show_data_to_plot:
+                            if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
+                                ax_states.scatter(data_to_plot["dataset_x"], 
+                                                data_to_plot["dataset_y"], 
+                                                color="red", s=5)
+                            if "train_step_x" in data_to_plot and "train_step_y" in data_to_plot:
+                                ax_states.scatter(data_to_plot["train_step_x"], 
+                                                data_to_plot["train_step_y"], 
+                                                color="red", s=3)
+                        if plot_subgoals:
+                            ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                        ax_states.text(env_max_x - 10, env_max_y - 1.5, f"R:{acc_reward}")
+                        ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
 
-                            return cb
-                        cbs = [plot_values(ax, theta=theta) for ax, theta in zip(ax_values_s, [theta_agent, np.pi, 0, np.pi/2, -np.pi/2])]
-                    fig.canvas.draw()
-                    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-                    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-                    images.append(data)
-                    if plot_value_function:
-                        for cb in cbs:
-                            cb.remove()
-                        for ax_values in ax_values_s:
-                            ax_values.clear()
-                    ax_states.clear()
+                        # values plot
+                        if plot_value_function:
+                            def plot_values(ax_values, theta):
+                                ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
+                                ax_values.set_xlim(left=env_min_x, right=env_max_x)
+                                max_state_value = 1  
+                                grid_states = []              
+                                grid_goals = []
+                                grid_dx = (env_max_x - env_min_x) / grid_resolution_x
+                                grid_dy = (env_max_y - env_min_y) / grid_resolution_y
+                                for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
+                                    for grid_state_x in np.linspace(env_min_x + grid_dx/2, env_max_x - grid_dx/2, grid_resolution_x):
+                                        if env.add_frame_stack:
+                                            agent_state = [grid_state_x, grid_state_y, theta]
+                                            agent_state.extend([0 for _ in range(env.agent_state_len - 3)])
+                                            grid_state = []
+                                            for _ in range(env.frame_stack):
+                                                grid_state.extend(agent_state)
+                                        else:
+                                            grid_state = [grid_state_x, grid_state_y]
+                                            grid_state.extend([theta])
+                                            grid_state.extend([0 for _ in range(len(state) - 3)])
+                                        grid_states.append(grid_state)
+                                grid_states = torch.FloatTensor(np.array(grid_states)).to(policy.device)
+                                assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
+                                grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
+                                assert grid_goals.shape == grid_states.shape
+                                grid_vs = policy.value(grid_states, grid_goals)
+                                grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
+                                img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
+                                cb = fig.colorbar(img)
+                                ax_values.scatter([np.linspace(env_max_x - 3.5, env_max_x - 3.5 + car_length*np.cos(theta), 100)], 
+                                                [np.linspace(env_max_y - 1.5, env_max_y - 1.5 + car_length*np.sin(theta), 100)], 
+                                                color="black", s=5)
+                                ax_values.scatter([env_max_x - 3.5], [env_max_y - 1.5], color="black", s=40)
+                                ax_values.scatter([x_agent], [y_agent], color="green", s=100)
+                                ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
+                                                [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
+                                                color="black", s=5)
+                                if plot_subgoals:
+                                    for ind, subgoal in enumerate(subgoals):
+                                        ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
+                                        ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                                        ax_values.scatter([np.linspace(subgoal.cpu()[0][0], subgoal.cpu()[0][0] + car_length*np.cos(subgoal.cpu()[0][2]), 100)], 
+                                                    [np.linspace(subgoal.cpu()[0][1], subgoal.cpu()[0][1] + car_length*np.sin(subgoal.cpu()[0][2]), 100)], 
+                                                    color="orange", s=5)
+                                ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
+                                ax_values.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
+                                                [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
+                                                color="black", s=5)
 
-            state_distrs["x"].append(state[0])
-            state_distrs["y"].append(state[1])
-            state_distrs["theta"].append(state[2])
-            state_distrs["v"].append(state[3])
-            state_distrs["steer"].append(state[4])
+                                return cb
+                            cbs = [plot_values(ax, theta=theta) for ax, theta in zip(ax_values_s, [theta_agent, np.pi, 0, np.pi/2, -np.pi/2])]
+                        fig.canvas.draw()
+                        data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                        images.append(data)
+                        if plot_value_function:
+                            for cb in cbs:
+                                cb.remove()
+                            for ax_values in ax_values_s:
+                                ax_values.clear()
+                        ax_states.clear()
 
-            goal_dists["goal_x"].append(goal[0])
-            goal_dists["goal_y"].append(goal[1])
-            goal_dists["goal_theta"].append(goal[2])
-            goal_dists["goal_v"].append(goal[3])
-            goal_dists["goal_steer"].append(goal[4])
-            
-            if eval_strategy is None:
-                action = policy.select_action(state, goal)
-            else:
-                action = eval_strategy
-            if action_info["max_linear_acc"] is None:
-                action_info["max_linear_acc"] = action[0]
-                action_info["max_steer_rate"] = action[1]
-                action_info["min_linear_acc"] = action[0]
-                action_info["min_steer_rate"] = action[1]
-            else:
-                action_info["max_linear_acc"] = max(action_info["max_linear_acc"], action[0])
-                action_info["max_steer_rate"] = max(action_info["max_steer_rate"], action[1])
-                action_info["min_linear_acc"] = min(action_info["min_linear_acc"], action[0])
-                action_info["min_steer_rate"] = min(action_info["min_steer_rate"], action[1])
-            mean_actions["a"].append(action[0])
-            mean_actions["v_s"].append(action[1])
+                state_distrs["x"].append(state[0])
+                state_distrs["y"].append(state[1])
+                state_distrs["theta"].append(state[2])
+                state_distrs["v"].append(state[3])
+                state_distrs["steer"].append(state[4])
 
-            next_obs, reward, done, info = env.step(action) 
+                goal_dists["goal_x"].append(goal[0])
+                goal_dists["goal_y"].append(goal[1])
+                goal_dists["goal_theta"].append(goal[2])
+                goal_dists["goal_v"].append(goal[3])
+                goal_dists["goal_steer"].append(goal[4])
+                
+                if eval_strategy is None:
+                    action = policy.select_action(state, goal)
+                else:
+                    print("EVAL ACTION = ", eval_strategy)
+                    action = eval_strategy
+                if action_info["max_linear_acc"] is None:
+                    action_info["max_linear_acc"] = action[0]
+                    action_info["max_steer_rate"] = action[1]
+                    action_info["min_linear_acc"] = action[0]
+                    action_info["min_steer_rate"] = action[1]
+                else:
+                    action_info["max_linear_acc"] = max(action_info["max_linear_acc"], action[0])
+                    action_info["max_steer_rate"] = max(action_info["max_steer_rate"], action[1])
+                    action_info["min_linear_acc"] = min(action_info["min_linear_acc"], action[0])
+                    action_info["min_steer_rate"] = min(action_info["min_steer_rate"], action[1])
+                mean_actions["a"].append(action[0])
+                mean_actions["v_s"].append(action[1])
 
-            acc_reward += reward
-            
-            next_state = next_obs["observation"]
-            state = next_state
+                next_obs, reward, done, info = env.step(action) 
 
-            if render_env and task_id == video_task_id:
-                images.append(env.render())
-            t += 1
+                acc_reward += reward
+                
+                next_state = next_obs["observation"]
+                state = next_state
 
-        final_distances.append(info["dist_to_goal"])
-        success = 1.0 * info["geometirc_goal_achieved"]
-        task_status = "success"
-        if env.static_env: 
-            if "Collision" in info:
-                task_status = "collision"
-                success = 0.0
-        successes.append(success)
-        episode_lengths.append(info["last_step_num"])
-        acc_rewards.append(acc_reward)
-        task_statuses.append((val_key, task_id, task_status))
+                if render_env and task_id == video_task_id:
+                    images.append(env.render())
+                t += 1
+
+            final_distances.append(info["dist_to_goal"])
+            success = 1.0 * info["geometirc_goal_achieved"]
+            task_status = "success"
+            if env.static_env: 
+                if "Collision" in info:
+                    task_status = "collision"
+                    success = 0.0
+            successes.append(success)
+            episode_lengths.append(info["last_step_num"])
+            acc_rewards.append(acc_reward)
+            task_statuses.append((val_key, task_id, task_status))
 
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
@@ -396,7 +399,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="ris_dataset_v1")
+    parser.add_argument("--dataset",              default="medium_dataset") # medium_dataset, safety_dataset, ris_dataset_v1
     parser.add_argument("--random_train_dataset", default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
@@ -416,7 +419,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--use_encoder",        default=False, type=bool)
+    parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
@@ -441,7 +444,11 @@ if __name__ == "__main__":
     with open("polamp_env/configs/car_configs.json", 'r') as f:
         car_config = json.load(f)
 
-    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=1, dynamic=False)
+    if args.dataset == "medium_dataset":
+        total_maps = 12
+    else:
+        total_maps = 1
+    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
@@ -635,7 +642,7 @@ if __name__ == "__main__":
             mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
                                 plot_full_env=True,
-                                plot_subgoals=True,
+                                plot_subgoals=False,
                                 plot_value_function=False,
                                 render_env=False,
                                 plot_only_agent_values=True, 
@@ -644,7 +651,7 @@ if __name__ == "__main__":
                                               "train_step_y": logger.data["train_step_y"],
                                               },
                                 video_task_id=len(dataSet["obstacles"][2]["map0"])-1,
-                                show_data_to_plot=True)
+                                show_data_to_plot=False)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],

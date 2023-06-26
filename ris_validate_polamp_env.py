@@ -22,10 +22,10 @@ from polamp_env.lib.utils_operations import generateDataSet
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--env",                   default="polamp_env")
-    parser.add_argument("--test_env",              default="polamp_env")
-    parser.add_argument("--dataset",               default="ris_dataset_v1")
-    parser.add_argument("--random_train_dataset",  default=False)
+    parser.add_argument("--env",                  default="polamp_env")
+    parser.add_argument("--test_env",             default="polamp_env")
+    parser.add_argument("--dataset",              default="safety_dataset") # medium_dataset, safety_dataset, ris_dataset_v1
+    parser.add_argument("--random_train_dataset", default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--use_encoder",        default=False, type=bool)
+    parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
@@ -68,7 +68,11 @@ if __name__ == "__main__":
     with open("polamp_env/configs/car_configs.json", 'r') as f:
         car_config = json.load(f)
 
-    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=1, dynamic=False)
+    if args.dataset == "medium_dataset":
+        total_maps = 12
+    else:
+        total_maps = 1
+    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
@@ -165,7 +169,7 @@ if __name__ == "__main__":
                                  render_env=False, 
                                  plot_only_agent_values=True, 
                                  video_task_id=len(dataSet["obstacles"][2]["map0"])-1, 
-                                 eval_strategy=[1,-0.5]) # 18, 12
+                                 eval_strategy=None) # 18, 12
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)

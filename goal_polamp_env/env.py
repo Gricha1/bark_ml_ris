@@ -23,7 +23,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.static_env = goal_env_config["static_env"]  
     self.dataset = goal_env_config["dataset"]
     self.random_train_dataset = goal_env_config["random_train_dataset"]
-    assert self.dataset == "maps" or self.dataset == "ris_dataset_v1", "not impemented other datasets for random sampling"
+    assert self.dataset == "medium_dataset" \
+           or self.dataset == "safety_dataset" \
+           or self.dataset == "ris_dataset_v1", \
+           "not impemented other datasets for random sampling"
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
     self.test_0_collision = goal_env_config["test_0_collision"]
     self.test_1_collision = goal_env_config["test_1_collision"]
@@ -125,7 +128,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                   current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                           for x, boundary in zip(np.random.random(5), boundaries)] 
                 else:
-                  if self.dataset == "maps":
+                  if self.dataset == "safety_dataset":
                     def get_random_sampled_state():
                       dataset_info = {}
                       env_boundaries = {"v": (0, 0), "steer": (0, 0)}
@@ -272,14 +275,15 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def reset(self, **kwargs):
 
-    #observed_state = POLAMPEnvironment.reset(self, **kwargs)
-    observed_state = self.random_data_reset(self, **kwargs, static_obsts=self.static_env)
+    if self.dataset == "medium_dataset":
+      observed_state = POLAMPEnvironment.reset(self, **kwargs)
+    else:
+      observed_state = self.random_data_reset(self, **kwargs, static_obsts=self.static_env)
 
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
     # POLAMPenvironment return always:
     # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
-    polamp_observation_size = len(observed_state.tolist()) // self.frame_stack
     if self.PPO_agent_observation:
       agent_state = self.environment.agent.getDiff()
       goal_state = [0, 0, 0, 0, 0, goal.theta, goal.v, goal.steer, 0, 0]
@@ -411,7 +415,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     goal = self.environment.agent.goal_state
     # POLAMPenvironment return always:
     # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
-    polamp_observation_size = len(observed_state.tolist()) // self.frame_stack
     if self.PPO_agent_observation:
       agent_state = self.environment.agent.getDiff()
       goal_state = [0, 0, 0, 0, 0, goal.theta, goal.v, goal.steer, 0, 0]
