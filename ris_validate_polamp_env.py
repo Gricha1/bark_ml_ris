@@ -24,7 +24,8 @@ if __name__ == "__main__":
     
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="safety_dataset") # medium_dataset, safety_dataset, ris_dataset_v1
+    parser.add_argument("--dataset",              default="ris_easy_dataset") # medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--uniform_feasible_train_dataset", default=True)
     parser.add_argument("--random_train_dataset", default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
@@ -75,6 +76,7 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
     goal_our_env_config["dataset"] = args.dataset
+    goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []

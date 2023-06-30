@@ -399,13 +399,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="medium_dataset") # medium_dataset, safety_dataset, ris_dataset_v1
+    parser.add_argument("--dataset",              default="ris_easy_dataset") # medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--uniform_feasible_train_dataset", default=True)
     parser.add_argument("--random_train_dataset", default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e4), type=int) # 2e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -451,6 +452,7 @@ if __name__ == "__main__":
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
     goal_our_env_config["dataset"] = args.dataset
+    goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []
@@ -519,8 +521,6 @@ if __name__ == "__main__":
         fraction_goals_are_rollout_goals = 0.2,
         fraction_resampled_goals_are_env_goals = 0.0,
         fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        #ob_keys_to_save     =["state_achieved_goal", "state_desired_goal", "current_step", "collision"],
-        #desired_goal_keys   =["desired_goal", "state_desired_goal"],
         ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision"],
         desired_goal_keys   =["desired_goal", "state_desired_goal"],
         observation_key     = 'observation',
@@ -651,7 +651,7 @@ if __name__ == "__main__":
                                               "train_step_y": logger.data["train_step_y"],
                                               },
                                 video_task_id=len(dataSet["obstacles"][2]["map0"])-1,
-                                show_data_to_plot=False)
+                                show_data_to_plot=True)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],

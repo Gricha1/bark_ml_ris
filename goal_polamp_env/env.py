@@ -22,10 +22,11 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            == 0.0, "didnt implement these rewards"
     self.static_env = goal_env_config["static_env"]  
     self.dataset = goal_env_config["dataset"]
+    self.uniform_feasible_train_dataset = goal_env_config["uniform_feasible_train_dataset"]
     self.random_train_dataset = goal_env_config["random_train_dataset"]
     assert self.dataset == "medium_dataset" \
            or self.dataset == "safety_dataset" \
-           or self.dataset == "ris_dataset_v1", \
+           or self.dataset == "ris_easy_dataset", \
            "not impemented other datasets for random sampling"
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
     self.test_0_collision = goal_env_config["test_0_collision"]
@@ -44,7 +45,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
     assert self.test_4_collision == self.teleport_back_on_collision, "this implemented together"
-    #assert not (self.static_env == False and self.use_lidar_data == True)
     if self.add_frame_stack:
       self.agent_state_len = 5
     assert 1.0 * self.inside_obstacles_movement + 1.0 * self.test_0_collision \
@@ -128,109 +128,113 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                   current_task["goal"] = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                           for x, boundary in zip(np.random.random(5), boundaries)] 
                 else:
-                  if self.dataset == "safety_dataset":
-                    def get_random_sampled_state():
-                      dataset_info = {}
-                      env_boundaries = {"v": (0, 0), "steer": (0, 0)}
-                      dataset_info["boundaries"] = env_boundaries
-                      agent_horizontal_orientation = np.random.choice([False, True])
-                      agent_left_to_right_down_to_up = np.random.choice([False, True])
-                      goal_left_to_right = np.random.choice([False, True])
-                      line = np.random.choice([1, 2, 3])
-                      if agent_horizontal_orientation:
-                        env_boundaries["x"] = (-2, 35)
-                        env_boundaries["theta"] = (-0.35, 0.35)
-                        if agent_left_to_right_down_to_up:
+                  if self.uniform_feasible_train_dataset:
+                    if self.dataset == "safety_dataset":
+                      def get_random_sampled_state():
+                        dataset_info = {}
+                        env_boundaries = {"v": (0, 0), "steer": (0, 0)}
+                        dataset_info["boundaries"] = env_boundaries
+                        agent_horizontal_orientation = np.random.choice([False, True])
+                        agent_left_to_right_down_to_up = np.random.choice([False, True])
+                        goal_left_to_right = np.random.choice([False, True])
+                        line = np.random.choice([1, 2, 3])
+                        if agent_horizontal_orientation:
+                          env_boundaries["x"] = (-2, 35)
                           env_boundaries["theta"] = (-0.35, 0.35)
+                          if agent_left_to_right_down_to_up:
+                            env_boundaries["theta"] = (-0.35, 0.35)
+                          else:
+                            env_boundaries["theta"] = (np.pi - 0.35, np.pi + 0.35)
+                          if line == 1: env_boundaries["y"] = (33, 35)
+                          elif line == 2: env_boundaries["y"] = (16.5, 17.5)
+                          elif line == 3: env_boundaries["y"] = (-4, 0.5)
                         else:
-                          env_boundaries["theta"] = (np.pi - 0.35, np.pi + 0.35)
-                        if line == 1: env_boundaries["y"] = (33, 35)
-                        elif line == 2: env_boundaries["y"] = (16.5, 17.5)
-                        elif line == 3: env_boundaries["y"] = (-4, 0.5)
-                      else:
-                        env_boundaries["y"] = (-3, 33)
-                        if agent_left_to_right_down_to_up:
-                          env_boundaries["theta"] = (np.pi/2 - 0.35, np.pi/2 + 0.35)
+                          env_boundaries["y"] = (-3, 33)
+                          if agent_left_to_right_down_to_up:
+                            env_boundaries["theta"] = (np.pi/2 - 0.35, np.pi/2 + 0.35)
+                          else:
+                            env_boundaries["theta"] = (-np.pi/2 - 0.35, -np.pi/2 + 0.35)
+                          if line == 1: env_boundaries["x"] = (-5, -2)
+                          elif line == 2: env_boundaries["x"] = (17.5, 18.5)
+                          elif line == 3: env_boundaries["x"] = (38, 40)
+                        boundaries = [dataset_info["boundaries"]["x"], 
+                                      dataset_info["boundaries"]["y"],
+                                      dataset_info["boundaries"]["theta"],
+                                      dataset_info["boundaries"]["v"],
+                                      dataset_info["boundaries"]["steer"]]
+                        task = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                                for x, boundary in zip(np.random.random(5), boundaries)] 
+
+                        return task
+                    elif self.dataset == "ris_easy_dataset":
+                      # theta = 0, np.pi
+                      # case1: x = -2, 35; y = 26.5, 35
+                      # case2: x = 27, 35; y = 4.5, 26.5
+                      # case3: x = -2, 35; y = -3, 4.5
+                      # case4: x = -2, 6; y = 4.5, 26.5
+
+                      # theta = -np.pi/2, np.pi/2
+                      # case1: x = -2, 35; y = 29, 35  ++++
+                      # case2: x = 23.5, 35; y = 2, 29  ++++
+                      # case3: x = -2, 35; y = -3, 2   ++++
+                      # case4: x = -2, 11; y = 2, 29 ++++
+
+
+                      def get_random_sampled_state():
+                        dataset_info = {}
+                        env_boundaries = {"v": (0, 0), "steer": (0, 0)}
+                        dataset_info["boundaries"] = env_boundaries
+                        geometric_case = np.random.choice([1, 2, 3, 4])
+                        agent_horizontal_orientation = np.random.choice([False, True])
+                        if agent_horizontal_orientation:
+                          env_boundaries["theta"] = np.random.choice([0, np.pi])
+                          env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
+                          if geometric_case == 1:
+                            env_boundaries["x"] = (-2, 35)    
+                            env_boundaries["y"] = (26.5, 35)
+                          elif geometric_case == 2:
+                            env_boundaries["x"] = (27, 35)    
+                            env_boundaries["y"] = (4.5, 26.5)
+                          elif geometric_case == 3:
+                            env_boundaries["x"] = (-2, 35)      
+                            env_boundaries["y"] = (-3, 4.5)
+                          elif geometric_case == 4:
+                            env_boundaries["x"] = (-2, 6)      
+                            env_boundaries["y"] = (4.5, 26.5)
+                          else: assert 1 == 0
                         else:
-                          env_boundaries["theta"] = (-np.pi/2 - 0.35, -np.pi/2 + 0.35)
-                        if line == 1: env_boundaries["x"] = (-5, -2)
-                        elif line == 2: env_boundaries["x"] = (17.5, 18.5)
-                        elif line == 3: env_boundaries["x"] = (38, 40)
-                      boundaries = [dataset_info["boundaries"]["x"], 
-                                    dataset_info["boundaries"]["y"],
-                                    dataset_info["boundaries"]["theta"],
-                                    dataset_info["boundaries"]["v"],
-                                    dataset_info["boundaries"]["steer"]]
-                      task = [(boundary[1] - boundary[0]) * x + boundary[0] 
-                              for x, boundary in zip(np.random.random(5), boundaries)] 
+                          env_boundaries["theta"] = np.random.choice([-np.pi/2, np.pi/2])
+                          env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
+                          if geometric_case == 1:
+                            env_boundaries["x"] = (-2, 35)    
+                            env_boundaries["y"] = (29, 35)
+                          elif geometric_case == 2:
+                            env_boundaries["x"] = (23.5, 35)    
+                            env_boundaries["y"] = (2, 29)
+                          elif geometric_case == 3:
+                            env_boundaries["x"] = (-2, 35)      
+                            env_boundaries["y"] = (-3, 2)
+                          elif geometric_case == 4:
+                            env_boundaries["x"] = (-2, 11)      
+                            env_boundaries["y"] = (2, 29)
+                          else: assert 1 == 0
+                        boundaries = [dataset_info["boundaries"]["x"], 
+                                      dataset_info["boundaries"]["y"],
+                                      dataset_info["boundaries"]["theta"],
+                                      dataset_info["boundaries"]["v"],
+                                      dataset_info["boundaries"]["steer"]]
+                        task = [(boundary[1] - boundary[0]) * x + boundary[0] 
+                                for x, boundary in zip(np.random.random(5), boundaries)] 
+                        return task
 
-                      return task
-                  elif self.dataset == "ris_dataset_v1":
-                    # theta = 0, np.pi
-                    # case1: x = -2, 35; y = 26.5, 35
-                    # case2: x = 27, 35; y = 4.5, 26.5
-                    # case3: x = -2, 35; y = -3, 4.5
-                    # case4: x = -2, 6; y = 4.5, 26.5
+                    else:
+                      assert 1 == 0
 
-                    # theta = -np.pi/2, np.pi/2
-                    # case1: x = -2, 35; y = 29, 35  ++++
-                    # case2: x = 23.5, 35; y = 2, 29  ++++
-                    # case3: x = -2, 35; y = -3, 2   ++++
-                    # case4: x = -2, 11; y = 2, 29 ++++
-
-
-                    def get_random_sampled_state():
-                      dataset_info = {}
-                      env_boundaries = {"v": (0, 0), "steer": (0, 0)}
-                      dataset_info["boundaries"] = env_boundaries
-                      geometric_case = np.random.choice([1, 2, 3, 4])
-                      agent_horizontal_orientation = np.random.choice([False, True])
-                      if agent_horizontal_orientation:
-                        env_boundaries["theta"] = np.random.choice([0, np.pi])
-                        env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
-                        if geometric_case == 1:
-                          env_boundaries["x"] = (-2, 35)    
-                          env_boundaries["y"] = (26.5, 35)
-                        elif geometric_case == 2:
-                          env_boundaries["x"] = (27, 35)    
-                          env_boundaries["y"] = (4.5, 26.5)
-                        elif geometric_case == 3:
-                          env_boundaries["x"] = (-2, 35)      
-                          env_boundaries["y"] = (-3, 4.5)
-                        elif geometric_case == 4:
-                          env_boundaries["x"] = (-2, 6)      
-                          env_boundaries["y"] = (4.5, 26.5)
-                        else: assert 1 == 0
-                      else:
-                        env_boundaries["theta"] = np.random.choice([-np.pi/2, np.pi/2])
-                        env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
-                        if geometric_case == 1:
-                          env_boundaries["x"] = (-2, 35)    
-                          env_boundaries["y"] = (29, 35)
-                        elif geometric_case == 2:
-                          env_boundaries["x"] = (23.5, 35)    
-                          env_boundaries["y"] = (2, 29)
-                        elif geometric_case == 3:
-                          env_boundaries["x"] = (-2, 35)      
-                          env_boundaries["y"] = (-3, 2)
-                        elif geometric_case == 4:
-                          env_boundaries["x"] = (-2, 11)      
-                          env_boundaries["y"] = (2, 29)
-                        else: assert 1 == 0
-                      boundaries = [dataset_info["boundaries"]["x"], 
-                                    dataset_info["boundaries"]["y"],
-                                    dataset_info["boundaries"]["theta"],
-                                    dataset_info["boundaries"]["v"],
-                                    dataset_info["boundaries"]["steer"]]
-                      task = [(boundary[1] - boundary[0]) * x + boundary[0] 
-                              for x, boundary in zip(np.random.random(5), boundaries)] 
-                      return task
+                    current_task["start"] = get_random_sampled_state() 
+                    current_task["goal"] = get_random_sampled_state() 
 
                   else:
                     assert 1 == 0
-
-                  current_task["start"] = get_random_sampled_state() 
-                  current_task["goal"] = get_random_sampled_state() 
           
                 # Checking if the task is correct
                 while not self.environment.set_polygon_task(current_task, polygon_map):
