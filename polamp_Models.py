@@ -110,7 +110,10 @@ class Encoder(nn.Module):
 		#	nn.Conv2d(32, 32, 3, 1), nn.ReLU()
 		#)
 		#self.fc = nn.Linear(32*7*7, state_dim)
-		self.fc = nn.Linear(input_dim, state_dim)
+		self.fc = nn.Sequential(
+			nn.Linear(input_dim, 256), nn.ReLU(),
+			nn.Linear(256, state_dim)
+		)
 		self.apply(weights_init_encoder)
 
 	def forward(self, x):
