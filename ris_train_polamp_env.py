@@ -18,7 +18,14 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 
 
-def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_function=True, plot_only_agent_values=False, plot_actions=False, render_env=False, plot_obstacles=False, video_task_id=0, video_task_map="map0", data_to_plot={}, show_data_to_plot=True, eval_strategy=None):
+def evalPolicy(policy, env, 
+               plot_full_env=True, plot_subgoals=True, plot_value_function=True, 
+               plot_only_agent_values=False, plot_actions=False, render_env=False, 
+               plot_obstacles=False, 
+               video_task_id=0, video_task_map="map0", 
+               data_to_plot={}, show_data_to_plot=True, 
+               eval_strategy=None,
+               validate_one_task=False):
     plot_obstacles = env.static_env
     assert (policy.use_encoder and not plot_subgoals) or not policy.use_encoder, "cant plot subgoals with encoder"
     assert plot_full_env != render_env, "only show subgoals video or render env"
@@ -28,12 +35,6 @@ def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_f
         images.append(env.render())    
     if plot_full_env:
         images = []
-        env_min_x = -5
-        env_max_x = 40.
-        env_min_y = -5
-        env_max_y = 36.
-        grid_resolution_x = 20
-        grid_resolution_y = 20
         if plot_value_function:
             if plot_only_agent_values:
                 fig = plt.figure(figsize=[6.4 * 2, 4.8])
@@ -70,9 +71,10 @@ def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_f
     task_statuses = []
 
     for val_key in env.maps.keys():
-        #val_key = "map0"
         eval_tasks = len(env.valTasks[val_key])
-        for task_id in range(eval_tasks):    
+        for task_id in range(eval_tasks):  
+            if validate_one_task and (task_id != video_task_id or val_key != video_task_map):
+                continue
             obs = env.reset(id=task_id, val_key=val_key)
             info = {}
             agent = env.environment.agent.current_state
@@ -88,6 +90,13 @@ def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_f
 
             while not done:
                 if (plot_full_env or plot_value_function) and task_id == video_task_id and val_key == video_task_map:
+                    env_min_x = env.dataset_info["min_x"]
+                    env_max_x = env.dataset_info["max_x"]
+                    env_min_y = env.dataset_info["min_y"]
+                    env_max_y = env.dataset_info["max_y"]
+                    grid_resolution_x = 20
+                    grid_resolution_y = 20
+
                     with torch.no_grad():
                         to_torch_state = torch.FloatTensor(state).to(policy.device).unsqueeze(0)
                         to_torch_goal = torch.FloatTensor(goal).to(policy.device).unsqueeze(0)
@@ -338,7 +347,7 @@ def evalPolicy(policy, env, plot_full_env=True, plot_subgoals=True, plot_value_f
            [goal_dists, max_goal_vals, min_goal_vals], mean_actions, eval_episode_length, images, validation_info
 
 
-def sample_and_preprocess_batch(replay_buffer, batch_size=256, distance_threshold=0.05, device=torch.device("cuda")):
+def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.device("cuda")):
     # Extract 
     batch = replay_buffer.random_batch(batch_size)
     state_batch         = batch["observations"]
@@ -399,12 +408,11 @@ if __name__ == "__main__":
 
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="ris_easy_dataset") # medium_dataset, safety_dataset, ris_easy_dataset
-    parser.add_argument("--uniform_feasible_train_dataset", default=True)
+    parser.add_argument("--dataset",              default="test_medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset", default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -421,7 +429,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
     parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=20, type=int)
+    parser.add_argument("--state_dim",          default=40, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -447,6 +455,8 @@ if __name__ == "__main__":
 
     if args.dataset == "medium_dataset":
         total_maps = 12
+    elif args.dataset == "test_medium_dataset":
+        total_maps = 3
     else:
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
@@ -606,8 +616,7 @@ if __name__ == "__main__":
         if t >= args.batch_size and t >= args.start_timesteps and buffer_size >= args.start_timesteps and transition_added: # for args.her_corrections
             state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
                 replay_buffer, 
-                batch_size=args.batch_size, 
-                distance_threshold=args.distance_threshold, 
+                batch_size=args.batch_size,
                 device=args.device
             )
             # Sample subgoal candidates uniformly in the replay buffer

@@ -24,12 +24,11 @@ if __name__ == "__main__":
     
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="ris_easy_dataset") # medium_dataset, safety_dataset, ris_easy_dataset
-    parser.add_argument("--uniform_feasible_train_dataset", default=True)
+    parser.add_argument("--dataset",              default="test_medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset", default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--distance_threshold", default=0.5, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(2e3), type=int)
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -46,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
     parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=20, type=int)
+    parser.add_argument("--state_dim",          default=40, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
@@ -71,6 +70,8 @@ if __name__ == "__main__":
 
     if args.dataset == "medium_dataset":
         total_maps = 12
+    elif args.dataset == "test_medium_dataset":
+        total_maps = 3
     else:
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
@@ -170,8 +171,11 @@ if __name__ == "__main__":
                                  plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
-                                 video_task_id=len(dataSet["obstacles"][2]["map0"])-1, 
-                                 eval_strategy=None) # 18, 12
+                                 #video_task_id=len(dataSet["obstacles"][2]["map0"])-1, 
+                                 video_task_id=0, 
+                                 video_task_map="map0",
+                                 eval_strategy=None,
+                                 validate_one_task=True) # 18, 12
     wandb_log_dict = {}
     wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)

@@ -26,8 +26,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.random_train_dataset = goal_env_config["random_train_dataset"]
     assert self.dataset == "medium_dataset" \
            or self.dataset == "safety_dataset" \
-           or self.dataset == "ris_easy_dataset", \
-           "not impemented other datasets for random sampling"
+           or self.dataset == "ris_easy_dataset" \
+           or self.dataset == "test_medium_dataset" \
+           ,"not impemented other datasets for random sampling"
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
     self.test_0_collision = goal_env_config["test_0_collision"]
     self.test_1_collision = goal_env_config["test_1_collision"]
@@ -42,7 +43,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.teleport_back_steps = goal_env_config["teleport_back_steps"]
     self.add_ppo_reward = goal_env_config["add_ppo_reward"]
     self.PPO_agent_observation = goal_env_config["PPO_agent_observation"]
-
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
     assert self.test_4_collision == self.teleport_back_on_collision, "this implemented together"
     if self.add_frame_stack:
@@ -94,7 +94,28 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def compute_rewards(self, new_actions, new_next_obs_dict):    
     return -1.0 * self.abs_time_step_reward * np.ones((new_actions.shape[0], 1))
 
-  def random_data_reset(self, task=None, grid_map=None, id=None, val_key=None, static_obsts=False):
+
+  def reset_goal_env(self, **kwargs):
+    self.dataset_info = {}
+    if self.dataset == "safety_dataset" or self.dataset == "ris_easy_dataset" or not self.static_env:
+      self.dataset_info["min_x"] = -5
+      self.dataset_info["max_x"] = 40
+      self.dataset_info["min_y"] = -5
+      self.dataset_info["max_y"] = 36
+    elif self.dataset == "medium_dataset" or self.dataset == "test_medium_dataset":
+      self.dataset_info["min_x"] = -5
+      self.dataset_info["max_x"] = 50
+      self.dataset_info["min_y"] = -5
+      self.dataset_info["max_y"] = 47
+    else:
+      assert 1 == 0
+
+    if not self.uniform_feasible_train_dataset and not self.random_train_dataset:
+      observed_state = POLAMPEnvironment.reset(self, **kwargs)
+    else:
+      observed_state = self.uniform_train_data_reset(self, **kwargs, static_obsts=self.static_env)
+
+  def uniform_train_data_reset(self, task=None, grid_map=None, id=None, val_key=None, static_obsts=False):
         self.hardGoalReached = False
         self.step_counter = 0
         self.last_observations = []
@@ -226,7 +247,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                         task = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                 for x, boundary in zip(np.random.random(5), boundaries)] 
                         return task
-
+                    elif self.dataset == "medium_dataset":
+                      def get_random_sampled_state():
+                        return [0, 0, 0, 0, 0]
                     else:
                       assert 1 == 0
 
@@ -279,11 +302,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def reset(self, **kwargs):
 
-    if self.dataset == "medium_dataset":
-      observed_state = POLAMPEnvironment.reset(self, **kwargs)
-    else:
-      observed_state = self.random_data_reset(self, **kwargs, static_obsts=self.static_env)
-
+    self.reset_goal_env(**kwargs)
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
     # POLAMPenvironment return always:
