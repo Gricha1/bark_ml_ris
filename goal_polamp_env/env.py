@@ -113,9 +113,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if not self.uniform_feasible_train_dataset and not self.random_train_dataset:
       observed_state = POLAMPEnvironment.reset(self, **kwargs)
     else:
-      observed_state = self.uniform_train_data_reset(self, **kwargs, static_obsts=self.static_env)
+      observed_state = self.uniform_train_data_reset(self, **kwargs)
 
-  def uniform_train_data_reset(self, task=None, grid_map=None, id=None, val_key=None, static_obsts=False):
+  def uniform_train_data_reset(self, task=None, grid_map=None, id=None, val_key=None):
         self.hardGoalReached = False
         self.step_counter = 0
         self.last_observations = []
@@ -131,7 +131,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 current_task["start"] = tasks[id][0]
                 current_task["goal"] = tasks[id][1]
 
-                if not static_obsts or self.random_train_dataset:
+                if not self.static_env or self.random_train_dataset:
                   # random sample state&goal
                   polygon_map = []
                   env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # random dataset
@@ -248,6 +248,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                                 for x, boundary in zip(np.random.random(5), boundaries)] 
                         return task
                     elif self.dataset == "medium_dataset":
+                      assert 1 == 0
                       def get_random_sampled_state():
                         return [0, 0, 0, 0, 0]
                     else:

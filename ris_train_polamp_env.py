@@ -408,13 +408,13 @@ if __name__ == "__main__":
 
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="test_medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
-    parser.add_argument("--random_train_dataset", default=False)
+    parser.add_argument("--random_train_dataset",           default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 2e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -429,7 +429,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
     parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=40, type=int)
+    parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -516,7 +516,8 @@ if __name__ == "__main__":
     # Initialize policy
     env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
                         "v": 2.778, "steer": 0.7854}
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha,
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
+                 alpha=args.alpha,
                  use_encoder=args.use_encoder,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 

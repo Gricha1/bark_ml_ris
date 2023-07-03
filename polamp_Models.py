@@ -110,14 +110,25 @@ class Encoder(nn.Module):
 		#	nn.Conv2d(32, 32, 3, 1), nn.ReLU()
 		#)
 		#self.fc = nn.Linear(32*7*7, state_dim)
-		self.fc = nn.Sequential(
+
+
+		self.encoder = nn.Sequential(
 			nn.Linear(input_dim, 256), nn.ReLU(),
 			nn.Linear(256, state_dim)
+		)
+		self.decoder = nn.Sequential(
+			nn.Linear(state_dim, 256), nn.ReLU(),
+			nn.Linear(256, input_dim)
 		)
 		self.apply(weights_init_encoder)
 
 	def forward(self, x):
 		#h = self.encoder_conv(x).view(x.size(0), -1)
-		state = self.fc(x)
+		state = self.encoder(x)
 		return state
+
+	def autoencoder_forward(self, x):
+		state = self.encoder(x)
+		y = self.decoder(state)
+		return state, y
 

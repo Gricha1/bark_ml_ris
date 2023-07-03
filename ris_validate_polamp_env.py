@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
     parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=40, type=int)
+    parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
@@ -137,7 +137,8 @@ if __name__ == "__main__":
     # Initialize policy
     env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
                         "v": 2.778, "steer": 0.7854}
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, alpha=args.alpha,
+    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
+                 alpha=args.alpha,
                  use_encoder=args.use_encoder,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
@@ -148,6 +149,9 @@ if __name__ == "__main__":
     if load_results:
         policy.load(folder)
         print("weights is loaded")
+    else:
+        print("WEIGHTS ISN'T LOADED")
+        assert 1 == 0
 
     success_rate = 0
     fail_rate = 0
