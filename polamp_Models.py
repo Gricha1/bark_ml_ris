@@ -101,7 +101,7 @@ def weights_init_encoder(m):
 		nn.init.orthogonal_(m.weight.data[:, :, mid, mid], gain)
 
 class Encoder(nn.Module):
-	def __init__(self, input_dim, n_channels=3, state_dim=16):
+	def __init__(self, input_dim, n_channels=3, state_dim=16, use_decoder=False):
 		super(Encoder, self).__init__()
 		#self.encoder_conv = nn.Sequential(
 		#	nn.Conv2d(n_channels, 32, 3, 2), nn.ReLU(),
@@ -111,15 +111,16 @@ class Encoder(nn.Module):
 		#)
 		#self.fc = nn.Linear(32*7*7, state_dim)
 
-
 		self.encoder = nn.Sequential(
 			nn.Linear(input_dim, 256), nn.ReLU(),
 			nn.Linear(256, state_dim)
 		)
-		self.decoder = nn.Sequential(
-			nn.Linear(state_dim, 256), nn.ReLU(),
-			nn.Linear(256, input_dim)
-		)
+		self.use_decoder = use_decoder
+		if self.use_decoder:
+			self.decoder = nn.Sequential(
+				nn.Linear(state_dim, 256), nn.ReLU(),
+				nn.Linear(256, input_dim)
+			)
 		self.apply(weights_init_encoder)
 
 	def forward(self, x):
@@ -128,7 +129,11 @@ class Encoder(nn.Module):
 		return state
 
 	def autoencoder_forward(self, x):
-		state = self.encoder(x)
-		y = self.decoder(state)
-		return state, y
+		if self.use_decoder:
+			state = self.encoder(x)
+			y = self.decoder(state)
+			return state, y
+		else:
+			assert 1 == 0, "didnt initialize decoder"
+			return
 

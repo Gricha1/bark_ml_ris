@@ -22,8 +22,9 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False):		
 
+		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		# normalize states
 		self.env_state_bounds = env_state_bounds
@@ -46,15 +47,17 @@ class RIS(object):
 
 		# Encoder (for vision-based envs)
 		self.use_encoder = use_encoder
+		self.use_decoder = use_decoder
 		if self.use_encoder:
-			self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim).to(device)
-			#self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=enc_lr)
-			self.encoder_optimizer = torch.optim.Adam(self.encoder.encoder.parameters(), lr=enc_lr)
-
-		# AutoEncoder
-		if self.use_encoder:
-			self.autoencoder_criterion = nn.MSELoss()
-			self.autoencoder_optimizer = torch.optim.Adam(self.encoder.decoder.parameters(), lr=enc_lr)
+			if not self.use_decoder:
+				self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim).to(device)
+				self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=enc_lr)
+			else:
+				self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim, use_decoder=False).to(device)
+				self.encoder_optimizer = torch.optim.Adam(self.encoder.encoder.parameters(), lr=enc_lr)
+				# AutoEncoder
+				self.autoencoder_criterion = nn.MSELoss()
+				self.autoencoder_optimizer = torch.optim.Adam(self.encoder.decoder.parameters(), lr=enc_lr)
 
 		# Actor-Critic Hyperparameters
 		self.tau = tau
@@ -213,7 +216,8 @@ class RIS(object):
 			#subgoal = random_translate(subgoal, pad=8)
 
 			# Stop gradient for subgoal goal and next state
-			environment_state = state.clone().detach()
+			if self.use_decoder:
+				environment_state = state.clone().detach()
 			state = self.encoder(state)
 			with torch.no_grad():
 				goal = self.encoder(goal)
@@ -239,7 +243,7 @@ class RIS(object):
 		if self.use_encoder: self.encoder_optimizer.step()
 
 		# Optimize autoencoder
-		if self.use_encoder:
+		if self.use_decoder:
 			encoded_state, y = self.encoder.autoencoder_forward(environment_state)
 			autoencoder_loss = self.autoencoder_criterion(environment_state, y)
 			self.autoencoder_optimizer.zero_grad()

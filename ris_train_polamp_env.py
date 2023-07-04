@@ -428,6 +428,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
+    parser.add_argument("--use_decoder",        default=False, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
@@ -518,6 +519,7 @@ if __name__ == "__main__":
                         "v": 2.778, "steer": 0.7854}
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
+                 use_decoder=args.use_decoder,
                  use_encoder=args.use_encoder,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
