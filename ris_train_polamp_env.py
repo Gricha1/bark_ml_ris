@@ -19,7 +19,7 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 
 def evalPolicy(policy, env, 
-               plot_full_env=True, plot_subgoals=True, plot_value_function=True, 
+               plot_full_env=True, plot_subgoals=False, plot_value_function=False, 
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
                plot_obstacles=False, 
                video_task_id=0, video_task_map="map0", 
@@ -27,7 +27,8 @@ def evalPolicy(policy, env,
                eval_strategy=None,
                validate_one_task=False):
     plot_obstacles = env.static_env
-    assert (policy.use_encoder and not plot_subgoals) or not policy.use_encoder, "cant plot subgoals with encoder"
+    assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
+    #assert (policy.use_encoder and not plot_subgoals) or not policy.use_encoder, "cant plot subgoals with encoder"
     assert plot_full_env != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
@@ -167,9 +168,10 @@ def evalPolicy(policy, env,
                                     y_subgoal = subgoal.cpu()[0][1]
                                     theta_subgoal = subgoal.cpu()[0][2]
                                 else:
-                                    x_subgoal = subgoal.cpu()[0][0]
-                                    y_subgoal = subgoal.cpu()[0][1]
-                                    theta_subgoal = subgoal.cpu()[0][2]
+                                    decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
+                                    x_subgoal = decoded_subgoal[0][0]
+                                    y_subgoal = decoded_subgoal[0][1]
+                                    theta_subgoal = decoded_subgoal[0][2]
                                 ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
                                 ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                                 [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
@@ -197,8 +199,8 @@ def evalPolicy(policy, env,
                                 ax_states.scatter(data_to_plot["train_step_x"], 
                                                 data_to_plot["train_step_y"], 
                                                 color="red", s=3)
-                        if plot_subgoals:
-                            ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
+                        #if plot_subgoals:
+                        #    ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                         ax_states.text(env_max_x - 10, env_max_y - 1.5, f"R:{acc_reward}")
                         ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
 
@@ -241,7 +243,8 @@ def evalPolicy(policy, env,
                                 ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
                                                 [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
                                                 color="black", s=5)
-                                if plot_subgoals:
+                                if plot_subgoals and plot_value_function:
+                                    assert 1 == 0, "didnt implement for decoder"
                                     for ind, subgoal in enumerate(subgoals):
                                         ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
                                         ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
@@ -428,7 +431,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--use_decoder",        default=False, type=bool)
+    parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)

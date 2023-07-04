@@ -53,7 +53,7 @@ class RIS(object):
 				self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim).to(device)
 				self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=enc_lr)
 			else:
-				self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim, use_decoder=False).to(device)
+				self.encoder = Encoder(input_dim=env_obs_dim, state_dim=state_dim, use_decoder=True).to(device)
 				self.encoder_optimizer = torch.optim.Adam(self.encoder.encoder.parameters(), lr=enc_lr)
 				# AutoEncoder
 				self.autoencoder_criterion = nn.MSELoss()

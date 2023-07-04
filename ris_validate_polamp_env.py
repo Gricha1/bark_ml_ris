@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--use_decoder",        default=False, type=bool)
+    parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
                                  plot_full_env=True,
-                                 plot_subgoals=False,
+                                 plot_subgoals=True,
                                  plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 

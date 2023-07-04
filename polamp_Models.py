@@ -113,12 +113,14 @@ class Encoder(nn.Module):
 
 		self.encoder = nn.Sequential(
 			nn.Linear(input_dim, 256), nn.ReLU(),
+			nn.Linear(256, 256), nn.ReLU(),
 			nn.Linear(256, state_dim)
 		)
 		self.use_decoder = use_decoder
 		if self.use_decoder:
 			self.decoder = nn.Sequential(
 				nn.Linear(state_dim, 256), nn.ReLU(),
+				nn.Linear(256, 256), nn.ReLU(),
 				nn.Linear(256, input_dim)
 			)
 		self.apply(weights_init_encoder)
