@@ -15,42 +15,38 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.abs_time_step_reward = self.reward_config["timeStep"]
     self.collision_reward = -self.reward_config["collision"]
     self.goal_reward = self.reward_config["goal"]
-    assert self.reward_config["clearance"] \
-           == self.reward_config["reverse"] \
-           == self.reward_config["overSpeeding"] \
-           == self.reward_config["overSteering"] \
-           == 0.0, "didnt implement these rewards"
     self.static_env = goal_env_config["static_env"]  
     self.dataset = goal_env_config["dataset"]
     self.uniform_feasible_train_dataset = goal_env_config["uniform_feasible_train_dataset"]
     self.random_train_dataset = goal_env_config["random_train_dataset"]
-    assert self.dataset == "medium_dataset" \
-           or self.dataset == "safety_dataset" \
-           or self.dataset == "ris_easy_dataset" \
-           or self.dataset == "test_medium_dataset" \
-           ,"not impemented other datasets for random sampling"
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
-    self.test_0_collision = goal_env_config["test_0_collision"]
-    self.test_1_collision = goal_env_config["test_1_collision"]
-    self.test_2_collision = goal_env_config["test_2_collision"] 
-    self.test_3_collision = goal_env_config["test_3_collision"]
-    self.test_4_collision = goal_env_config["test_4_collision"]  # collision = step back (self.teleport_back_steps) steps
-    assert not (self.random_train_dataset and self.test_4_collision), "cant spawn into obst"
     self.inside_obstacles_movement = goal_env_config["inside_obstacles_movement"]
     self.her_corrections = goal_env_config["her_corrections"] # when step: add obs,a,next_obs to trajectory, to add less equal data(when freeze on collision)
     self.add_frame_stack = goal_env_config["add_frame_stack"]
     self.teleport_back_on_collision = goal_env_config["teleport_back_on_collision"]
     self.teleport_back_steps = goal_env_config["teleport_back_steps"]
     self.add_ppo_reward = goal_env_config["add_ppo_reward"]
+    self.add_collision_reward = goal_env_config["add_collision_reward"]
+    self.collision_reward_to_episode_end = goal_env_config["collision_reward_to_episode_end"]
     self.PPO_agent_observation = goal_env_config["PPO_agent_observation"]
-    assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
-    assert self.test_4_collision == self.teleport_back_on_collision, "this implemented together"
     if self.add_frame_stack:
       self.agent_state_len = 5
-    assert 1.0 * self.inside_obstacles_movement + 1.0 * self.test_0_collision \
-           + 1.0 * self.test_1_collision \
-           + 1.0 * self.test_2_collision + 1.0 * self.test_3_collision \
-           + 1.0 * self.test_4_collision + 1.0 * self.static_env == 2.0 or not self.static_env
+    assert self.PPO_agent_observation == 0, "didnt implement"
+    assert self.add_ppo_reward == 0, "didnt implement"
+    assert self.dataset == "medium_dataset" \
+           or self.dataset == "safety_dataset" \
+           or self.dataset == "ris_easy_dataset" \
+           or self.dataset == "test_medium_dataset" \
+           ,"not impemented other datasets for random sampling"
+    assert self.reward_config["clearance"] \
+           == self.reward_config["reverse"] \
+           == self.reward_config["overSpeeding"] \
+           == self.reward_config["overSteering"] \
+           == 0.0, "didnt implement these rewards"
+    assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
+    assert 1.0 * self.inside_obstacles_movement \
+           + 1.0 * self.teleport_back_on_collision \
+           + 1.0 * self.static_env == 2.0 or not self.static_env
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
     if self.PPO_agent_observation:
       observation_size = 10
@@ -365,10 +361,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       self.previous_agent_observations = [self.previous_agent_observation for _ in range(self.frame_stack)]
     else:
       self.previous_agent_observations = [self.previous_agent_observation] 
-    if self.static_env and self.test_0_collision:
-      self.not_collision_state = None
-    if self.static_env and self.test_2_collision:
-      self.start_state = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
 
     return obs_dict
 
@@ -399,41 +391,24 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       reward = self.compute_rewards(np.array([1]), None).item()
     else:
       reward = 0.0
-
     if self.add_ppo_reward:
+      assert 1 == 0, "incorrect count with collision"
       reward = polamp_reward
 
     if self.static_env and "Collision" in info:
       self.collision_happend_on_trajectory = True
-      if self.inside_obstacles_movement:
+      if self.teleport_back_on_collision:
+        reward += self.collision_reward
+        steer_angle_when_collide = self.environment.agent.current_state.steer
+        self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]
+        self.environment.agent.current_state.v = 0
+        self.environment.agent.current_state.steer = steer_angle_when_collide
+      elif self.inside_obstacles_movement:
         if not self.add_ppo_reward:
           reward += self.collision_reward
-      elif self.test_1_collision:
+      elif self.collision_reward_to_episode_end:
         isDone = True
         reward += self.step_counter - self._max_episode_steps
-      elif self.test_0_collision:
-        if self.not_collision_state is None:
-          self.not_collision_state = State(self.previous_agent_state)
-          self.not_collision_state.v = 0
-      elif self.test_2_collision:
-        self.environment.agent.current_state = State(self.start_state)
-      elif self.test_3_collision:
-        if self.teleport_back_on_collision:
-          self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]
-          self.environment.agent.current_state.v = 0
-      elif self.test_4_collision:
-        reward += self.collision_reward
-        if self.teleport_back_on_collision:
-          steer_angle_when_collide = self.environment.agent.current_state.steer
-          self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]
-          self.environment.agent.current_state.v = 0
-          self.environment.agent.current_state.steer = steer_angle_when_collide
-        else:
-          self.environment.agent.current_state = State(self.previous_agent_state)
-          self.environment.agent.current_state.v = 0
-    if self.static_env and self.test_0_collision:
-      if self.not_collision_state is not None:
-        self.environment.agent.current_state = self.not_collision_state
     
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
@@ -472,6 +447,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       current_step = np.array([1.0 * self.step_counter])
       collision = np.array([1.0 * ("Collision" in info)])
     if self.PPO_agent_observation:
+      assert 1 == 0, "didnt implemented"
       state_observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
       state_desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])  
     else:
@@ -491,16 +467,15 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
     info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     self.previous_agent_state = self.environment.agent.current_state
-    self.previous_agent_observation = agent_state
     self.previous_agent_states.append(self.previous_agent_state)
+    if len(self.previous_agent_states) > self.teleport_back_steps:
+      self.previous_agent_states.pop(0)
+    self.previous_agent_observation = agent_state
     self.previous_agent_observations.append(self.previous_agent_observation)
     if len(self.previous_agent_observations) > self.frame_stack:
       self.previous_agent_observations.pop(0)
-    if len(self.previous_agent_states) > self.teleport_back_steps:
-      self.previous_agent_states.pop(0)
       
     return obs_dict, reward, isDone, info
-
 
   def HER_reward(self, state, action, next_state, goal, collision, goal_was_reached, step_counter):
     

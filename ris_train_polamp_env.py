@@ -361,7 +361,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
     done_batch          = batch["terminals"]
     agent_state_batch   = batch["state_observation"]
     goal_state_batch    = batch["state_desired_goal"]
-    if env.static_env and (env.test_1_collision or env.test_4_collision or env.inside_obstacles_movement): 
+    if env.static_env and env.add_collision_reward: 
         current_step_batch  = batch["current_step"] 
         collision_batch     = batch["collision"]
         if env.add_frame_stack:
@@ -370,15 +370,18 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
     
     # Compute sparse rewards: -1 for all actions until the goal is reached
     if env.PPO_agent_observation:
+        assert 1 == 0, "didnt implement ppo agent obs"
         reward_batch = np.sqrt(np.power(np.array(agent_state_batch - goal_state_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
     else:
         reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-    if env.static_env and env.test_1_collision:
+
+    if env.static_env and env.collision_reward_to_episode_end:
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
         reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                     + (current_step_batch - env._max_episode_steps) * collision_batch
-    elif env.static_env and env.test_4_collision:
+    elif env.static_env:
         if env.add_ppo_reward:
+            assert 1 == 0, "didnt implement add ppo reward"
             done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
             reward_batch = env.HER_reward(state=state_batch, action=action_batch, 
                                           next_state=next_state_batch, goal=goal_batch, 
@@ -388,14 +391,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
             done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
             reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                             + (env.collision_reward) * collision_batch
-    elif env.static_env and env.inside_obstacles_movement:
-        done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
-        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
-                        + (env.collision_reward) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
-
+    
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
     action_batch        = torch.FloatTensor(action_batch).to(device)
@@ -417,7 +416,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)

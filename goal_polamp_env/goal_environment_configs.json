@@ -1,16 +1,13 @@
 {
     "teleport_back_on_collision": true,
     "teleport_back_steps": 4,
-    "test_0_collision": false,
-    "test_1_collision": false,
-    "test_2_collision": false,
-    "test_3_collision": false,
-    "test_4_collision": true,
     "inside_obstacles_movement": false,
     "her_corrections": false,
     "add_frame_stack": true,
     "static_env": true,
     "add_ppo_reward": false,
+    "add_collision_reward": true,
+    "collision_reward_to_episode_end": false,
     "use_lidar_data": true,
     "PPO_agent_observation": false
 }
