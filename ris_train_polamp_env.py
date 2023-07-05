@@ -376,10 +376,11 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
         reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
 
     if env.static_env and env.collision_reward_to_episode_end:
+        assert 1 == 0, "didnt implement correct for frame stack"
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
         reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                     + (current_step_batch - env._max_episode_steps) * collision_batch
-    elif env.static_env:
+    elif env.static_env and env.add_collision_reward:
         if env.add_ppo_reward:
             assert 1 == 0, "didnt implement add ppo reward"
             done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
@@ -416,7 +417,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 2e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
