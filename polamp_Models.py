@@ -134,7 +134,7 @@ class Encoder(nn.Module):
 		if self.use_decoder:
 			state = self.encoder(x)
 			y = self.decoder(state)
-			return state, y
+			return y
 		else:
 			assert 1 == 0, "didnt initialize decoder"
 			return

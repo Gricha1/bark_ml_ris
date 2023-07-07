@@ -45,7 +45,7 @@ class RIS(object):
 		self.subgoal_net = LaplacePolicy(state_dim).to(device)
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
-		# Encoder (for vision-based envs)
+		# Encoder
 		self.use_encoder = use_encoder
 		self.use_decoder = use_decoder
 		if self.use_encoder:
@@ -241,10 +241,11 @@ class RIS(object):
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
 		if self.use_encoder: self.encoder_optimizer.step()
+		self.critic_optimizer.step()
 
 		# Optimize autoencoder
 		if self.use_decoder:
-			encoded_state, y = self.encoder.autoencoder_forward(environment_state)
+			y = self.encoder.autoencoder_forward(environment_state)
 			autoencoder_loss = self.autoencoder_criterion(environment_state, y)
 			self.autoencoder_optimizer.zero_grad()
 			autoencoder_loss.backward()
@@ -255,8 +256,6 @@ class RIS(object):
 				critic_value   = Q.mean().item(),
 				target_value  = target_Q.mean().item()
 			)
-
-		self.critic_optimizer.step()
 
 		# Stop backpropagation to encoder
 		if self.use_encoder:

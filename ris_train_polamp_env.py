@@ -657,7 +657,7 @@ if __name__ == "__main__":
             mean_actions, eval_episode_length, images, validation_info \
                     = evalPolicy(policy, test_env, 
                                 plot_full_env=True,
-                                plot_subgoals=False,
+                                plot_subgoals=True,
                                 plot_value_function=False,
                                 render_env=False,
                                 plot_only_agent_values=True, 
@@ -666,7 +666,7 @@ if __name__ == "__main__":
                                               "train_step_y": logger.data["train_step_y"],
                                               },
                                 video_task_id=len(dataSet["obstacles"][2]["map0"])-1,
-                                show_data_to_plot=True)
+                                show_data_to_plot=False)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
