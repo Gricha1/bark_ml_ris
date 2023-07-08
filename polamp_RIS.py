@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder
 from utils.data_aug import random_translate
+from utils.data_aug import NormalNoise
 
 def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	if not validate:
@@ -22,7 +23,7 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False):		
 
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
@@ -46,6 +47,13 @@ class RIS(object):
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
 		# Encoder
+		self.add_obs_noise = add_obs_noise
+		if self.add_obs_noise:
+			obs_noise_x = NormalNoise(sigma=1)
+			obs_noise_y = NormalNoise(sigma=1)
+			obs_noise_theta = NormalNoise(sigma=0.15)
+			obs_noise_v = NormalNoise(sigma=1)
+			obs_noise_steer = NormalNoise(sigma=0.1)
 		self.use_encoder = use_encoder
 		self.use_decoder = use_decoder
 		if self.use_encoder:
@@ -214,6 +222,17 @@ class RIS(object):
 			#next_state = random_translate(next_state, pad=8)
 			#goal = random_translate(goal, pad=8)
 			#subgoal = random_translate(subgoal, pad=8)
+
+			if self.add_obs_noise:
+				assert 1 == 0
+				state = obs_noise_x.perturb_action(state, min_action=-np.inf, max_action=np.inf)
+				obs_noise_y = NormalNoise(sigma=1)
+				obs_noise_theta = NormalNoise(sigma=0.15)
+				obs_noise_v = NormalNoise(sigma=1)
+				obs_noise_steer = NormalNoise(sigma=0.1)
+				#ctrl_noise = utils.NormalNoise(sigma=args.ctrl_noise_sigma)
+				#action = controller_policy.select_action(state, subgoal)
+        		#action = ctrl_noise.perturb_action(action, -max_action, max_action)
 
 			# Stop gradient for subgoal goal and next state
 			if self.use_decoder:
