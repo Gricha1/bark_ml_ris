@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 def random_translate(imgs, pad=8):
 	n, c, h, w = imgs.size()
@@ -9,3 +10,12 @@ def random_translate(imgs, pad=8):
 	for i, (img, w11, h11) in enumerate(zip(imgs, w1, h1)):
 		cropped[i][:] = img[:, h11:h11 + h, w11:w11 + w]
 	return cropped
+
+class NormalNoise(object):
+    def __init__(self, sigma):
+        self.sigma = sigma
+
+    def perturb_action(self, action, min_action=-np.inf, max_action=np.inf):
+        action = (action + np.random.normal(0, self.sigma,
+            size=action.shape)).clip(min_action, max_action)
+        return action
