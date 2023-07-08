@@ -362,10 +362,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     return obs_dict
 
   def step(self, action, **kwargs):
-    # normalized actions = [-1:1, -1:1]
-    # normalized_action = [action[0] * agent.dynamic_model.max_acc, 
-    #                     action[1] * agent.dynamic_model.max_ang_vel]
-    # observed_state, reward, isDone, info = POLAMPEnvironment.step(self, normalized_action, **kwargs)
+    # action = [-1:1, -1:1]
+    assert len(action) == 2
+    action = [action[0] * self.environment.agent.dynamic_model.max_acc, 
+              action[1] * self.environment.agent.dynamic_model.max_ang_vel]
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
 
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
