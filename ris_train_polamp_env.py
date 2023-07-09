@@ -26,16 +26,26 @@ def evalPolicy(policy, env,
                data_to_plot={}, show_data_to_plot=True, 
                eval_strategy=None,
                validate_one_task=False):
+
+    if render_env:
+        assert 1 == 0, "didnt implement correctly"
+    if type(video_task_id) != type(list()):
+        assert type(video_task_id) == type(int()), "video_task_id = idx of one task"
+        video_task_id = [video_task_id]
+    if type(video_task_map) != type(list()):
+        assert type(video_task_map) == type(str()), "video_task_map = str"
+        video_task_map = [video_task_map]
+
     plot_obstacles = env.static_env
     assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
-    #assert (policy.use_encoder and not plot_subgoals) or not policy.use_encoder, "cant plot subgoals with encoder"
     assert plot_full_env != render_env, "only show subgoals video or render env"
     validation_info = {}
     if render_env:
-        images = []
+        videos = []
+        #images = []
         images.append(env.render())    
     if plot_full_env:
-        images = []
+        videos = []
         if plot_value_function:
             if plot_only_agent_values:
                 fig = plt.figure(figsize=[6.4 * 2, 4.8])
@@ -74,8 +84,11 @@ def evalPolicy(policy, env,
     for val_key in env.maps.keys():
         eval_tasks = len(env.valTasks[val_key])
         for task_id in range(eval_tasks):  
-            if validate_one_task and (task_id != video_task_id or val_key != video_task_map):
+            if validate_one_task and (task_id not in video_task_id or val_key not in video_task_map):
                 continue
+            if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
+                    or (render_env and task_id in video_task_id and val_key in video_task_map):
+                images = []
             obs = env.reset(id=task_id, val_key=val_key)
             info = {}
             agent = env.environment.agent.current_state
@@ -90,7 +103,7 @@ def evalPolicy(policy, env,
             state_distrs["start_x"].append(state[0])
 
             while not done:
-                if (plot_full_env or plot_value_function) and task_id == video_task_id and val_key == video_task_map:
+                if (plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map:
                     env_min_x = env.dataset_info["min_x"]
                     env_max_x = env.dataset_info["max_x"]
                     env_min_y = env.dataset_info["min_y"]
@@ -306,10 +319,13 @@ def evalPolicy(policy, env,
                 next_state = next_obs["observation"]
                 state = next_state
 
-                if render_env and task_id == video_task_id:
+                if render_env and task_id in video_task_id and val_key in video_task_map:
                     images.append(env.render())
                 t += 1
 
+            if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
+                    or (render_env and task_id in video_task_id and val_key in video_task_map):
+                videos.append(images)
             final_distances.append(info["dist_to_goal"])
             success = 1.0 * info["geometirc_goal_achieved"]
             task_status = "success"
@@ -340,14 +356,17 @@ def evalPolicy(policy, env,
     if plot_full_env:
         plt.close()
     if plot_full_env or render_env:
-        images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
+        videos = [np.transpose(np.array(video), axes=[0, 3, 1, 2]) for video in videos]
+        #for video in videos:
+        #    video = np.transpose(np.array(video), axes=[0, 3, 1, 2])
+        #images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
     validation_info["task_statuses"] = task_statuses
-    validation_info["images"] = images
+    validation_info["videos"] = videos
     validation_info["action_info"] = action_info
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
-           [goal_dists, max_goal_vals, min_goal_vals], mean_actions, eval_episode_length, images, validation_info
+           [goal_dists, max_goal_vals, min_goal_vals], mean_actions, eval_episode_length, validation_info
 
 
 def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.device("cuda")):
@@ -660,7 +679,7 @@ if __name__ == "__main__":
             # Eval policy
             eval_distance, success_rate, eval_reward, \
             val_state, val_goal, \
-            mean_actions, eval_episode_length, images, validation_info \
+            mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
                                 plot_full_env=True,
                                 plot_subgoals=True,
@@ -734,7 +753,8 @@ if __name__ == "__main__":
                 for dict_ in val_state + val_goal:
                     for key in dict_:
                         wandb_log_dict[f"{key}"] = dict_[key]
-                wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
+                for ind, video in enumerate(validation_info["videos"]):
+                    wandb_log_dict["validation_video"+f"_{ind}"] = wandb.Video(video, fps=10, format="gif")
                 run.log(wandb_log_dict)
      
             # Save (best) results

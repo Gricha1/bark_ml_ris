@@ -128,8 +128,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                   # random sample state&goal
                   polygon_map = []
                   env_boundaries = {"x": (-5 + 2, 40 - 2), "y": (-5 + 2, 36 - 2), # random dataset
-                      "theta": (-1.5707963267948966, 1.5707963267948966), 
-                      "v": (0, 0), "steer": (0, 0)}
+                                    "theta": (-1.5707963267948966, 1.5707963267948966), 
+                                    "v": (0, 0), "steer": (0, 0)}
                   dataset_info = {}
                   dataset_info["boundaries"] = env_boundaries
                   boundaries = [dataset_info["boundaries"]["x"], 
@@ -150,11 +150,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                         dataset_info["boundaries"] = env_boundaries
                         agent_horizontal_orientation = np.random.choice([False, True])
                         agent_left_to_right_down_to_up = np.random.choice([False, True])
-                        goal_left_to_right = np.random.choice([False, True])
                         line = np.random.choice([1, 2, 3])
                         if agent_horizontal_orientation:
                           env_boundaries["x"] = (-2, 35)
-                          env_boundaries["theta"] = (-0.35, 0.35)
                           if agent_left_to_right_down_to_up:
                             env_boundaries["theta"] = (-0.35, 0.35)
                           else:

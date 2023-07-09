@@ -24,9 +24,10 @@ if __name__ == "__main__":
     
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="test_medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset", default=False)
+    parser.add_argument("--train_dataset",        default=True)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
@@ -77,17 +78,13 @@ if __name__ == "__main__":
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
+    if args.train_dataset:
+        valTasks = trainTask
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []
-
-    # dataset info
-    print("dataset:", len(dataSet["obstacles"][0]["map0"]), #4 maps
-                      len(dataSet["obstacles"][1]["map0"]), #70 train tasks
-                      len(dataSet["obstacles"][2]["map0"])  #35 val tasks
-         )
 
     args.evaluation = False
     environment_config = {
@@ -170,7 +167,7 @@ if __name__ == "__main__":
 
     eval_distance, success_rate, eval_reward, \
     val_state, val_goal, \
-    mean_actions, eval_episode_length, images, validation_info \
+    mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
                                  plot_full_env=True,
                                  plot_subgoals=True,
@@ -178,12 +175,14 @@ if __name__ == "__main__":
                                  render_env=False, 
                                  plot_only_agent_values=True, 
                                  #video_task_id=len(dataSet["obstacles"][2]["map0"])-1, 
-                                 video_task_id=0, 
-                                 video_task_map="map0",
+                                 video_task_id=[1], 
+                                 video_task_map=["map0"],
                                  eval_strategy=None,
                                  validate_one_task=True) # 18, 12
     wandb_log_dict = {}
-    wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
+    for ind, video in enumerate(validation_info["videos"]):
+        wandb_log_dict["validation_video"+f"_{ind}"] = wandb.Video(video, fps=10, format="gif")
+    #wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
     run.log(wandb_log_dict)
     print("validation success rate:", success_rate)
     print("action info:", validation_info["action_info"])
