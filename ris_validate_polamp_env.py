@@ -24,10 +24,10 @@ if __name__ == "__main__":
     
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="hard_dataset") # test_medium_dataset, hard_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset", default=False)
-    parser.add_argument("--train_dataset",        default=True)
+    parser.add_argument("--train_dataset",        default=False)
 
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
@@ -174,15 +174,23 @@ if __name__ == "__main__":
                                  plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
-                                 #video_task_id=len(dataSet["obstacles"][2]["map0"])-1, 
-                                 video_task_id=[1], 
+                                 #video_task_id=len(valTasks["map0"])-1, 
+                                 #video_task_id=[i for i in range(71, len(valTasks["map0"]))], 
+                                 video_task_id=len(valTasks["map0"])-1, 
                                  video_task_map=["map0"],
+                                 #video_task_id=[0, 30],
+                                 #video_task_map=["map"+f"{i}" for i in range(2)],
                                  eval_strategy=None,
                                  validate_one_task=True) # 18, 12
     wandb_log_dict = {}
-    for ind, video in enumerate(validation_info["videos"]):
-        wandb_log_dict["validation_video"+f"_{ind}"] = wandb.Video(video, fps=10, format="gif")
-    #wandb_log_dict["validation_video"] = wandb.Video(images, fps=10, format="gif")
+    if len(validation_info["videos"]) != 1:    
+        for map_name, video in validation_info["videos"]:
+            wandb_log_video = {}
+            wandb_log_video["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
+            run.log(wandb_log_video)        
+    else:
+        for map_name, video in validation_info["videos"]:
+            wandb_log_dict["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
     run.log(wandb_log_dict)
     print("validation success rate:", success_rate)
     print("action info:", validation_info["action_info"])

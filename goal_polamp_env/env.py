@@ -34,6 +34,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     assert self.PPO_agent_observation == 0, "didnt implement"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
+           or self.dataset == "hard_dataset" \
            or self.dataset == "safety_dataset" \
            or self.dataset == "ris_easy_dataset" \
            or self.dataset == "test_medium_dataset" \
@@ -90,7 +91,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def reset_goal_env(self, **kwargs):
     self.dataset_info = {}
-    if self.dataset == "safety_dataset" or self.dataset == "ris_easy_dataset" or not self.static_env:
+    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset" or self.dataset == "ris_easy_dataset" or not self.static_env:
       self.dataset_info["min_x"] = -5
       self.dataset_info["max_x"] = 40
       self.dataset_info["min_y"] = -5
@@ -143,7 +144,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                                           for x, boundary in zip(np.random.random(5), boundaries)] 
                 else:
                   if self.uniform_feasible_train_dataset:
-                    if self.dataset == "safety_dataset":
+                    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset":
                       def get_random_sampled_state():
                         dataset_info = {}
                         env_boundaries = {"v": (0, 0), "steer": (0, 0)}

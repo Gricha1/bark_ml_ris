@@ -89,6 +89,7 @@ def evalPolicy(policy, env,
             if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
                     or (render_env and task_id in video_task_id and val_key in video_task_map):
                 images = []
+            print(f"map={val_key}", f"task={task_id}", end=" ")
             obs = env.reset(id=task_id, val_key=val_key)
             info = {}
             agent = env.environment.agent.current_state
@@ -325,7 +326,7 @@ def evalPolicy(policy, env,
 
             if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
                     or (render_env and task_id in video_task_id and val_key in video_task_map):
-                videos.append(images)
+                videos.append((val_key, images))
             final_distances.append(info["dist_to_goal"])
             success = 1.0 * info["geometirc_goal_achieved"]
             task_status = "success"
@@ -356,7 +357,7 @@ def evalPolicy(policy, env,
     if plot_full_env:
         plt.close()
     if plot_full_env or render_env:
-        videos = [np.transpose(np.array(video), axes=[0, 3, 1, 2]) for video in videos]
+        videos = [(map_name, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, video in videos]
         #for video in videos:
         #    video = np.transpose(np.array(video), axes=[0, 3, 1, 2])
         #images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
@@ -430,7 +431,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="hard_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
 
@@ -753,8 +754,8 @@ if __name__ == "__main__":
                 for dict_ in val_state + val_goal:
                     for key in dict_:
                         wandb_log_dict[f"{key}"] = dict_[key]
-                for ind, video in enumerate(validation_info["videos"]):
-                    wandb_log_dict["validation_video"+f"_{ind}"] = wandb.Video(video, fps=10, format="gif")
+                for map_name, video in validation_info["videos"]:
+                    wandb_log_dict["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
                 run.log(wandb_log_dict)
      
             # Save (best) results
