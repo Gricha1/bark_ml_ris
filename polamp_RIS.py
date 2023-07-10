@@ -23,12 +23,13 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, safety=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False):		
 
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		# normalize states
 		self.env_state_bounds = env_state_bounds
+		self.safety = safety
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -42,6 +43,17 @@ class RIS(object):
 		self.critic_target.load_state_dict(self.critic.state_dict())
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=q_lr)
 
+		# Safety Critic
+		if self.safety:
+			cost_limit = 0.5
+			update_lambda = 1000
+			self.critic_cost 		= EnsembleCritic(state_dim, action_dim).to(device)
+			self.critic_cost_target = EnsembleCritic(state_dim, action_dim).to(device)
+			self.critic_cost_target.load_state_dict(self.critic_cost.state_dict())
+			self.critic_cost_optimizer = torch.optim.Adam(self.critic_cost.parameters(), lr=q_lr)
+			self.lambda_coefficient = torch.tensor(1.0, requires_grad=True)
+			self.lambda_optimizer = torch.optim.Adam([self.lambda_coefficient], lr=5e-4)
+			
 		# Subgoal policy 
 		self.subgoal_net = LaplacePolicy(state_dim).to(device)
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
@@ -88,6 +100,8 @@ class RIS(object):
 	def save(self, folder, save_optims=False):
 		torch.save(self.actor.state_dict(),		 folder + "actor.pth")
 		torch.save(self.critic.state_dict(),		folder + "critic.pth")
+		if self.safety:
+			torch.save(self.critic_cost.state_dict(),		folder + "critic_cost.pth")
 		torch.save(self.subgoal_net.state_dict(),   folder + "subgoal_net.pth")
 		if self.use_encoder:
 			torch.save(self.encoder.state_dict(), folder + "encoder.pth")
@@ -101,6 +115,8 @@ class RIS(object):
 	def load(self, folder):
 		self.actor.load_state_dict(torch.load(folder+"actor.pth", map_location=self.device))
 		self.critic.load_state_dict(torch.load(folder+"critic.pth", map_location=self.device))
+		if self.safety:
+			self.critic_cost.load_state_dict(torch.load(folder+"critic_cost.pth", map_location=self.device))
 		self.subgoal_net.load_state_dict(torch.load(folder+"subgoal_net.pth", map_location=self.device))
 		if self.use_encoder:
 			self.encoder.load_state_dict(torch.load(folder+"encoder.pth", map_location=self.device))
@@ -202,7 +218,7 @@ class RIS(object):
 				high_v = v.mean().item()
 			)
 
-	def train(self, state, action, reward, next_state, done, goal, subgoal):
+	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
 		""" Encode images (if vision-based environment), use data augmentation """
 
 		# normalize state, goal, next_state, subgoal
@@ -251,6 +267,11 @@ class RIS(object):
 			target_Q = torch.min(target_Q, -1, keepdim=True)[0]
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
 
+			if self.safety:
+				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
+				target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
+				target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
+
 		# Compute critic loss
 		Q = self.critic(state, action, goal)
 		critic_loss = 0.5 * (Q - target_Q).pow(2).sum(-1).mean()
@@ -282,6 +303,18 @@ class RIS(object):
 			goal = goal.detach()
 			subgoal = subgoal.detach()
 
+		
+		if self.safety:
+			# Compute safety critic loss
+			Q_cost = self.critic_cost(state, action, goal)
+			critic_cost_loss = 0.5 * (Q_cost - target_Q_cost).pow(2).sum(-1).mean()
+
+			# Optimize the safety critic
+			self.critic_cost_optimizer.zero_grad()
+			critic_cost_loss.backward()
+			self.critic_cost_optimizer.step()
+
+
 		""" High-level policy learning """
 		self.train_highlevel_policy(state, goal, subgoal)
 
@@ -289,10 +322,18 @@ class RIS(object):
 		# Sample action
 		action, D_KL = self.sample_action_and_KL(state, goal)
 
-		# Compute actor loss
-		Q = self.critic(state, action, goal)
-		Q = torch.min(Q, -1, keepdim=True)[0]
-		actor_loss = (self.alpha*D_KL - Q).mean()
+		if not self.safety:
+			# Compute actor loss
+			Q = self.critic(state, action, goal)
+			Q = torch.min(Q, -1, keepdim=True)[0]
+			actor_loss = (self.alpha*D_KL - Q).mean()
+		else:
+			Q = self.critic(state, action, goal)
+			Q = torch.min(Q, -1, keepdim=True)[0]
+			lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
+			Q_cost = self.critic_cost(state, action, goal)
+			Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
+			actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
 
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()
@@ -306,7 +347,6 @@ class RIS(object):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 			for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
 
 		# debug
 		train_state = {"x_max": state[:, 0].max().item(),

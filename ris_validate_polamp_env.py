@@ -24,7 +24,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset") # test_medium_dataset, hard_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, hard_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset", default=False)
     parser.add_argument("--train_dataset",        default=False)
@@ -45,6 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
+    parser.add_argument("--safety",             default=True, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
@@ -137,13 +138,15 @@ if __name__ == "__main__":
                         "v": 2.778, "steer": 0.7854}
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
-                 use_encoder=args.use_encoder,
                  use_decoder=args.use_decoder,
+                 use_encoder=args.use_encoder,
+                 safety=args.safety,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_state_bounds=env_state_bounds,
-                 env_obs_dim=env_obs_dim)
+                 env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
+                 add_obs_noise=False)
 
     if load_results:
         policy.load(folder)

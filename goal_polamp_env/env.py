@@ -64,6 +64,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       achieved_goal = Box(-np.inf, np.inf, (observation_size if not self.use_lidar_data else observation_size + self.n_beams,), np.float32)
       current_step = Box(0.0, np.inf, (1,), np.float32)
     collision = Box(0.0, 1.0, (1,), np.float32)
+    clearance_is_enough = Box(0.0, 1.0, (1,), np.float32)
     collision_happend_on_trajectory = Box(0.0, 1.0, (1,), np.float32)
     if self.PPO_agent_observation:
       state_observation = Box(-np.inf, np.inf, (5,), np.float32) 
@@ -81,6 +82,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_achieved_goal" : state_achieved_goal,
                 "current_step" : current_step,
                 "collision" : collision,
+                "clearance_is_enough": clearance_is_enough,
                 "collision_happend_on_trajectory": collision_happend_on_trajectory,
               } 
     self.observation_space = gym.spaces.dict.Dict(obs_dict)
@@ -308,9 +310,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
       goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
-        beams_observation = self.environment.get_observation(self.environment.agent.current_state)
+        beams_observation = self.environment.get_observation(agent)
         agent_state.extend(beams_observation.tolist())
-        beams_observation = self.environment.get_observation(self.environment.agent.goal_state)
+        beams_observation = self.environment.get_observation(goal)
         goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
       observation = []
@@ -329,6 +331,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       achieved_goal = observation
       current_step = np.array([0.0])
     collision = np.array([0.0])
+    clearance_is_enough = self.environment.clearance_is_enough
     self.collision_happend_on_trajectory = False
     if self.PPO_agent_observation:
       assert 1 == 0
@@ -346,6 +349,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_achieved_goal" : state_achieved_goal,
                 "current_step" : current_step,
                 "collision" : collision,
+                "clearance_is_enough": clearance_is_enough,
                 "collision_happend_on_trajectory": self.collision_happend_on_trajectory,
               } 
     
@@ -366,6 +370,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     action = [action[0] * self.environment.agent.dynamic_model.max_acc, 
               action[1] * self.environment.agent.dynamic_model.max_ang_vel]
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
+    # CMDP get clearance for HER buffer (dont change!!!)
+    clearance_is_enough = self.environment.clearance_is_enough
 
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
     info["dist_to_goal"] = info["EuclideanDistance"]
@@ -458,6 +464,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "state_achieved_goal" : state_achieved_goal,
                 "current_step" : current_step,
                 "collision" : collision,
+                "clearance_is_enough": clearance_is_enough,
                 "collision_happend_on_trajectory": 1.0 * self.collision_happend_on_trajectory,
               } 
     info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
@@ -466,11 +473,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.previous_agent_states.append(self.previous_agent_state)
     self.previous_agent_observation = agent_state
     self.previous_agent_observations.append(self.previous_agent_observation)
-    #if len(self.previous_agent_states) > 2 * self.teleport_back_steps:
-    #  self.previous_agent_states.pop(0)
-    #if len(self.previous_agent_observations) > self.frame_stack:
-    #  self.previous_agent_observations.pop(0)
-      
+
     return obs_dict, reward, isDone, info
 
   def HER_reward(self, state, action, next_state, goal, collision, goal_was_reached, step_counter):
@@ -502,7 +505,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     #else:
     #    reward.append(0)
 
-    #if self.clearance_is_enough:
+    #if self.environment.clearance_is_enough:
     #    reward.append(0)
     #else:
     #    reward.append(-1)

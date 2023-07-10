@@ -381,9 +381,11 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
     done_batch          = batch["terminals"]
     agent_state_batch   = batch["state_observation"]
     goal_state_batch    = batch["state_desired_goal"]
+    if env.static_env:
+        clearance_is_enough_batch     = batch["clearance_is_enough"]
     if env.static_env and env.add_collision_reward: 
         current_step_batch  = batch["current_step"] 
-        collision_batch     = batch["collision"]
+        collision_batch     = batch["collision"]        
         if env.add_frame_stack:
             current_step_batch  = current_step_batch[:, 0:1]
             collision_batch     = collision_batch[:, 0:1]
@@ -394,7 +396,10 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
         reward_batch = np.sqrt(np.power(np.array(agent_state_batch - goal_state_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
     else:
         reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-
+    if env.static_env:
+        cost_batch = (np.ones_like(done_batch) * next_state_batch[:, 3:4]) * (1.0 - clearance_is_enough_batch)
+    else:
+        cost_batch = (- np.ones_like(done_batch) * 0)
     if env.static_env and env.collision_reward_to_episode_end:
         assert 1 == 0, "didnt implement correct for frame stack"
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
@@ -420,18 +425,19 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
     state_batch         = torch.FloatTensor(state_batch).to(device)
     action_batch        = torch.FloatTensor(action_batch).to(device)
     reward_batch        = torch.FloatTensor(reward_batch).to(device)
+    cost_batch        = torch.FloatTensor(cost_batch).to(device)
     next_state_batch    = torch.FloatTensor(next_state_batch).to(device)
     done_batch          = torch.FloatTensor(done_batch).to(device)
     goal_batch          = torch.FloatTensor(goal_batch).to(device)
 
-    return state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch
+    return state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
 
@@ -451,6 +457,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
+    parser.add_argument("--safety",             default=True, type=bool)
     parser.add_argument("--add_obs_noise",      default=False, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
@@ -549,6 +556,7 @@ if __name__ == "__main__":
                  alpha=args.alpha,
                  use_decoder=args.use_decoder,
                  use_encoder=args.use_encoder,
+                 safety=args.safety,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  device=args.device, logger=logger if args.log_loss else None, 
@@ -563,7 +571,7 @@ if __name__ == "__main__":
         fraction_goals_are_rollout_goals = 0.2,
         fraction_resampled_goals_are_env_goals = 0.0,
         fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision"],
+        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
         desired_goal_keys   =["desired_goal", "state_desired_goal"],
         observation_key     = 'observation',
         desired_goal_key    = 'desired_goal',
@@ -646,7 +654,7 @@ if __name__ == "__main__":
 
         # Train agent after collecting enough data
         if t >= args.batch_size and t >= args.start_timesteps and buffer_size >= args.start_timesteps and transition_added: # for args.her_corrections
-            state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
+            state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
                 replay_buffer, 
                 batch_size=args.batch_size,
                 device=args.device
@@ -655,7 +663,7 @@ if __name__ == "__main__":
             subgoal_batch = torch.FloatTensor(replay_buffer.random_state_batch(args.batch_size)).to(args.device)
 
             start_train_batch_time = time.time()
-            policy.train(state_batch, action_batch, reward_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
+            policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             train_batch_time = time.time() - start_train_batch_time
             logger.store(train_batch_time = train_batch_time)
             print("train", args.exp_name, end=" ")
