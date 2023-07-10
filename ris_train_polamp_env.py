@@ -457,11 +457,12 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--safety",             default=True, type=bool)
-    parser.add_argument("--add_obs_noise",      default=False, type=bool)
-    parser.add_argument("--use_decoder",        default=True, type=bool)
-    parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=20, type=int)
+    parser.add_argument("--curriculum_high_policy",  default=True, type=bool)
+    parser.add_argument("--safety",                  default=False, type=bool)
+    parser.add_argument("--add_obs_noise",           default=False, type=bool)
+    parser.add_argument("--use_decoder",             default=True, type=bool)
+    parser.add_argument("--use_encoder",             default=True, type=bool)
+    parser.add_argument("--state_dim",               default=20, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -562,7 +563,9 @@ if __name__ == "__main__":
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_state_bounds=env_state_bounds,
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
-                 add_obs_noise=args.add_obs_noise)
+                 add_obs_noise=args.add_obs_noise,
+                 curriculum_high_policy=args.curriculum_high_policy,
+                 )
 
     # Initialize replay buffer and path_builder
     replay_buffer = HERReplayBuffer(
@@ -766,6 +769,9 @@ if __name__ == "__main__":
                     wandb_log_dict["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
                 run.log(wandb_log_dict)
      
+            if args.curriculum_high_policy:
+                if success_rate >= 0.95:
+                    policy.stop_train_high_policy = True
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:
                 save_policy_count += 1

@@ -23,13 +23,15 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, safety=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, safety=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, curriculum_high_policy=False):		
 
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		# normalize states
 		self.env_state_bounds = env_state_bounds
 		self.safety = safety
+		self.curriculum_high_policy = curriculum_high_policy
+		self.stop_train_high_policy = False
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -316,7 +318,27 @@ class RIS(object):
 
 
 		""" High-level policy learning """
-		self.train_highlevel_policy(state, goal, subgoal)
+		if self.curriculum_high_policy:
+			if self.stop_train_high_policy:
+				if self.logger is not None:
+					self.logger.store(
+						train_subgoal_x_max = 0,
+						train_subgoal_x_mean = 0,
+						train_subgoal_x_min = 0,
+						train_subgoal_y_max = 0,
+						train_subgoal_y_mean = 0,
+						train_subgoal_y_min = 0,
+					)
+					if self.logger is not None:
+						self.logger.data["adv"] = [0]
+						self.logger.data["ratio_adv"] = [0]
+						self.logger.data["subgoal_loss"] = [0]
+						self.logger.data["high_policy_v"] = [0]
+						self.logger.data["high_v"] = [0]
+			else:
+				self.train_highlevel_policy(state, goal, subgoal)
+		else:
+			self.train_highlevel_policy(state, goal, subgoal)
 
 		""" Actor """
 		# Sample action
