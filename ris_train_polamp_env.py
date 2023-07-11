@@ -459,7 +459,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
-    parser.add_argument("--safety",                  default=False, type=bool)
+    parser.add_argument("--safety",                  default=True, type=bool)
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
@@ -642,6 +642,14 @@ if __name__ == "__main__":
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             print("train", args.exp_name, end=" ")
 
+        if args.safety and t % policy.update_lambda == 0 and t >= args.batch_size and t >= args.start_timesteps:
+            state_batch, action_batch, _, _, _, _, goal_batch = sample_and_preprocess_batch(
+                replay_buffer, 
+                batch_size=args.batch_size,
+                device=args.device
+            )
+            policy.train_lagrangian(state_batch, action_batch, goal_batch)
+            print("train lambda", end=" ")
         if done: 
             # Add path to replay buffer and reset path builder
             replay_buffer.add_path(path_builder.get_all_stacked())

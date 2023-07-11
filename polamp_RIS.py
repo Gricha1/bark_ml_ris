@@ -47,8 +47,8 @@ class RIS(object):
 
 		# Safety Critic
 		if self.safety:
-			cost_limit = 0.5
-			update_lambda = 1000
+			self.cost_limit = 0.5
+			self.update_lambda = 1000
 			self.critic_cost 		= EnsembleCritic(state_dim, action_dim).to(device)
 			self.critic_cost_target = EnsembleCritic(state_dim, action_dim).to(device)
 			self.critic_cost_target.load_state_dict(self.critic_cost.state_dict())
@@ -128,8 +128,6 @@ class RIS(object):
 			state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
 			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
 			if self.use_encoder:
-				#state = state.view(1, 3, 84, 84)
-				#goal = goal.view(1, 3, 84, 84)
 				state = self.encoder(state)
 				goal = self.encoder(goal)
 			action, _, _ = self.actor.sample(state, goal)
@@ -189,7 +187,6 @@ class RIS(object):
 		subgoal_loss.backward()
 		self.subgoal_optimizer.step()
 		
-
 		# debug subgoal
 		train_subgoal = {"x_max": new_subgoal[:, 0].max().item(),
 						 "x_mean": new_subgoal[:, 0].mean().item(), 
@@ -198,8 +195,7 @@ class RIS(object):
 						 "y_mean": new_subgoal[:, 1].mean().item(), 
 						 "y_min": new_subgoal[:, 1].min().item(),
 						 }
-		#train_subgoal_x = new_subgoal[:, 0].mean().item()
-		#train_subgoal_y = new_subgoal[:, 1].mean().item()
+
 		if self.logger is not None:
 			self.logger.store(
 				train_subgoal_x_max = train_subgoal["x_max"],
@@ -220,27 +216,25 @@ class RIS(object):
 				high_v = v.mean().item()
 			)
 
+	# if self.safety
+	def train_lagrangian(self, state, action, goal):
+		if self.use_encoder:
+			with torch.no_grad():
+				state = self.encoder(state)
+				goal = self.encoder(goal)
+		Q_cost = self.critic_cost(state, action, goal)
+		Q_cost = torch.min(Q_cost, -1, keepdim=True)[0]
+		violation = Q_cost - self.cost_limit
+		lambda_loss =  self.lambda_coefficient * violation.detach()
+		#lambda_loss = -lambda_loss.sum(dim=-1)
+		lambda_loss = -lambda_loss.mean()
+		self.lambda_optimizer.zero_grad()
+		lambda_loss.backward()
+		self.lambda_optimizer.step()
+
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
 		""" Encode images (if vision-based environment), use data augmentation """
-
-		# normalize state, goal, next_state, subgoal
-		#state = normalize_state(state, self.env_state_bounds)
-		#next_state = normalize_state(next_state, self.env_state_bounds)
-		#goal = normalize_state(goal, self.env_state_bounds)
-		#subgoal = normalize_state(subgoal, self.env_state_bounds)
-		
 		if self.use_encoder:
-			#state = state.view(-1, 3, 84, 84)
-			#next_state = next_state.view(-1, 3, 84, 84)
-			#goal = goal.view(-1, 3, 84, 84)
-			#subgoal = subgoal.view(-1, 3, 84, 84)
-
-			# Data augmentation
-			#state = random_translate(state, pad=8)
-			#next_state = random_translate(next_state, pad=8)
-			#goal = random_translate(goal, pad=8)
-			#subgoal = random_translate(subgoal, pad=8)
-
 			if self.add_obs_noise:
 				assert 1 == 0
 				state = obs_noise_x.perturb_action(state, min_action=-np.inf, max_action=np.inf)
@@ -268,7 +262,6 @@ class RIS(object):
 			target_Q = self.critic_target(next_state, next_action, goal)
 			target_Q = torch.min(target_Q, -1, keepdim=True)[0]
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
-
 			if self.safety:
 				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
 				target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
@@ -344,18 +337,19 @@ class RIS(object):
 		# Sample action
 		action, D_KL = self.sample_action_and_KL(state, goal)
 
-		if not self.safety:
-			# Compute actor loss
-			Q = self.critic(state, action, goal)
-			Q = torch.min(Q, -1, keepdim=True)[0]
-			actor_loss = (self.alpha*D_KL - Q).mean()
-		else:
+		if self.safety:
+			# Compute actor loss + safety
 			Q = self.critic(state, action, goal)
 			Q = torch.min(Q, -1, keepdim=True)[0]
 			lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 			Q_cost = self.critic_cost(state, action, goal)
 			Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
 			actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
+		else:
+			# Compute actor loss
+			Q = self.critic(state, action, goal)
+			Q = torch.min(Q, -1, keepdim=True)[0]
+			actor_loss = (self.alpha*D_KL - Q).mean()
 
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()

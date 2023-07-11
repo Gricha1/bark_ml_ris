@@ -10,5 +10,5 @@
     "use_lidar_data": true,
     "PPO_agent_observation": false,
     "is_terminal_dist": true,
-    "is_terminal_angle": true
+    "is_terminal_angle": false
 }

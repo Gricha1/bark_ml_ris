@@ -184,7 +184,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
                         return task
                     elif self.dataset == "ris_easy_dataset":
-                      assert 1 == 0, "check theta = -np.pi, np.pi"
                       # theta = 0, np.pi
                       # case1: x = -2, 35; y = 26.5, 35
                       # case2: x = 27, 35; y = 4.5, 26.5
@@ -205,7 +204,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                         geometric_case = np.random.choice([1, 2, 3, 4])
                         agent_horizontal_orientation = np.random.choice([False, True])
                         if agent_horizontal_orientation:
-                          env_boundaries["theta"] = np.random.choice([0, np.pi])
+                          env_boundaries["theta"] = np.random.choice([-np.pi, 0, np.pi])
                           env_boundaries["theta"] = (env_boundaries["theta"], env_boundaries["theta"])
                           if geometric_case == 1:
                             env_boundaries["x"] = (-2, 35)    
@@ -303,7 +302,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.reset_goal_env(**kwargs)
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    assert -np.pi <= goal.theta < np.pi, "incorrect dataset"
+    assert -np.pi <= goal.theta <= np.pi, "incorrect dataset"
     # POLAMPenvironment return always:
     # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
     if self.PPO_agent_observation:
