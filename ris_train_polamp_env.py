@@ -11,6 +11,7 @@ import gym
 from gym.envs.registration import register
 import matplotlib.pyplot as plt
 
+from polamp_env.lib.utils_operations import normalizeAngle
 from utils.logger import Logger
 from polamp_RIS import RIS
 from polamp_RIS import normalize_state
@@ -327,8 +328,8 @@ def evalPolicy(policy, env,
             if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
                     or (render_env and task_id in video_task_id and val_key in video_task_map):
                 videos.append((val_key, images))
-            final_distances.append(info["dist_to_goal"])
-            success = 1.0 * info["geometirc_goal_achieved"]
+            final_distances.append(info["EuclideanDistance"])
+            success = 1.0 * info["goal_achieved"]
             task_status = "success"
             if env.static_env: 
                 if "Collision" in info:
@@ -358,9 +359,6 @@ def evalPolicy(policy, env,
         plt.close()
     if plot_full_env or render_env:
         videos = [(map_name, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, video in videos]
-        #for video in videos:
-        #    video = np.transpose(np.array(video), axes=[0, 3, 1, 2])
-        #images = np.transpose(np.array(images), axes=[0, 3, 1, 2])
     validation_info["task_statuses"] = task_statuses
     validation_info["videos"] = videos
     validation_info["action_info"] = action_info
@@ -396,6 +394,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
         reward_batch = np.sqrt(np.power(np.array(agent_state_batch - goal_state_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
     else:
         reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
+        angle_batch = abs(np.vectorize(normalizeAngle)(abs(np.array(next_state_batch - goal_batch)[:, 2:3])))
     if env.static_env:
         cost_batch = (np.ones_like(done_batch) * next_state_batch[:, 3:4]) * (1.0 - clearance_is_enough_batch)
     else:
@@ -414,7 +413,9 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
                                           collision=collision_batch, goal_was_reached=done_batch, 
                                           step_counter=current_step_batch)
         else:
-            done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
+            done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
+                         + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) # terminal condition
+            done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
             reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                             + (env.collision_reward) * collision_batch
     else:
@@ -457,7 +458,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
-    parser.add_argument("--curriculum_high_policy",  default=True, type=bool)
+    parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     parser.add_argument("--safety",                  default=False, type=bool)
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--use_decoder",             default=True, type=bool)
@@ -599,55 +600,29 @@ if __name__ == "__main__":
     assert args.eval_freq > env._max_episode_steps, "logger is erased after each eval"
     logger.store(train_step_x = state[0])
     logger.store(train_step_y = state[1])
-    buffer_size = 0 # for args.her_corrections
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
         print("step:", t, end=" ")
 
         # Select action
-        start_action_time = time.time()
         if t < args.start_timesteps:
             action = env.action_space.sample()
         else:
             action = policy.select_action(state, goal)
-        action_time = time.time() - start_action_time
-        logger.store(action_time = action_time)
 
         # Perform action
-        start_step_time = time.time()
         next_obs, reward, done, _ = env.step(action) 
-        step_time = time.time() - start_step_time
-        logger.store(step_time = step_time)
-
         next_state = next_obs["observation"]
         next_agent_state = next_obs["state_observation"]
 
-        transition_added = False # for args.her_corrections
-        if env.her_corrections:
-            if next_obs["collision_happend_on_trajectory"] == 0.0:
-                buffer_size += 1 # for args.her_corrections
-                transition_added = True # for args.her_corrections
-                path_builder.add_all(
-                    observations=obs,
-                    actions=action,
-                    rewards=reward,
-                    next_observations=next_obs,
-                    terminals=[1.0*done]
-                )
-        else:
-            buffer_size += 1 # for args.her_corrections
-            transition_added = True # for args.her_corrections
-            path_builder.add_all(
-                observations=obs,
-                actions=action,
-                rewards=reward,
-                next_observations=next_obs,
-                terminals=[1.0*done]
-            )
-
-        if env.static_env and env.her_corrections:
-            print("collission:", next_obs["collision_happend_on_trajectory"], end=" ")
+        path_builder.add_all(
+            observations=obs,
+            actions=action,
+            rewards=reward,
+            next_observations=next_obs,
+            terminals=[1.0*done]
+        )
         
         state = next_state
         agent_state = next_agent_state
@@ -656,7 +631,7 @@ if __name__ == "__main__":
         logger.store(train_step_y = agent_state[1])
 
         # Train agent after collecting enough data
-        if t >= args.batch_size and t >= args.start_timesteps and buffer_size >= args.start_timesteps and transition_added: # for args.her_corrections
+        if t >= args.batch_size and t >= args.start_timesteps:
             state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
                 replay_buffer, 
                 batch_size=args.batch_size,
@@ -664,11 +639,7 @@ if __name__ == "__main__":
             )
             # Sample subgoal candidates uniformly in the replay buffer
             subgoal_batch = torch.FloatTensor(replay_buffer.random_state_batch(args.batch_size)).to(args.device)
-
-            start_train_batch_time = time.time()
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
-            train_batch_time = time.time() - start_train_batch_time
-            logger.store(train_batch_time = train_batch_time)
             print("train", args.exp_name, end=" ")
 
         if done: 
@@ -774,6 +745,7 @@ if __name__ == "__main__":
                     policy.stop_train_high_policy = True
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:
+                old_success_rate = success_rate
                 save_policy_count += 1
                 folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
                 if not os.path.exists(folder):
@@ -781,7 +753,6 @@ if __name__ == "__main__":
                 logger.save(folder + "log.pkl")
                 policy.save(folder)
                 run.log({"save_policy_count": save_policy_count})
-            old_success_rate = success_rate
 
             # clean log buffer
             logger.data = dict()

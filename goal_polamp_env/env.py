@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 from gym.spaces import *
 from polamp_env.lib.envs import POLAMPEnvironment
-
+from polamp_env.lib.utils_operations import normalizeAngle
 from polamp_env.lib.structures import State
 
 
@@ -21,7 +21,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.random_train_dataset = goal_env_config["random_train_dataset"]
     self.use_lidar_data = goal_env_config["use_lidar_data"]    
     self.inside_obstacles_movement = goal_env_config["inside_obstacles_movement"]
-    self.her_corrections = goal_env_config["her_corrections"] # when step: add obs,a,next_obs to trajectory, to add less equal data(when freeze on collision)
     self.add_frame_stack = goal_env_config["add_frame_stack"]
     self.teleport_back_on_collision = goal_env_config["teleport_back_on_collision"]
     self.teleport_back_steps = goal_env_config["teleport_back_steps"]
@@ -29,6 +28,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.add_collision_reward = goal_env_config["add_collision_reward"]
     self.collision_reward_to_episode_end = goal_env_config["collision_reward_to_episode_end"]
     self.PPO_agent_observation = goal_env_config["PPO_agent_observation"]
+    self.is_terminal_dist = goal_env_config["is_terminal_dist"]
+    self.is_terminal_angle = goal_env_config["is_terminal_angle"]
     if self.add_frame_stack:
       self.agent_state_len = 5
     assert self.PPO_agent_observation == 0, "didnt implement"
@@ -147,6 +148,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 else:
                   if self.uniform_feasible_train_dataset:
                     if self.dataset == "safety_dataset" or self.dataset == "hard_dataset":
+                      assert 1 == 0, "not correct theta = -np.pi, np.pi"
                       def get_random_sampled_state():
                         dataset_info = {}
                         env_boundaries = {"v": (0, 0), "steer": (0, 0)}
@@ -182,6 +184,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
                         return task
                     elif self.dataset == "ris_easy_dataset":
+                      assert 1 == 0, "check theta = -np.pi, np.pi"
                       # theta = 0, np.pi
                       # case1: x = -2, 35; y = 26.5, 35
                       # case2: x = 27, 35; y = 4.5, 26.5
@@ -300,6 +303,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.reset_goal_env(**kwargs)
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
+    assert -np.pi <= goal.theta < np.pi, "incorrect dataset"
     # POLAMPenvironment return always:
     # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
     if self.PPO_agent_observation:
@@ -373,22 +377,25 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     # CMDP get clearance for HER buffer (dont change!!!)
     clearance_is_enough = self.environment.clearance_is_enough
 
+    agent = self.environment.agent.current_state
+    goal = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
-    info["dist_to_goal"] = info["EuclideanDistance"]
+
     info["last_step_num"] = self.step_counter
 
     isDone = False
     distance_to_goal = info["EuclideanDistance"]
-    if distance_to_goal < self.SOFT_EPS:
-      info["geometirc_goal_achieved"] = True
-    else:
-      info["geometirc_goal_achieved"] = False
-    
-    if info["geometirc_goal_achieved"] or self._max_episode_steps == self.step_counter:
+    angle_to_goal = abs(normalizeAngle(abs(agent.theta - goal.theta)))
+    goal_achieved = 1.0 * self.is_terminal_dist * (distance_to_goal < self.SOFT_EPS) \
+                  + 1.0 * self.is_terminal_angle * (angle_to_goal < self.ANGLE_EPS)
+    goal_achieved = bool(goal_achieved // (1.0 * self.is_terminal_dist + 1.0 * self.is_terminal_angle))
+    info["goal_achieved"] = goal_achieved
+
+    if info["goal_achieved"] or self._max_episode_steps == self.step_counter:
       isDone = True
     
     polamp_reward = reward
-    if not info["geometirc_goal_achieved"]:
+    if not info["goal_achieved"]:
       reward = self.compute_rewards(np.array([1]), None).item()
     else:
       reward = 0.0
