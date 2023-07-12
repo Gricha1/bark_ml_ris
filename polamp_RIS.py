@@ -435,6 +435,7 @@ class RIS(object):
 			self.logger.store(
 				actor_loss   = actor_loss.item(),
 				critic_loss  = critic_loss.item(),
-				D_KL		 = D_KL.mean().item()		
+				D_KL		 = D_KL.mean().item(),
+				alpha        = self.alpha,		
 
 			)

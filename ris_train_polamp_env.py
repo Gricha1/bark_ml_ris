@@ -458,6 +458,9 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     
+    parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
+    parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int)
+    parser.add_argument("--curriculum_alpha",        default=True, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     parser.add_argument("--safety",                  default=True, type=bool)
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
@@ -565,7 +568,7 @@ if __name__ == "__main__":
                  env_state_bounds=env_state_bounds,
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
-                 curriculum_high_policy=args.curriculum_high_policy,
+                 curriculum_high_policy=args.curriculum_high_policy
                  )
 
     # Initialize replay buffer and path_builder
@@ -739,6 +742,9 @@ if __name__ == "__main__":
                      'train_subgoal_data_y_max': sum(logger.data["train_subgoal_data_y_max"][-args.eval_freq:]) / args.eval_freq,
                      'train_subgoal_data_y_min': sum(logger.data["train_subgoal_data_y_min"][-args.eval_freq:]) / args.eval_freq,
                      'train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
+
+                     # additional
+                     'alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
                     }
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
@@ -751,6 +757,10 @@ if __name__ == "__main__":
             if args.curriculum_high_policy:
                 if success_rate >= 0.95:
                     policy.stop_train_high_policy = True
+            if args.curriculum_alpha:
+                if (t + 1) >= args.curriculum_alpha_treshold:
+                    policy.alpha = args.curriculum_alpha_val
+                    print("alpha:", policy.alpha)
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:
                 old_success_rate = success_rate
