@@ -435,7 +435,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-
+    # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
     parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
@@ -457,16 +457,21 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    
+    parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int)
     parser.add_argument("--curriculum_alpha",        default=True, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    # safety
+    parser.add_argument("--safety_add_to_high_policy", default=True, type=bool)
     parser.add_argument("--safety",                  default=True, type=bool)
-    parser.add_argument("--add_obs_noise",           default=False, type=bool)
+    parser.add_argument("--cost_limit",              default=0.5, type=float)
+    parser.add_argument("--update_lambda",           default=1000, type=int)
+    # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
     parser.add_argument("--state_dim",               default=20, type=int)
+
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -562,6 +567,8 @@ if __name__ == "__main__":
                  use_decoder=args.use_decoder,
                  use_encoder=args.use_encoder,
                  safety=args.safety,
+                 safety_add_to_high_policy=args.safety_add_to_high_policy,
+                 cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  device=args.device, logger=logger if args.log_loss else None, 

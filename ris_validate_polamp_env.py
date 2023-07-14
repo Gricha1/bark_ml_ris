@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--safety",             default=False, type=bool)
+    parser.add_argument("--safety",             default=True, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
@@ -183,7 +183,7 @@ if __name__ == "__main__":
                                  video_task_map=["map0"],
                                  #video_task_id=[0, 30],
                                  #video_task_map=["map"+f"{i}" for i in range(2)],
-                                 eval_strategy=[1, 0],
+                                 eval_strategy=None,
                                  validate_one_task=True) # 18, 12
     wandb_log_dict = {}
     if len(validation_info["videos"]) != 1:    

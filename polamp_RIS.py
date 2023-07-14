@@ -23,13 +23,22 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, use_decoder=False, use_encoder=False, safety=False, n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, logger=None, device=torch.device("cuda"), env_state_bounds={}, env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, curriculum_high_policy=False):		
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, 
+				 use_decoder=False, use_encoder=False, 
+				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
+				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
+				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
+				 logger=None, device=torch.device("cuda"), env_state_bounds={}, 
+				 env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, 
+				 curriculum_high_policy=False):		
 
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
+		assert not safety_add_to_high_policy or (safety_add_to_high_policy and safety)
 		# normalize states
 		self.env_state_bounds = env_state_bounds
 		self.safety = safety
+		self.safety_add_to_high_policy = safety_add_to_high_policy
 		self.curriculum_high_policy = curriculum_high_policy
 		self.stop_train_high_policy = False
 
@@ -47,8 +56,8 @@ class RIS(object):
 
 		# Safety Critic
 		if self.safety:
-			self.cost_limit = 0.5
-			self.update_lambda = 1000
+			self.cost_limit         = cost_limit
+			self.update_lambda      = update_lambda
 			self.critic_cost 		= EnsembleCritic(state_dim, action_dim).to(device)
 			self.critic_cost_target = EnsembleCritic(state_dim, action_dim).to(device)
 			self.critic_cost_target.load_state_dict(self.critic_cost.state_dict())
@@ -138,6 +147,12 @@ class RIS(object):
 		V = self.critic(state, action, goal).min(-1, keepdim=True)[0]
 		return V
 
+	# if self.safety
+	def safety_value(self, state, goal):
+		_, _, action = self.actor.sample(state, goal)
+		V = self.critic_cost(state, action, goal).min(-1, keepdim=True)[0]
+		return V
+
 	def sample_subgoal(self, state, goal):
 		subgoal_distribution = self.subgoal_net(state, goal)
 		subgoal = subgoal_distribution.rsample((self.n_ensemble,))
@@ -171,11 +186,21 @@ class RIS(object):
 			policy_v_1 = self.value(state, new_subgoal)
 			policy_v_2 = self.value(new_subgoal, goal)
 			policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+			if self.safety_add_to_high_policy:
+				policy_sefety_v_1 = self.safety_value(state, new_subgoal)
+				policy_sefety_v_2 = self.safety_value(new_subgoal, goal)
+				policy_sefety_v = torch.cat([policy_sefety_v_1, policy_sefety_v_2], -1).max(-1)[0]
+				policy_v += policy_sefety_v
 
 			# Compute subgoal distance loss
 			v_1 = self.value(state, subgoal)
 			v_2 = self.value(subgoal, goal)
 			v = torch.cat([v_1, v_2], -1).clamp(min=-100.0, max=0.0).abs().max(-1)[0]
+			if self.safety_add_to_high_policy:
+				safety_v_1 = self.safety_value(state, subgoal)
+				safety_v_2 = self.safety_value(subgoal, goal)
+				safety_v = torch.cat([safety_v_1, safety_v_2], -1).max(-1)[0]
+				v += safety_v
 			adv = - (v - policy_v)
 			weight = F.softmax(adv/self.Lambda, dim=0)
 
@@ -298,7 +323,7 @@ class RIS(object):
 			goal = goal.detach()
 			subgoal = subgoal.detach()
 
-		
+		""" Safety Critic """
 		if self.safety:
 			# Compute safety critic loss
 			Q_cost = self.critic_cost(state, action, goal)
@@ -308,7 +333,6 @@ class RIS(object):
 			self.critic_cost_optimizer.zero_grad()
 			critic_cost_loss.backward()
 			self.critic_cost_optimizer.step()
-
 
 		""" High-level policy learning """
 		if self.curriculum_high_policy:
