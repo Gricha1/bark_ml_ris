@@ -257,6 +257,11 @@ class RIS(object):
 		lambda_loss.backward()
 		self.lambda_optimizer.step()
 
+		if self.logger is not None:
+			self.logger.store(
+				lambda_coef   = self.lambda_coefficient.item(),
+			)
+
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
 		""" Encode images (if vision-based environment), use data augmentation """
 		if self.use_encoder:
@@ -333,6 +338,12 @@ class RIS(object):
 			self.critic_cost_optimizer.zero_grad()
 			critic_cost_loss.backward()
 			self.critic_cost_optimizer.step()
+
+			if self.logger is not None:
+				self.logger.store(
+					safety_critic_value   = Q_cost.mean().item(),
+					safety_target_value   = target_Q_cost.mean().item()
+				)
 
 		""" High-level policy learning """
 		if self.curriculum_high_policy:

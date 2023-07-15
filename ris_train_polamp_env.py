@@ -79,6 +79,8 @@ def evalPolicy(policy, env,
     final_distances = []
     successes = [] 
     acc_rewards = []
+    acc_costs = []
+    acc_collisions = []
     episode_lengths = []
     task_statuses = []
 
@@ -102,6 +104,8 @@ def evalPolicy(policy, env,
             goal = obs["desired_goal"]
             t = 0
             acc_reward = 0
+            acc_cost = 0
+            acc_collision = 0
             state_distrs["start_x"].append(state[0])
 
             while not done:
@@ -216,8 +220,9 @@ def evalPolicy(policy, env,
                                                 color="red", s=3)
                         #if plot_subgoals:
                         #    ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
-                        ax_states.text(env_max_x - 10, env_max_y - 1.5, f"R:{acc_reward}")
-                        ax_states.text(env_max_x - 3.5, env_max_y - 1.5, f"t:{t}")
+                        ax_states.text(env_max_x - 21, env_max_y - 2, f"R:{int(acc_reward*10)/10}")
+                        ax_states.text(env_max_x - 13, env_max_y - 2, f"C:{int(acc_cost*10)/10}")
+                        ax_states.text(env_max_x - 4.5, env_max_y - 2, f"t:{t}")
 
                         # values plot
                         if plot_value_function:
@@ -317,6 +322,8 @@ def evalPolicy(policy, env,
                 next_obs, reward, done, info = env.step(action) 
 
                 acc_reward += reward
+                acc_cost += info["cost"]
+                acc_collision += 1.0 * ("Collision" in info)
                 
                 next_state = next_obs["observation"]
                 state = next_state
@@ -338,11 +345,15 @@ def evalPolicy(policy, env,
             successes.append(success)
             episode_lengths.append(info["last_step_num"])
             acc_rewards.append(acc_reward)
+            acc_collisions.append(acc_collision)
+            acc_costs.append(acc_cost)
             task_statuses.append((val_key, task_id, task_status))
 
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
     eval_reward = np.mean(acc_rewards)
+    eval_cost = np.mean(acc_costs)
+    eval_collisions = np.mean(acc_collisions)
     eval_episode_length = np.mean(episode_lengths)
 
     for key in state_distrs:
@@ -362,6 +373,8 @@ def evalPolicy(policy, env,
     validation_info["task_statuses"] = task_statuses
     validation_info["videos"] = videos
     validation_info["action_info"] = action_info
+    validation_info["eval_cost"] = eval_cost
+    validation_info["eval_collisions"] = eval_collisions
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
@@ -459,7 +472,7 @@ if __name__ == "__main__":
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
-    parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int)
+    parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
     parser.add_argument("--curriculum_alpha",        default=True, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # safety
@@ -576,7 +589,7 @@ if __name__ == "__main__":
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
                  curriculum_high_policy=args.curriculum_high_policy
-                 )
+    )
 
     # Initialize replay buffer and path_builder
     replay_buffer = HERReplayBuffer(
@@ -606,6 +619,8 @@ if __name__ == "__main__":
     episode_num = 0 
     old_success_rate = None
     save_policy_count = 0 
+    if args.curriculum_alpha:
+        saved_final_result = False
 
     assert args.eval_freq > env._max_episode_steps, "logger is erased after each eval"
     logger.store(train_step_x = state[0])
@@ -706,12 +721,16 @@ if __name__ == "__main__":
                      'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
                      'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
                      'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq,
+                     'safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq,
 
                      # validate logging
                      f'val_distance({args.n_eval} episodes)': eval_distance,
                      f'eval_reward({args.n_eval} episodes)': eval_reward,
+                     f'eval_cost({args.n_eval} episodes)': validation_info["eval_cost"],
                      f'val_rate({args.n_eval} episodes)': success_rate,
-                     "val_episode_length": eval_episode_length,
+                     f'eval_collisions({args.n_eval} episodes)': validation_info["eval_collisions"],
+                     "val_episode_length": eval_episode_length, 
 
                      # batch state
                      'train_state_x_max': sum(logger.data["train_state_x_max"][-args.eval_freq:]) / args.eval_freq,
@@ -752,6 +771,7 @@ if __name__ == "__main__":
 
                      # additional
                      'alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
+                     'lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety else 0,
                     }
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
@@ -767,7 +787,15 @@ if __name__ == "__main__":
             if args.curriculum_alpha:
                 if (t + 1) >= args.curriculum_alpha_treshold:
                     policy.alpha = args.curriculum_alpha_val
-                    print("alpha:", policy.alpha)
+                    # save results after change alpha
+                    if not saved_final_result:
+                        folder = "results/{}/RIS/{}_final/".format(args.env, args.exp_name)
+                        if not os.path.exists(folder):
+                            os.makedirs(folder)
+                        logger.save(folder + "log.pkl")
+                        policy.save(folder)
+                        saved_final_result = True
+
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:
                 old_success_rate = success_rate

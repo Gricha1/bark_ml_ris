@@ -183,7 +183,7 @@ if __name__ == "__main__":
                                  video_task_map=["map0"],
                                  #video_task_id=[0, 30],
                                  #video_task_map=["map"+f"{i}" for i in range(2)],
-                                 eval_strategy=None,
+                                 eval_strategy=[1, 1],
                                  validate_one_task=True) # 18, 12
     wandb_log_dict = {}
     if len(validation_info["videos"]) != 1:    

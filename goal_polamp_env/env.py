@@ -32,6 +32,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
     if self.add_frame_stack:
       self.agent_state_len = 5
+    assert self.UPDATE_SPARSE == 1, "need for correct cost count"
     assert self.PPO_agent_observation == 0, "didnt implement"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
@@ -421,8 +422,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    # POLAMPenvironment return always:
-    # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
     if self.PPO_agent_observation:
       assert 1 == 0
       agent_state = self.environment.agent.getDiff()
