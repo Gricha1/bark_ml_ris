@@ -476,10 +476,10 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha",        default=True, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # safety
-    parser.add_argument("--safety_add_to_high_policy", default=True, type=bool)
-    parser.add_argument("--safety",                  default=True, type=bool)
-    parser.add_argument("--cost_limit",              default=0.5, type=float)
-    parser.add_argument("--update_lambda",           default=1000, type=int)
+    parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
+    parser.add_argument("--safety",                    default=True, type=bool)
+    parser.add_argument("--cost_limit",                default=0.5, type=float)
+    parser.add_argument("--update_lambda",             default=1000, type=int)
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
@@ -666,15 +666,16 @@ if __name__ == "__main__":
             subgoal_batch = torch.FloatTensor(replay_buffer.random_state_batch(args.batch_size)).to(args.device)
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             print("train", args.exp_name, end=" ")
+            if args.safety and t % policy.update_lambda == 0:
+                #if args.safety and t % policy.update_lambda == 0 and t >= args.batch_size and t >= args.start_timesteps:
+                #state_batch, action_batch, _, _, _, _, goal_batch = sample_and_preprocess_batch(
+                #    replay_buffer, 
+                #    batch_size=args.batch_size,
+                #    device=args.device
+                #)
+                policy.train_lagrangian(state_batch, action_batch, goal_batch)
+                print("train lambda", end=" ")
 
-        if args.safety and t % policy.update_lambda == 0 and t >= args.batch_size and t >= args.start_timesteps:
-            state_batch, action_batch, _, _, _, _, goal_batch = sample_and_preprocess_batch(
-                replay_buffer, 
-                batch_size=args.batch_size,
-                device=args.device
-            )
-            policy.train_lagrangian(state_batch, action_batch, goal_batch)
-            print("train lambda", end=" ")
         if done: 
             # Add path to replay buffer and reset path builder
             replay_buffer.add_path(path_builder.get_all_stacked())
@@ -718,6 +719,7 @@ if __name__ == "__main__":
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
                      'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
                      'train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
                      'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
                      'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
@@ -771,7 +773,7 @@ if __name__ == "__main__":
 
                      # additional
                      'alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
-                     'lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety else 0,
+                     'lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
                     }
             if args.using_wandb:
                 for dict_ in val_state + val_goal:

@@ -263,6 +263,7 @@ class RIS(object):
 			)
 
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
+		assert cost.mean() >= 0, f"batch cost:{cost.mean()}, cant be negative"
 		""" Encode images (if vision-based environment), use data augmentation """
 		if self.use_encoder:
 			if self.add_obs_noise:
@@ -342,7 +343,8 @@ class RIS(object):
 			if self.logger is not None:
 				self.logger.store(
 					safety_critic_value   = Q_cost.mean().item(),
-					safety_target_value   = target_Q_cost.mean().item()
+					safety_target_value   = target_Q_cost.mean().item(),
+					critic_cost_loss      = critic_cost_loss.item(),
 				)
 
 		""" High-level policy learning """
