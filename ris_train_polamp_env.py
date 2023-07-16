@@ -721,8 +721,8 @@ if __name__ == "__main__":
                      'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
                      'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
                      'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq,
-                     'safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq,
+                     'safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                     'safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
 
                      # validate logging
                      f'val_distance({args.n_eval} episodes)': eval_distance,

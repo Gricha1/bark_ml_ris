@@ -399,7 +399,7 @@ class RIS(object):
 			for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 			if self.safety:
-				for param, target_param in zip(self.critic_cost.parameters(), self.critic_target.parameters()):
+				for param, target_param in zip(self.critic_cost.parameters(), self.critic_cost_target.parameters()):
 					target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
 
