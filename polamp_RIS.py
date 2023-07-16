@@ -56,6 +56,7 @@ class RIS(object):
 
 		# Safety Critic
 		if self.safety:
+			self.test_case_soft_critic = True
 			self.cost_limit         = cost_limit
 			self.update_lambda      = update_lambda
 			self.critic_cost 		= EnsembleCritic(state_dim, action_dim).to(device)
@@ -263,7 +264,8 @@ class RIS(object):
 			)
 
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
-		assert cost.mean() >= 0, f"batch cost:{cost.mean()}, cant be negative"
+		assert cost.min().item() >= 0, f"batch cost:{cost.min().item()}, cant be negative"
+		assert done.min().item() >= 0, f"done{done}"
 		""" Encode images (if vision-based environment), use data augmentation """
 		if self.use_encoder:
 			if self.add_obs_noise:
@@ -301,13 +303,19 @@ class RIS(object):
 		# Compute critic loss
 		Q = self.critic(state, action, goal)
 		critic_loss = 0.5 * (Q - target_Q).pow(2).sum(-1).mean()
+		if self.safety and self.test_case_soft_critic:
+			Q_cost = self.critic_cost(state, action, goal)
+			critic_cost_loss = 0.5 * (Q_cost - target_Q_cost).pow(2).sum(-1).mean()
+			critic_loss += critic_cost_loss
 
 		# Optimize the critic
 		if self.use_encoder: self.encoder_optimizer.zero_grad()
 		self.critic_optimizer.zero_grad()
+		if self.safety and self.test_case_soft_critic: self.critic_cost_optimizer.zero_grad()
 		critic_loss.backward()
 		if self.use_encoder: self.encoder_optimizer.step()
 		self.critic_optimizer.step()
+		if self.safety and self.test_case_soft_critic: self.critic_cost_optimizer.step()
 
 		# Optimize autoencoder
 		if self.use_decoder:
@@ -330,7 +338,7 @@ class RIS(object):
 			subgoal = subgoal.detach()
 
 		""" Safety Critic """
-		if self.safety:
+		if self.safety and not self.test_case_soft_critic:
 			# Compute safety critic loss
 			Q_cost = self.critic_cost(state, action, goal)
 			critic_cost_loss = 0.5 * (Q_cost - target_Q_cost).pow(2).sum(-1).mean()
@@ -340,6 +348,7 @@ class RIS(object):
 			critic_cost_loss.backward()
 			self.critic_cost_optimizer.step()
 
+		if self.safety:
 			if self.logger is not None:
 				self.logger.store(
 					safety_critic_value   = Q_cost.mean().item(),
