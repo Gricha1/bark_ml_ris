@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
 
-    parser.add_argument("--safety",             default=True, type=bool)
+    parser.add_argument("--safety",             default=False, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)
@@ -178,12 +178,12 @@ if __name__ == "__main__":
                                  render_env=False, 
                                  plot_only_agent_values=True, 
                                  #video_task_id=len(valTasks["map0"])-1, 
-                                 #video_task_id=[i for i in range(71, len(valTasks["map0"]))], 
-                                 video_task_id=len(valTasks["map0"])-1, 
-                                 video_task_map=["map0"],
-                                 #video_task_id=[0, 30],
-                                 #video_task_map=["map"+f"{i}" for i in range(2)],
-                                 eval_strategy=[1, 1],
+                                 #video_task_id=[i for i in range(71, len(valTasks["map0"]))],  
+                                 #video_task_map=["map4"], video_task_id=[8, 13],
+                                 #video_task_map=["map6"], video_task_id=[5, 18],
+                                 video_task_map=["map7"], video_task_id=[19],
+                                 #video_task_map=["map5"], video_task_id=[7],
+                                 eval_strategy=None,
                                  validate_one_task=True) # 18, 12
     wandb_log_dict = {}
     if len(validation_info["videos"]) != 1:    

@@ -269,7 +269,7 @@ class RIS(object):
 		""" Encode images (if vision-based environment), use data augmentation """
 		if self.use_encoder:
 			if self.add_obs_noise:
-				assert 1 == 0
+				assert 1 == 0, "didnt implement"
 				state = obs_noise_x.perturb_action(state, min_action=-np.inf, max_action=np.inf)
 				obs_noise_y = NormalNoise(sigma=1)
 				obs_noise_theta = NormalNoise(sigma=0.15)
