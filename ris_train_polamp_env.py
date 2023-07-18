@@ -477,7 +477,7 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=True, type=bool)
+    parser.add_argument("--safety",                    default=False, type=bool)
     parser.add_argument("--cost_limit",                default=0.5, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # encoder
@@ -708,7 +708,8 @@ if __name__ == "__main__":
                                               "train_step_y": logger.data["train_step_y"],
                                               },
                                 #video_task_id=len(dataSet["obstacles"][2]["map0"])-1,
-                                video_task_id=12,
+                                video_task_map="map4",
+                                video_task_id=8,
                                 show_data_to_plot=False)
 
             wandb_log_dict = {
