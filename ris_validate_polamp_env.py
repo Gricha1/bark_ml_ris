@@ -177,23 +177,15 @@ if __name__ == "__main__":
                                  plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
-                                 #video_task_id=len(valTasks["map0"])-1, 
-                                 #video_task_id=[i for i in range(71, len(valTasks["map0"]))],  
-                                 #video_task_map=["map4"], video_task_id=[8, 13],
-                                 #video_task_map=["map6"], video_task_id=[5, 18],
-                                 video_task_map=["map7"], video_task_id=[19],
-                                 #video_task_map=["map5"], video_task_id=[7],
+                                 #video_validate_tasks = [("map4", 8), ("map4", 13)],
+                                 #video_validate_tasks = [("map6", 5), ("map6", 18)],
+                                 #video_validate_tasks = [("map7", 19)],
+                                 video_validate_tasks = [("map5", 7)],
                                  eval_strategy=None,
-                                 validate_one_task=True) # 18, 12
+                                 validate_one_task=True)
     wandb_log_dict = {}
-    if len(validation_info["videos"]) != 1:    
-        for map_name, video in validation_info["videos"]:
-            wandb_log_video = {}
-            wandb_log_video["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
-            run.log(wandb_log_video)        
-    else:
-        for map_name, video in validation_info["videos"]:
-            wandb_log_dict["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
+    for map_name, task_indx, video in validation_info["videos"]:
+        wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
     run.log(wandb_log_dict)
     print("validation success rate:", success_rate)
     print("action info:", validation_info["action_info"])

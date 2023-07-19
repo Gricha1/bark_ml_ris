@@ -22,28 +22,22 @@ from polamp_env.lib.utils_operations import generateDataSet
 def evalPolicy(policy, env, 
                plot_full_env=True, plot_subgoals=False, plot_value_function=False, 
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
-               plot_obstacles=False, 
-               video_task_id=0, video_task_map="map0", 
+               video_validate_tasks = [("map4", 8), ("map5", 7), ("map7", 19)],                
                data_to_plot={}, show_data_to_plot=True, 
                eval_strategy=None,
                validate_one_task=False):
-
+    assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     if render_env:
         assert 1 == 0, "didnt implement correctly"
-    if type(video_task_id) != type(list()):
-        assert type(video_task_id) == type(int()), "video_task_id = idx of one task"
-        video_task_id = [video_task_id]
-    if type(video_task_map) != type(list()):
-        assert type(video_task_map) == type(str()), "video_task_map = str"
-        video_task_map = [video_task_map]
-
-    plot_obstacles = env.static_env
+    assert video_validate_tasks is None or type(video_validate_tasks) == type(list())
     assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
     assert plot_full_env != render_env, "only show subgoals video or render env"
+    print()
+    
+    plot_obstacles = env.static_env
     validation_info = {}
     if render_env:
         videos = []
-        #images = []
         images.append(env.render())    
     if plot_full_env:
         videos = []
@@ -67,7 +61,6 @@ def evalPolicy(policy, env,
         else:
             fig = plt.figure(figsize=[6.4, 4.8])
             ax_states = fig.add_subplot(111)
-
     state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
     goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
     max_state_vals = {}
@@ -87,12 +80,15 @@ def evalPolicy(policy, env,
     for val_key in env.maps.keys():
         eval_tasks = len(env.valTasks[val_key])
         for task_id in range(eval_tasks):  
-            if validate_one_task and (task_id not in video_task_id or val_key not in video_task_map):
+            need_to_plot_task = (plot_full_env or plot_value_function or render_env) \
+                                and (val_key, task_id) in video_validate_tasks
+            if validate_one_task and not need_to_plot_task:
                 continue
-            if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
-                    or (render_env and task_id in video_task_id and val_key in video_task_map):
+            if need_to_plot_task:
                 images = []
             print(f"map={val_key}", f"task={task_id}", end=" ")
+            if need_to_plot_task:
+                print("DO VIDEO", end=" ")
             obs = env.reset(id=task_id, val_key=val_key)
             info = {}
             agent = env.environment.agent.current_state
@@ -109,7 +105,7 @@ def evalPolicy(policy, env,
             state_distrs["start_x"].append(state[0])
 
             while not done:
-                if (plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map:
+                if not render_env and need_to_plot_task:
                     env_min_x = env.dataset_info["min_x"]
                     env_max_x = env.dataset_info["max_x"]
                     env_min_y = env.dataset_info["min_y"]
@@ -218,8 +214,6 @@ def evalPolicy(policy, env,
                                 ax_states.scatter(data_to_plot["train_step_x"], 
                                                 data_to_plot["train_step_y"], 
                                                 color="red", s=3)
-                        #if plot_subgoals:
-                        #    ax_states.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
                         ax_states.text(env_max_x - 21, env_max_y - 2, f"R:{int(acc_reward*10)/10}")
                         ax_states.text(env_max_x - 13, env_max_y - 2, f"C:{int(acc_cost*10)/10}")
                         ax_states.text(env_max_x - 4.5, env_max_y - 2, f"t:{t}")
@@ -328,13 +322,12 @@ def evalPolicy(policy, env,
                 next_state = next_obs["observation"]
                 state = next_state
 
-                if render_env and task_id in video_task_id and val_key in video_task_map:
+                if render_env and need_to_plot_task:
                     images.append(env.render())
                 t += 1
 
-            if ((plot_full_env or plot_value_function) and task_id in video_task_id and val_key in video_task_map) \
-                    or (render_env and task_id in video_task_id and val_key in video_task_map):
-                videos.append((val_key, images))
+            if need_to_plot_task:
+                videos.append((val_key, task_id, images))
             final_distances.append(info["EuclideanDistance"])
             success = 1.0 * info["goal_achieved"]
             task_status = "success"
@@ -369,7 +362,7 @@ def evalPolicy(policy, env,
     if plot_full_env:
         plt.close()
     if plot_full_env or render_env:
-        videos = [(map_name, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, video in videos]
+        videos = [(map_name, task_indx, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, task_indx, video in videos]
     validation_info["task_statuses"] = task_statuses
     validation_info["videos"] = videos
     validation_info["action_info"] = action_info
@@ -667,12 +660,6 @@ if __name__ == "__main__":
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             print("train", args.exp_name, end=" ")
             if args.safety and t % policy.update_lambda == 0:
-                #if args.safety and t % policy.update_lambda == 0 and t >= args.batch_size and t >= args.start_timesteps:
-                #state_batch, action_batch, _, _, _, _, goal_batch = sample_and_preprocess_batch(
-                #    replay_buffer, 
-                #    batch_size=args.batch_size,
-                #    device=args.device
-                #)
                 policy.train_lagrangian(state_batch, action_batch, goal_batch)
                 print("train lambda", end=" ")
 
@@ -703,13 +690,8 @@ if __name__ == "__main__":
                                 plot_value_function=False,
                                 render_env=False,
                                 plot_only_agent_values=True, 
-                                data_to_plot={
-                                              "train_step_x": logger.data["train_step_x"], 
-                                              "train_step_y": logger.data["train_step_y"],
-                                              },
-                                #video_task_id=len(dataSet["obstacles"][2]["map0"])-1,
-                                video_task_map="map4",
-                                video_task_id=8,
+                                data_to_plot={"train_step_x": logger.data["train_step_x"], 
+                                              "train_step_y": logger.data["train_step_y"]},
                                 show_data_to_plot=False)
 
             wandb_log_dict = {
@@ -780,8 +762,8 @@ if __name__ == "__main__":
                 for dict_ in val_state + val_goal:
                     for key in dict_:
                         wandb_log_dict[f"{key}"] = dict_[key]
-                for map_name, video in validation_info["videos"]:
-                    wandb_log_dict["validation_video"+"_"+map_name] = wandb.Video(video, fps=10, format="gif")
+                for map_name, task_indx, video in validation_info["videos"]:
+                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
                 run.log(wandb_log_dict)
      
             if args.curriculum_high_policy:
