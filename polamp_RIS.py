@@ -56,13 +56,14 @@ class RIS(object):
 
 		# Safety Critic
 		if self.safety:
-			self.test_case_soft_critic = True
-			self.cost_limit         = cost_limit
-			self.update_lambda      = update_lambda
-			self.critic_cost 		= EnsembleCritic(state_dim, action_dim).to(device)
-			self.critic_cost_target = EnsembleCritic(state_dim, action_dim).to(device)
+			self.test_case_soft_critic = False
+			self.critic_cost 		= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
+			self.critic_cost_target = EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
 			self.critic_cost_target.load_state_dict(self.critic_cost.state_dict())
 			self.critic_cost_optimizer = torch.optim.Adam(self.critic_cost.parameters(), lr=q_lr)
+
+			self.cost_limit         = cost_limit
+			self.update_lambda      = update_lambda
 			self.lambda_coefficient = torch.tensor(1.0, requires_grad=True)
 			self.lambda_optimizer = torch.optim.Adam([self.lambda_coefficient], lr=5e-4)
 			
@@ -265,7 +266,7 @@ class RIS(object):
 
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
 		assert cost.min().item() >= 0, f"batch cost:{cost.min().item()}, cant be negative"
-		assert done.min().item() >= 0, f"done{done}"
+		assert done.min().item() >= 0, f"done{done.min().item()}"
 		""" Encode images (if vision-based environment), use data augmentation """
 		if self.use_encoder:
 			if self.add_obs_noise:

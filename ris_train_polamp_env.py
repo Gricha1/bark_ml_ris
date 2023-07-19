@@ -29,11 +29,11 @@ def evalPolicy(policy, env,
     assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     if render_env:
         assert 1 == 0, "didnt implement correctly"
-    assert video_validate_tasks is None or type(video_validate_tasks) == type(list())
+    assert type(video_validate_tasks) == type(list())
     assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
     assert plot_full_env != render_env, "only show subgoals video or render env"
     print()
-    
+
     plot_obstacles = env.static_env
     validation_info = {}
     if render_env:
@@ -470,7 +470,7 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=False, type=bool)
+    parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=0.5, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # encoder
@@ -692,6 +692,7 @@ if __name__ == "__main__":
                                 plot_only_agent_values=True, 
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
+                                video_validate_tasks=[],
                                 show_data_to_plot=False)
 
             wandb_log_dict = {
