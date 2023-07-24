@@ -175,12 +175,13 @@ if __name__ == "__main__":
                                  plot_full_env=True,
                                  plot_subgoals=True,
                                  plot_value_function=False, 
-                                 render_env=False, 
+                                 render_env=True, 
                                  plot_only_agent_values=True, 
                                  #video_validate_tasks = [("map4", 8), ("map4", 13)],
                                  #video_validate_tasks = [("map6", 5), ("map6", 18)],
                                  #video_validate_tasks = [("map7", 19)],
                                  video_validate_tasks = [("map5", 7)],
+                                 #video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)],
                                  eval_strategy=None,
                                  validate_one_task=True)
     wandb_log_dict = {}

@@ -8,7 +8,6 @@
     "add_collision_reward": true,
     "collision_reward_to_episode_end": false,
     "use_lidar_data": true,
-    "PPO_agent_observation": false,
     "is_terminal_dist": true,
     "is_terminal_angle": false
 }

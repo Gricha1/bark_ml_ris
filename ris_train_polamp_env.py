@@ -20,25 +20,22 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 
 def evalPolicy(policy, env, 
-               plot_full_env=True, plot_subgoals=False, plot_value_function=False, 
+               plot_full_env=True, plot_subgoals=False, plot_value_function=False,
+               plot_safe_bound=False, 
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
                video_validate_tasks = [("map4", 8), ("map5", 7), ("map7", 19)],                
                data_to_plot={}, show_data_to_plot=True, 
                eval_strategy=None,
                validate_one_task=False):
     assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
-    if render_env:
-        assert 1 == 0, "didnt implement correctly"
     assert type(video_validate_tasks) == type(list())
     assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
-    assert plot_full_env != render_env, "only show subgoals video or render env"
     print()
 
     plot_obstacles = env.static_env
     validation_info = {}
     if render_env:
-        videos = []
-        images.append(env.render())    
+        videos = []   
     if plot_full_env:
         videos = []
         if plot_value_function:
@@ -105,7 +102,7 @@ def evalPolicy(policy, env,
             state_distrs["start_x"].append(state[0])
 
             while not done:
-                if not render_env and need_to_plot_task:
+                if plot_full_env and need_to_plot_task:
                     env_min_x = env.dataset_info["min_x"]
                     env_max_x = env.dataset_info["max_x"]
                     env_min_y = env.dataset_info["min_y"]
@@ -177,16 +174,10 @@ def evalPolicy(policy, env,
                                         color="yellow", s=5)
                         if plot_subgoals:
                             for ind, subgoal in enumerate(subgoals):
-                                if env.PPO_agent_observation:
-                                    assert 1 == 0, "didnt implement"
-                                    x_subgoal = subgoal.cpu()[0][0]
-                                    y_subgoal = subgoal.cpu()[0][1]
-                                    theta_subgoal = subgoal.cpu()[0][2]
-                                else:
-                                    decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
-                                    x_subgoal = decoded_subgoal[0][0]
-                                    y_subgoal = decoded_subgoal[0][1]
-                                    theta_subgoal = decoded_subgoal[0][2]
+                                decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
+                                x_subgoal = decoded_subgoal[0][0]
+                                y_subgoal = decoded_subgoal[0][1]
+                                theta_subgoal = decoded_subgoal[0][2]
                                 ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
                                 ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                                 [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
@@ -220,10 +211,10 @@ def evalPolicy(policy, env,
 
                         # values plot
                         if plot_value_function:
-                            def plot_values(ax_values, theta):
-                                ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
-                                ax_values.set_xlim(left=env_min_x, right=env_max_x)
-                                max_state_value = 1  
+                            def plot_values(ax_values, theta, set_lim_xy=True, return_cb=True):
+                                if set_lim_xy:
+                                    ax_values.set_ylim(bottom=env_min_y, top=env_max_y)
+                                    ax_values.set_xlim(left=env_min_x, right=env_max_x)
                                 grid_states = []              
                                 grid_goals = []
                                 grid_dx = (env_max_x - env_min_x) / grid_resolution_x
@@ -231,8 +222,7 @@ def evalPolicy(policy, env,
                                 for grid_state_y in np.linspace(env_min_y + grid_dy/2, env_max_y - grid_dy/2, grid_resolution_y):
                                     for grid_state_x in np.linspace(env_min_x + grid_dx/2, env_max_x - grid_dx/2, grid_resolution_x):
                                         if env.add_frame_stack:
-                                            agent_state = [grid_state_x, grid_state_y, theta]
-                                            agent_state.extend([0 for _ in range(env.agent_state_len - 3)])
+                                            agent_state = [grid_state_x, grid_state_y, theta, 0, 0]
                                             grid_state = []
                                             for _ in range(env.frame_stack):
                                                 grid_state.extend(agent_state)
@@ -248,7 +238,10 @@ def evalPolicy(policy, env,
                                 grid_vs = policy.value(grid_states, grid_goals)
                                 grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
                                 img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
-                                cb = fig.colorbar(img)
+                                if return_cb:
+                                    cb = fig.colorbar(img)
+                                else:
+                                    cb = None
                                 ax_values.scatter([np.linspace(env_max_x - 3.5, env_max_x - 3.5 + car_length*np.cos(theta), 100)], 
                                                 [np.linspace(env_max_y - 1.5, env_max_y - 1.5 + car_length*np.sin(theta), 100)], 
                                                 color="black", s=5)
@@ -271,6 +264,8 @@ def evalPolicy(policy, env,
                                                 color="black", s=5)
 
                                 return cb
+
+                        if plot_value_function:
                             cbs = [plot_values(ax, theta=theta) for ax, theta in zip(ax_values_s, [theta_agent, np.pi, 0, np.pi/2, -np.pi/2])]
                         fig.canvas.draw()
                         data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
@@ -327,7 +322,13 @@ def evalPolicy(policy, env,
                 t += 1
 
             if need_to_plot_task:
-                videos.append((val_key, task_id, images))
+                if plot_full_env and render_env:
+                    images_full_env = [image for ind, image in enumerate(images) if (ind+1) % 2 != 0]
+                    images_render = [image for ind, image in enumerate(images) if (ind+1) % 2 == 0]
+                    videos.append((val_key+"_full_env", task_id, images_full_env))
+                    videos.append((val_key+"_render", task_id, images_render))
+                else:
+                    videos.append((val_key, task_id, images))
             final_distances.append(info["EuclideanDistance"])
             success = 1.0 * info["goal_achieved"]
             task_status = "success"
@@ -395,12 +396,8 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
             collision_batch     = collision_batch[:, 0:1]
     
     # Compute sparse rewards: -1 for all actions until the goal is reached
-    if env.PPO_agent_observation:
-        assert 1 == 0, "didnt implement ppo agent obs"
-        reward_batch = np.sqrt(np.power(np.array(agent_state_batch - goal_state_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-    else:
-        reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-        angle_batch = abs(np.vectorize(normalizeAngle)(abs(np.array(next_state_batch - goal_batch)[:, 2:3])))
+    reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
+    angle_batch = abs(np.vectorize(normalizeAngle)(abs(np.array(next_state_batch - goal_batch)[:, 2:3])))
     if env.static_env:
         cost_batch = (np.ones_like(done_batch) * next_state_batch[:, 3:4]) * (1.0 - clearance_is_enough_batch)
     else:
@@ -447,7 +444,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
-
+    # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
@@ -466,18 +463,18 @@ if __name__ == "__main__":
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
-    parser.add_argument("--curriculum_alpha",        default=True, type=bool)
+    parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    # encoder
+    parser.add_argument("--use_decoder",             default=True, type=bool)
+    parser.add_argument("--use_encoder",             default=True, type=bool)
+    parser.add_argument("--state_dim",               default=20, type=int)
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=0.5, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
-    # encoder
-    parser.add_argument("--use_decoder",             default=True, type=bool)
-    parser.add_argument("--use_encoder",             default=True, type=bool)
-    parser.add_argument("--state_dim",               default=20, type=int)
-
+    # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
@@ -556,7 +553,6 @@ if __name__ == "__main__":
     load_results = os.path.isdir(folder)
 
     # Create logger
-    # TODO: save_git_head_hash = True by default, change it if neccesary
     logger = Logger(vars(args), save_git_head_hash=False)
     if args.using_wandb:
         run = wandb.init(project=args.wandb_project)
@@ -692,7 +688,6 @@ if __name__ == "__main__":
                                 plot_only_agent_values=True, 
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
-                                video_validate_tasks=[],
                                 show_data_to_plot=False)
 
             wandb_log_dict = {

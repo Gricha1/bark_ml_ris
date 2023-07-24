@@ -27,13 +27,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.add_ppo_reward = goal_env_config["add_ppo_reward"]
     self.add_collision_reward = goal_env_config["add_collision_reward"]
     self.collision_reward_to_episode_end = goal_env_config["collision_reward_to_episode_end"]
-    self.PPO_agent_observation = goal_env_config["PPO_agent_observation"]
     self.is_terminal_dist = goal_env_config["is_terminal_dist"]
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
-    if self.add_frame_stack:
-      self.agent_state_len = 5
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
-    assert self.PPO_agent_observation == 0, "didnt implement"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
            or self.dataset == "hard_dataset" \
@@ -51,10 +47,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            + 1.0 * self.teleport_back_on_collision \
            + 1.0 * self.static_env == 2.0 or not self.static_env
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
-    if self.PPO_agent_observation:
-      observation_size = 10
-    else:
-      observation_size = 5
+    observation_size = 5
     if self.add_frame_stack:
       observation = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
       desired_goal = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
@@ -68,12 +61,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     collision = Box(0.0, 1.0, (1,), np.float32)
     clearance_is_enough = Box(0.0, 1.0, (1,), np.float32)
     collision_happend_on_trajectory = Box(0.0, 1.0, (1,), np.float32)
-    if self.PPO_agent_observation:
-      state_observation = Box(-np.inf, np.inf, (5,), np.float32) 
-      state_desired_goal = Box(-np.inf, np.inf, (5,), np.float32)  
-    else:
-      state_observation = observation 
-      state_desired_goal = desired_goal 
+    state_observation = observation 
+    state_desired_goal = desired_goal 
     state_achieved_goal = state_observation
 
     obs_dict = {"observation" : observation,
@@ -304,15 +293,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
     assert -np.pi <= goal.theta <= np.pi, "incorrect dataset"
-    # POLAMPenvironment return always:
-    # frame_stack * [dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]] + lidar data
-    if self.PPO_agent_observation:
-      assert 1 == 0
-      agent_state = self.environment.agent.getDiff()
-      goal_state = [0, 0, 0, 0, 0, goal.theta, goal.v, goal.steer, 0, 0]
-    else:
-      agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-      goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
         beams_observation = self.environment.get_observation(agent)
         agent_state.extend(beams_observation.tolist())
@@ -337,13 +319,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     collision = np.array([0.0])
     clearance_is_enough = self.environment.clearance_is_enough
     self.collision_happend_on_trajectory = False
-    if self.PPO_agent_observation:
-      assert 1 == 0
-      state_observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-      state_desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])  
-    else:
-      state_observation = observation 
-      state_desired_goal = desired_goal 
+    state_observation = observation 
+    state_desired_goal = desired_goal 
     state_achieved_goal = state_observation
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
@@ -422,13 +399,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
-    if self.PPO_agent_observation:
-      assert 1 == 0
-      agent_state = self.environment.agent.getDiff()
-      goal_state = [0, 0, 0, 0, 0, goal.theta, goal.v, goal.steer, 0, 0]
-    else:
-      agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-      goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
         beams_observation = self.environment.get_observation(agent)
         agent_state.extend(beams_observation.tolist())
@@ -453,13 +425,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       achieved_goal = observation
       current_step = np.array([1.0 * self.step_counter])
     collision = np.array([1.0 * ("Collision" in info)])
-    if self.PPO_agent_observation:
-      assert 1 == 0, "didnt implemented"
-      state_observation = np.array([agent.x, agent.y, agent.theta, agent.v, agent.steer])
-      state_desired_goal = np.array([goal.x, goal.y, goal.theta, goal.v, goal.steer])  
-    else:
-      state_observation = observation 
-      state_desired_goal = desired_goal 
+    state_observation = observation 
+    state_desired_goal = desired_goal 
     state_achieved_goal = state_observation
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
