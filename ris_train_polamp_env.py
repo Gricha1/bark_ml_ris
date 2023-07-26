@@ -23,10 +23,14 @@ def evalPolicy(policy, env,
                plot_full_env=True, plot_subgoals=False, plot_value_function=False,
                plot_safe_bound=False, 
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
-               video_validate_tasks = [("map4", 8), ("map5", 7), ("map7", 19)],                
+               video_validate_tasks = [],                
                data_to_plot={}, show_data_to_plot=True, 
                eval_strategy=None,
                validate_one_task=False):
+    """
+        medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
+        hard dataset: video_validate_tasks = [("map0", 10)]
+    """
     assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     assert type(video_validate_tasks) == type(list())
     assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
@@ -441,7 +445,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="medium_dataset") # test_medium_dataset, medium_dataset, safety_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
@@ -684,10 +688,11 @@ if __name__ == "__main__":
                                 plot_full_env=True,
                                 plot_subgoals=True,
                                 plot_value_function=False,
-                                render_env=False,
+                                render_env=True,
                                 plot_only_agent_values=True, 
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
+                                video_validate_tasks = [("map0", 10)],
                                 show_data_to_plot=False)
 
             wandb_log_dict = {
