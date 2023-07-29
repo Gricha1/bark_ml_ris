@@ -29,7 +29,7 @@ def evalPolicy(policy, env,
                validate_one_task=False):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
-        hard dataset: video_validate_tasks = [("map0", 10)]
+        hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
     """
     assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     assert type(video_validate_tasks) == type(list())
@@ -446,15 +446,17 @@ if __name__ == "__main__":
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
     parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
+    parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
+    parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 2e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
-    parser.add_argument("--replay_buffer_size", default=1e6, type=int)
+    parser.add_argument("--replay_buffer_size", default=1e6, type=int) # 1e6
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int)
@@ -464,6 +466,7 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
+    parser.add_argument("--clip_v_function",    default=-100, type=float) # -100
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
@@ -487,18 +490,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
+    assert args.dataset_curriculum == False, "didnt implement"
+
     with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
         goal_our_env_config = json.load(f)
-
     with open("polamp_env/configs/train_configs.json", 'r') as f:
         train_config = json.load(f)
-
     with open("polamp_env/configs/environment_configs.json", 'r') as f:
         our_env_config = json.load(f)
-
     with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
         reward_config = json.load(f)
-
     with open("polamp_env/configs/car_configs.json", 'r') as f:
         car_config = json.load(f)
 
@@ -577,6 +578,7 @@ if __name__ == "__main__":
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
+                 clip_v_function=args.clip_v_function,
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_state_bounds=env_state_bounds,
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
@@ -767,9 +769,12 @@ if __name__ == "__main__":
                     wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
                 run.log(wandb_log_dict)
      
+            # stop train high policy
             if args.curriculum_high_policy:
                 if success_rate >= 0.95:
                     policy.stop_train_high_policy = True
+
+            # stop high policy influence on low policy
             if args.curriculum_alpha:
                 if (t + 1) >= args.curriculum_alpha_treshold:
                     policy.alpha = args.curriculum_alpha_val
@@ -793,6 +798,34 @@ if __name__ == "__main__":
                 policy.save(folder)
                 run.log({"save_policy_count": save_policy_count})
 
+            # change medium dataset to hard dataset
+            if args.dataset_curriculum:
+                if success_rate >= args.dataset_curriculum_treshold:
+                    # erase previous expirience
+                    replay_buffer = HERReplayBuffer(
+                        max_size=args.replay_buffer_size,
+                        env=env,
+                        fraction_goals_are_rollout_goals = 0.2,
+                        fraction_resampled_goals_are_env_goals = 0.0,
+                        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
+                        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
+                        desired_goal_keys   =["desired_goal", "state_desired_goal"],
+                        observation_key     = 'observation',
+                        desired_goal_key    = 'desired_goal',
+                        achieved_goal_key   = 'achieved_goal',
+                        vectorized          = vectorized 
+                    )
+                    path_builder = PathBuilder()		
+                    # Reset environment
+                    obs = env.reset()
+                    done = False
+                    state = obs["observation"]
+                    goal = obs["desired_goal"]
+                    episode_timesteps = 0
+                    episode_num += 1 
+                    logger.store(dataset_x = state[0])
+                    logger.store(dataset_y = state[1])
+                    
             # clean log buffer
             logger.data = dict()
             print("eval", end=" ")

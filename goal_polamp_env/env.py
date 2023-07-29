@@ -42,6 +42,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            == self.reward_config["overSpeeding"] \
            == self.reward_config["overSteering"] \
            == self.reward_config["goal"] \
+           == self.reward_config["distance"] \
            == 0.0, "didnt implement these rewards"
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
     assert 1.0 * self.inside_obstacles_movement \

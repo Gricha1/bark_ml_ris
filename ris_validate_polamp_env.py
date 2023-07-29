@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset", default=False)
     parser.add_argument("--train_dataset",        default=False)
-
+    # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(2e3), type=int)
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
-
+    # safety
     parser.add_argument("--safety",             default=True, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
@@ -177,12 +177,14 @@ if __name__ == "__main__":
                                  plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=True, 
+                                 # medium dataset
                                  #video_validate_tasks = [("map4", 8), ("map4", 13)],
                                  #video_validate_tasks = [("map6", 5), ("map6", 18)],
                                  #video_validate_tasks = [("map7", 19)],
                                  #video_validate_tasks = [("map5", 7)],
                                  #video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)],
-                                 video_validate_tasks = [("map0", 10)],
+                                 # hard dataset
+                                 video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
                                  eval_strategy=None,
                                  validate_one_task=True)
     wandb_log_dict = {}
