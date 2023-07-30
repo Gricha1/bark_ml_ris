@@ -453,10 +453,10 @@ if __name__ == "__main__":
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 5e4
+    parser.add_argument("--eval_freq",          default=int(5e4), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
-    parser.add_argument("--replay_buffer_size", default=1e6, type=int) # 1e6
+    parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 1e6
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int)
@@ -466,7 +466,7 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    parser.add_argument("--clip_v_function",    default=-100, type=float) # -100
+    parser.add_argument("--clip_v_function",    default=-368, type=float) # -100
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
@@ -478,7 +478,7 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",               default=20, type=int)
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=True, type=bool)
+    parser.add_argument("--safety",                    default=False, type=bool)
     parser.add_argument("--cost_limit",                default=0.5, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
@@ -623,7 +623,8 @@ if __name__ == "__main__":
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
-        print("step:", t, end=" ")
+        if t % 1e4 == 0:
+            print("step:", t, end=" ")
 
         # Select action
         if t < args.start_timesteps:
@@ -660,10 +661,10 @@ if __name__ == "__main__":
             # Sample subgoal candidates uniformly in the replay buffer
             subgoal_batch = torch.FloatTensor(replay_buffer.random_state_batch(args.batch_size)).to(args.device)
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
-            print("train", args.exp_name, end=" ")
+            if t % 1e4 == 0:
+                print("train", args.exp_name, end=" ")
             if args.safety and t % policy.update_lambda == 0:
                 policy.train_lagrangian(state_batch, action_batch, goal_batch)
-                print("train lambda", end=" ")
 
         if done: 
             # Add path to replay buffer and reset path builder
@@ -829,5 +830,5 @@ if __name__ == "__main__":
             # clean log buffer
             logger.data = dict()
             print("eval", end=" ")
-        
-        print()
+        if t % 1e4 == 0 or (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
+            print()

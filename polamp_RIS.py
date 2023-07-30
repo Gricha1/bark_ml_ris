@@ -50,8 +50,8 @@ class RIS(object):
 		self.actor_target.load_state_dict(self.actor.state_dict())
 
 		# Critic
-		self.critic 		= EnsembleCritic(state_dim, action_dim).to(device)
-		self.critic_target 	= EnsembleCritic(state_dim, action_dim).to(device)
+		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
+		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
 		self.critic_target.load_state_dict(self.critic.state_dict())
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=q_lr)
 
