@@ -161,6 +161,12 @@ class RIS(object):
 		subgoal = torch.transpose(subgoal, 0, 1)
 		return subgoal
 
+	def sample_action_and_log_prob(self, state, goal):
+		# Sample action and log_prob
+		action, log_prob, _ = self.actor.sample(state, goal)
+	
+		return action, log_prob
+
 	def sample_action_and_KL(self, state, goal):
 		batch_size = state.size(0)
 		# Sample action, subgoals and KL-divergence
@@ -383,6 +389,9 @@ class RIS(object):
 		""" Actor """
 		# Sample action
 		action, D_KL = self.sample_action_and_KL(state, goal)
+		# Sample action and log_prob
+		action, log_prob = self.sample_action_and_log_prob(state, goal)
+		# print(f"log_prob: {log_prob}")
 
 		if self.safety:
 			# Compute actor loss + safety
@@ -391,12 +400,12 @@ class RIS(object):
 			lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 			Q_cost = self.critic_cost(state, action, goal)
 			Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
-			actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
+			actor_loss = (self.alpha * log_prob - Q + Q_cost).mean()
 		else:
 			# Compute actor loss
 			Q = self.critic(state, action, goal)
 			Q = torch.min(Q, -1, keepdim=True)[0]
-			actor_loss = (self.alpha*D_KL - Q).mean()
+			actor_loss = (self.alpha * log_prob - Q).mean()
 
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()
@@ -487,6 +496,7 @@ class RIS(object):
 				actor_loss   = actor_loss.item(),
 				critic_loss  = critic_loss.item(),
 				D_KL		 = D_KL.mean().item(),
+				log_prob	 = log_prob.mean().item(),
 				alpha        = self.alpha,		
 
 			)
