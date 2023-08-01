@@ -29,6 +29,7 @@ class RIS(object):
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
 				 clip_v_function=-100,
+				 critic_n_Q=1,
 				 logger=None, device=torch.device("cuda"), env_state_bounds={}, 
 				 env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, 
 				 curriculum_high_policy=False):		
@@ -50,8 +51,8 @@ class RIS(object):
 		self.actor_target.load_state_dict(self.actor.state_dict())
 
 		# Critic
-		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
-		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
+		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=critic_n_Q).to(device)
+		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=critic_n_Q).to(device)
 		self.critic_target.load_state_dict(self.critic.state_dict())
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=q_lr)
 
@@ -190,7 +191,7 @@ class RIS(object):
 			policy_v_1 = self.value(state, new_subgoal)
 			policy_v_2 = self.value(new_subgoal, goal)
 			policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=self.clip_v_function, max=0.0).abs().max(-1)[0]
-			if self.safety_add_to_high_policy:
+			if self.safety and self.safety_add_to_high_policy:
 				policy_sefety_v_1 = self.safety_value(state, new_subgoal)
 				policy_sefety_v_2 = self.safety_value(new_subgoal, goal)
 				policy_sefety_v = torch.cat([policy_sefety_v_1, policy_sefety_v_2], -1).max(-1)[0]
@@ -200,7 +201,7 @@ class RIS(object):
 			v_1 = self.value(state, subgoal)
 			v_2 = self.value(subgoal, goal)
 			v = torch.cat([v_1, v_2], -1).clamp(min=self.clip_v_function, max=0.0).abs().max(-1)[0]
-			if self.safety_add_to_high_policy:
+			if self.safety and self.safety_add_to_high_policy:
 				safety_v_1 = self.safety_value(state, subgoal)
 				safety_v_2 = self.safety_value(subgoal, goal)
 				safety_v = torch.cat([safety_v_1, safety_v_2], -1).max(-1)[0]

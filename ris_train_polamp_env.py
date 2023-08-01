@@ -451,6 +451,7 @@ if __name__ == "__main__":
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
+    parser.add_argument("--critic_n_Q",         default=1, type=int)
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(5e4), type=int) # 5e4
@@ -466,7 +467,7 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    parser.add_argument("--clip_v_function",    default=-368, type=float) # -100
+    parser.add_argument("--clip_v_function",    default=-368, type=float) # -368
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
@@ -578,6 +579,7 @@ if __name__ == "__main__":
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
+                 critic_n_Q=args.critic_n_Q,
                  clip_v_function=args.clip_v_function,
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_state_bounds=env_state_bounds,
@@ -696,6 +698,7 @@ if __name__ == "__main__":
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
+                                #video_validate_tasks = [("map4", 13)],
                                 show_data_to_plot=False)
 
             wandb_log_dict = {
