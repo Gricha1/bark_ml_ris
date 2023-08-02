@@ -29,6 +29,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.collision_reward_to_episode_end = goal_env_config["collision_reward_to_episode_end"]
     self.is_terminal_dist = goal_env_config["is_terminal_dist"]
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
+    assert self.collision_reward <= 0, "collision reward should be negative"
+    assert self.abs_time_step_reward >= 0, "abs time step reward should be positive"
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \

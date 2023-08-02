@@ -423,11 +423,20 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
             done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
                          + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) # terminal condition
             done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
-            reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
+            reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0) \
                             + (env.collision_reward) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
+
+    assert (collision_batch.min() == 0.0 or collision_batch.min() == 1.0) \
+           and (collision_batch.max() == 0.0 or collision_batch.max() == 1.0), \
+           " incorrect collision batch "
+    assert (done_batch.min() == 0.0 or done_batch.min() == 1.0) \
+           and (done_batch.max() == 0.0 or done_batch.max() == 1.0), " incorrect done batch "
+    assert env.collision_reward - env.abs_time_step_reward <= reward_batch.min() <= 0.0 \
+           and env.collision_reward - env.abs_time_step_reward <= reward_batch.max() <= 0.0, \
+           " incorrect reward batch "
     
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
@@ -468,15 +477,15 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
     parser.add_argument("--clip_v_function",    default=-368, type=float) # -368
-    parser.add_argument("--add_obs_noise",           default=False, type=bool)
+    parser.add_argument("--add_obs_noise",              default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
-    parser.add_argument("--curriculum_alpha",        default=False, type=bool)
-    parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    parser.add_argument("--curriculum_alpha",            default=False, type=bool)
+    parser.add_argument("--curriculum_high_policy",      default=False, type=bool)
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
-    parser.add_argument("--state_dim",               default=20, type=int)
+    parser.add_argument("--state_dim",               default=40, type=int)
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=False, type=bool)
@@ -775,8 +784,9 @@ if __name__ == "__main__":
      
             # stop train high policy
             if args.curriculum_high_policy:
-                if success_rate >= 0.95:
-                    policy.stop_train_high_policy = True
+                if success_rate >= 0.9:
+                    for g in policy.subgoal_optimizer.param_groups:
+                        g['lr'] = 0
 
             # stop high policy influence on low policy
             if args.curriculum_alpha:

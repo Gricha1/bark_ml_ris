@@ -40,9 +40,7 @@ class RIS(object):
 		# normalize states
 		self.env_state_bounds = env_state_bounds
 		self.safety = safety
-		self.safety_add_to_high_policy = safety_add_to_high_policy
-		self.curriculum_high_policy = curriculum_high_policy
-		self.stop_train_high_policy = False
+		self.safety_add_to_high_policy = safety_add_to_high_policy		
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -361,27 +359,7 @@ class RIS(object):
 				)
 
 		""" High-level policy learning """
-		if self.curriculum_high_policy:
-			if self.stop_train_high_policy:
-				if self.logger is not None:
-					self.logger.store(
-						train_subgoal_x_max = 0,
-						train_subgoal_x_mean = 0,
-						train_subgoal_x_min = 0,
-						train_subgoal_y_max = 0,
-						train_subgoal_y_mean = 0,
-						train_subgoal_y_min = 0,
-					)
-					if self.logger is not None:
-						self.logger.data["adv"] = [0]
-						self.logger.data["ratio_adv"] = [0]
-						self.logger.data["subgoal_loss"] = [0]
-						self.logger.data["high_policy_v"] = [0]
-						self.logger.data["high_v"] = [0]
-			else:
-				self.train_highlevel_policy(state, goal, subgoal)
-		else:
-			self.train_highlevel_policy(state, goal, subgoal)
+		self.train_highlevel_policy(state, goal, subgoal)
 
 		""" Actor """
 		# Sample action
