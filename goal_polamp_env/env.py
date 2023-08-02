@@ -47,6 +47,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            == self.reward_config["distance"] \
            == 0.0, "didnt implement these rewards"
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
+    assert self.collision_reward_to_episode_end == False, "didnt implement"
     assert 1.0 * self.inside_obstacles_movement \
            + 1.0 * self.teleport_back_on_collision \
            + 1.0 * self.static_env == 2.0 or not self.static_env

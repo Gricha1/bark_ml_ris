@@ -37,6 +37,7 @@ class RIS(object):
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		assert not safety_add_to_high_policy or (safety_add_to_high_policy and safety)
+		assert clip_v_function < 0, " clip v function should be negative "
 		# normalize states
 		self.env_state_bounds = env_state_bounds
 		self.safety = safety
