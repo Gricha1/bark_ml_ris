@@ -1,5 +1,5 @@
 {
-    "teleport_back_on_collision": false,
+    "teleport_back_on_collision": true,
     "teleport_back_steps": 4,
     "inside_obstacles_movement": false,
     "add_frame_stack": true,

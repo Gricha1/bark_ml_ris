@@ -141,7 +141,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 else:
                   if self.uniform_feasible_train_dataset:
                     if self.dataset == "safety_dataset" or self.dataset == "hard_dataset":
-                      assert 1 == 0, "not correct theta = -np.pi, np.pi"
                       def get_random_sampled_state():
                         dataset_info = {}
                         env_boundaries = {"v": (0, 0), "steer": (0, 0)}
@@ -174,7 +173,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                                       dataset_info["boundaries"]["steer"]]
                         task = [(boundary[1] - boundary[0]) * x + boundary[0] 
                                 for x, boundary in zip(np.random.random(5), boundaries)] 
-
+                        # normalize angle to [-np.pi, np.pi]
+                        task[2] = normalizeAngle(task[2])
                         return task
                     elif self.dataset == "ris_easy_dataset":
                       # theta = 0, np.pi

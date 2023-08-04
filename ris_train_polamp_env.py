@@ -411,20 +411,12 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
         done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
         reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                     + (current_step_batch - env._max_episode_steps) * collision_batch
-    elif env.static_env and env.add_collision_reward:
-        if env.add_ppo_reward:
-            assert 1 == 0, "didnt implement add ppo reward"
-            done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
-            reward_batch = env.HER_reward(state=state_batch, action=action_batch, 
-                                          next_state=next_state_batch, goal=goal_batch, 
-                                          collision=collision_batch, goal_was_reached=done_batch, 
-                                          step_counter=current_step_batch)
-        else:
-            done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
-                         + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) # terminal condition
-            done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
-            reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0) \
-                            + (env.collision_reward) * collision_batch
+    elif env.static_env and env.add_collision_reward and (env.teleport_back_on_collision or env.inside_obstacles_movement):
+        done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
+                        + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) # terminal condition
+        done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
+        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0) \
+                        + (env.collision_reward) * collision_batch
     elif env.static_env:
         done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
                          + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) \
@@ -463,14 +455,14 @@ if __name__ == "__main__":
     parser.add_argument("--test_env",             default="polamp_env")
     parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
-    parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
-    parser.add_argument("--uniform_feasible_train_dataset", default=False)
+    parser.add_argument("--dataset_curriculum_treshold",    default=0.95, type=float) # medium dataset -> hard dataset
+    parser.add_argument("--uniform_feasible_train_dataset", default=True)
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
     parser.add_argument("--critic_n_Q",         default=1, type=int)
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(5e4), type=int) # 5e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 1e6
