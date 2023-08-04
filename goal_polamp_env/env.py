@@ -48,9 +48,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            == 0.0, "didnt implement these rewards"
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
     assert self.collision_reward_to_episode_end == False, "didnt implement"
-    assert 1.0 * self.inside_obstacles_movement \
-           + 1.0 * self.teleport_back_on_collision \
-           + 1.0 * self.static_env == 2.0 or not self.static_env
+    assert 1.0 * self.inside_obstacles_movement + 1.0 * self.teleport_back_on_collision <= 1.0
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
     observation_size = 5
     if self.add_frame_stack:
@@ -387,8 +385,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     if self.static_env and "Collision" in info:
       self.collision_happend_on_trajectory = True
-      if self.teleport_back_on_collision:
+      if self.add_collision_reward and not self.collision_reward_to_episode_end:
         reward += self.collision_reward
+      if self.teleport_back_on_collision:
         steer_angle_when_collide = self.environment.agent.current_state.steer
         self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]
         self.environment.agent.current_state.v = 0
@@ -396,12 +395,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         self.previous_agent_states = self.previous_agent_states[:-self.teleport_back_steps]
         self.previous_agent_observations = self.previous_agent_observations[:-self.teleport_back_steps]
       elif self.inside_obstacles_movement:
-        if not self.add_ppo_reward:
-          reward += self.collision_reward
+        pass
       elif self.collision_reward_to_episode_end:
         isDone = True
         reward += self.step_counter - self._max_episode_steps
-    
+      else:
+        isDone = True
+      
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
