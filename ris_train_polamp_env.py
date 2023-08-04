@@ -425,6 +425,13 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
             done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
             reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0) \
                             + (env.collision_reward) * collision_batch
+    elif env.static_env:
+        done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
+                         + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) \
+                         + 1.0 * collision_batch
+        done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle + 1.0 * collision_batch)
+        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0) \
+                        + (env.collision_reward) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
