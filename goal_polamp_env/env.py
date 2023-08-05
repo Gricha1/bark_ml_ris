@@ -397,6 +397,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       elif self.inside_obstacles_movement:
         pass
       elif self.collision_reward_to_episode_end:
+        assert 1 == 0, "incorrect"
         isDone = True
         reward += self.step_counter - self._max_episode_steps
       else:

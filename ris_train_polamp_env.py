@@ -462,13 +462,13 @@ if __name__ == "__main__":
     parser.add_argument("--critic_n_Q",         default=1, type=int)
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 5e4
+    parser.add_argument("--eval_freq",          default=int(5e4), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 1e6
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
-    parser.add_argument("--seed",               default=42, type=int)
+    parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float)
@@ -713,6 +713,7 @@ if __name__ == "__main__":
                     'steps': logger.data["t"][-1],
 
                      # train logging
+                     "HER_mean_done": sum(logger.data["HER_mean_done"][-args.eval_freq:]) / args.eval_freq,
                      'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
                      'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,

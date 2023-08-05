@@ -103,13 +103,6 @@ def weights_init_encoder(m):
 class Encoder(nn.Module):
 	def __init__(self, input_dim, n_channels=3, state_dim=16, use_decoder=False):
 		super(Encoder, self).__init__()
-		#self.encoder_conv = nn.Sequential(
-		#	nn.Conv2d(n_channels, 32, 3, 2), nn.ReLU(),
-		#	nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
-		#	nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
-		#	nn.Conv2d(32, 32, 3, 1), nn.ReLU()
-		#)
-		#self.fc = nn.Linear(32*7*7, state_dim)
 
 		self.encoder = nn.Sequential(
 			nn.Linear(input_dim, 256), nn.ReLU(),
@@ -126,7 +119,6 @@ class Encoder(nn.Module):
 		self.apply(weights_init_encoder)
 
 	def forward(self, x):
-		#h = self.encoder_conv(x).view(x.size(0), -1)
 		state = self.encoder(x)
 		return state
 

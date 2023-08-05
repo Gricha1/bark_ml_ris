@@ -463,6 +463,11 @@ class RIS(object):
 				train_subgoal_data_y_min = train_subgoal_data["y_min"],
 			)
 
+		if self.logger is not None:
+			self.logger.store(
+				HER_mean_done = done.mean().item(),
+			)
+
 		# Log variables
 		if self.logger is not None:
 			self.logger.store(
