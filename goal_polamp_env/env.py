@@ -386,7 +386,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if self.static_env and "Collision" in info:
       self.collision_happend_on_trajectory = True
       if self.add_collision_reward and not self.collision_reward_to_episode_end:
-        reward += self.collision_reward
+        reward = self.collision_reward
       if self.teleport_back_on_collision:
         steer_angle_when_collide = self.environment.agent.current_state.steer
         self.environment.agent.current_state = self.previous_agent_states[-self.teleport_back_steps]

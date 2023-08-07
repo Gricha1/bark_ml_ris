@@ -415,7 +415,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
         done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
                         + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) # terminal condition
         done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
-        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0) \
+        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                         + (env.collision_reward) * collision_batch
     elif env.static_env:
         done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
@@ -456,11 +456,11 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold",    default=0.95, type=float) # medium dataset -> hard dataset
-    parser.add_argument("--uniform_feasible_train_dataset", default=True)
+    parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
     parser.add_argument("--critic_n_Q",         default=1, type=int)
-    parser.add_argument("--epsilon",            default=1e-16, type=float)
+    parser.add_argument("--epsilon",            default=1e-16, type=float) # 1e-16
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(5e4), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -474,7 +474,7 @@ if __name__ == "__main__":
     parser.add_argument("--Lambda",             default=0.1, type=float)
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
-    parser.add_argument("--pi_lr",              default=1e-4, type=float)
+    parser.add_argument("--pi_lr",              default=1e-4, type=float) # pi_lr=1e-4
     parser.add_argument("--clip_v_function",    default=-368, type=float) # -368
     parser.add_argument("--add_obs_noise",              default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
