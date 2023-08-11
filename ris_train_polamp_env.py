@@ -453,7 +453,7 @@ if __name__ == "__main__":
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(5e4), type=int) # 5e4
+    parser.add_argument("--eval_freq",          default=int(2e4), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 1e6
@@ -466,7 +466,7 @@ if __name__ == "__main__":
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    parser.add_argument("--clip_v_function",    default=-368, type=float) # -100
+    parser.add_argument("--clip_v_function",    default=-368, type=float) # -368
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
@@ -475,7 +475,7 @@ if __name__ == "__main__":
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
-    parser.add_argument("--state_dim",               default=20, type=int)
+    parser.add_argument("--state_dim",               default=20, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=False, type=bool)

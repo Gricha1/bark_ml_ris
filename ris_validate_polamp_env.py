@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-3, type=float)
     # safety
-    parser.add_argument("--safety",             default=True, type=bool)
+    parser.add_argument("--safety",             default=False, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
     parser.add_argument("--state_dim",          default=20, type=int)

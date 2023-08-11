@@ -58,8 +58,9 @@ class RIS(object):
 		# Safety Critic
 		if self.safety:
 			self.test_case_soft_critic = False
-			self.critic_cost 		= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
-			self.critic_cost_target = EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
+			self.test_max_critic = True
+			self.critic_cost 		= EnsembleCritic(state_dim, action_dim, n_Q=2).to(device)
+			self.critic_cost_target = EnsembleCritic(state_dim, action_dim, n_Q=2).to(device)
 			self.critic_cost_target.load_state_dict(self.critic_cost.state_dict())
 			self.critic_cost_optimizer = torch.optim.Adam(self.critic_cost.parameters(), lr=q_lr)
 
@@ -300,7 +301,10 @@ class RIS(object):
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
 			if self.safety:
 				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
-				target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
+				if self.test_max_critic:
+					target_Q_cost = torch.max(target_Q_cost, -1, keepdim=True)[0]
+				else:
+					target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
 				target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
 
 		# Compute critic loss
@@ -392,7 +396,10 @@ class RIS(object):
 			Q = torch.min(Q, -1, keepdim=True)[0]
 			lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 			Q_cost = self.critic_cost(state, action, goal)
-			Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
+			if self.test_max_critic:
+				Q_cost = lambda_multiplier * torch.max(Q_cost, -1, keepdim=True)[0]
+			else:
+				Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
 			actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
 		else:
 			# Compute actor loss
