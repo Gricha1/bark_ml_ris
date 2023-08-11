@@ -22,6 +22,8 @@ from polamp_env.lib.utils_operations import generateDataSet
 def evalPolicy(policy, env, 
                plot_full_env=True, plot_subgoals=False, plot_value_function=False,
                plot_safe_bound=False, 
+               plot_decoder_agent_states=False,
+               add_text=False,
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
                video_validate_tasks = [],                
                data_to_plot={}, show_data_to_plot=True, 
@@ -167,15 +169,17 @@ def evalPolicy(policy, env,
                         ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
                         ax_states.set_xlim(left=env_min_x, right=env_max_x)
                         ax_states.scatter([x_agent], [y_agent], color="green", s=50)
-                        ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
                         ax_states.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
                                         [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
                                         color="green", s=5)
                         ax_states.scatter([x_goal], [y_goal], color="yellow", s=50)
-                        ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
                         ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
                                         [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
                                         color="yellow", s=5)
+                        if add_text:
+                            ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
+                            ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
+
                         if plot_subgoals:
                             for ind, subgoal in enumerate(subgoals):
                                 decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
@@ -212,6 +216,17 @@ def evalPolicy(policy, env,
                         ax_states.text(env_max_x - 21, env_max_y - 2, f"R:{int(acc_reward*10)/10}")
                         ax_states.text(env_max_x - 13, env_max_y - 2, f"C:{int(acc_cost*10)/10}")
                         ax_states.text(env_max_x - 4.5, env_max_y - 2, f"t:{t}")
+
+                        if plot_decoder_agent_states:
+                            with torch.no_grad():
+                                decoded_state = policy.encoder.decoder(encoded_state).cpu()
+                                x_decoded_state = decoded_state[0][0]
+                                y_decoded_state = decoded_state[0][1]
+                                theta_decoded_state = decoded_state[0][2]
+                                ax_states.scatter([x_decoded_state], [y_decoded_state], color="red", s=50)
+                                ax_states.scatter([np.linspace(x_decoded_state, x_decoded_state + car_length*np.cos(theta_decoded_state), 100)], 
+                                                [np.linspace(y_decoded_state, y_decoded_state + car_length*np.sin(theta_decoded_state), 100)], 
+                                                color="red", s=5)
 
                         # values plot
                         if plot_value_function:
@@ -693,6 +708,7 @@ if __name__ == "__main__":
                                 plot_value_function=False,
                                 render_env=True,
                                 plot_only_agent_values=True, 
+                                plot_decoder_agent_states=True,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
