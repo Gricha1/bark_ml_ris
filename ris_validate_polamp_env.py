@@ -184,9 +184,10 @@ if __name__ == "__main__":
                                  #video_validate_tasks = [("map5", 7)],
                                  #video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)],
                                  # hard dataset
-                                 video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
-                                 #video_validate_tasks = [("map0", 2)],
+                                 #video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
+                                 video_validate_tasks = [("map0", 2)],
                                  plot_decoder_agent_states=True,
+                                 plot_subgoal_dispertion=True,
                                  eval_strategy=None,
                                  validate_one_task=True)
     wandb_log_dict = {}

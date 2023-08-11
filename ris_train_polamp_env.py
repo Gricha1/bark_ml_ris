@@ -10,6 +10,7 @@ import wandb
 import gym
 from gym.envs.registration import register
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 from polamp_env.lib.utils_operations import normalizeAngle
 from utils.logger import Logger
@@ -23,6 +24,7 @@ def evalPolicy(policy, env,
                plot_full_env=True, plot_subgoals=False, plot_value_function=False,
                plot_safe_bound=False, 
                plot_decoder_agent_states=False,
+               plot_subgoal_dispertion=False,
                add_text=False,
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
                video_validate_tasks = [],                
@@ -127,20 +129,25 @@ def evalPolicy(policy, env,
                             encoded_goal = to_torch_goal
                         subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
                         subgoal = subgoal_distribution.loc
+                        log_std = subgoal_distribution.scale
                         if plot_subgoals:
-                            def generate_subgoals(encoded_state, encoded_goal, subgoals, K=2, add_to_end=True):
+                            def generate_subgoals(encoded_state, encoded_goal, subgoals, stds, K=2, add_to_end=True):
                                 if K == 0:
                                     return
                                 subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
                                 subgoal = subgoal_distribution.loc
+                                std = subgoal_distribution.scale
                                 if add_to_end:
                                     subgoals.append(subgoal)
+                                    stds.append(std)
                                 else:
                                     subgoals.insert(0, subgoal)
-                                generate_subgoals(encoded_state, subgoal, subgoals, K-1, add_to_end=False)
-                                generate_subgoals(subgoal, encoded_goal, subgoals, K-1, add_to_end=True)
+                                    stds.insert(0, std)
+                                generate_subgoals(encoded_state, subgoal, subgoals, stds, K-1, add_to_end=False)
+                                generate_subgoals(subgoal, encoded_goal, subgoals, stds, K-1, add_to_end=True)
                             subgoals = []
-                            generate_subgoals(encoded_state, encoded_goal, subgoals, K=2)
+                            stds = []
+                            generate_subgoals(encoded_state, encoded_goal, subgoals, stds, K=2)
                         
                         x_agent = info["agent_state"][0]
                         y_agent = info["agent_state"][1]
@@ -181,7 +188,7 @@ def evalPolicy(policy, env,
                             ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
 
                         if plot_subgoals:
-                            for ind, subgoal in enumerate(subgoals):
+                            for ind, (subgoal, std) in enumerate(zip(subgoals, stds)):
                                 decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
                                 x_subgoal = decoded_subgoal[0][0]
                                 y_subgoal = decoded_subgoal[0][1]
@@ -190,6 +197,14 @@ def evalPolicy(policy, env,
                                 ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                                 [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
                                                 color="orange", s=5)
+                                if plot_subgoal_dispertion:
+                                    if ind == len(subgoals) // 2:   
+                                        x_std = std[0][0].item()
+                                        y_std = std[0][1].item()
+                                        rect = patches.Rectangle((x_subgoal - x_std/2, y_subgoal - y_std/2), x_std, y_std, linewidth=1, edgecolor='r', facecolor='none')
+                                        #circle = plt.Circle((x_subgoal, y_subgoal), std, color='r')
+                                        ax_states.add_patch(rect)
+
                         if plot_obstacles:
                             for obstacle in env.environment.obstacle_segments:
                                 ax_states.scatter(np.linspace(obstacle[0][0].x, obstacle[0][1].x, 500), 
@@ -468,7 +483,7 @@ if __name__ == "__main__":
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e4), type=int) # 5e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 1e6
@@ -709,6 +724,7 @@ if __name__ == "__main__":
                                 render_env=True,
                                 plot_only_agent_values=True, 
                                 plot_decoder_agent_states=True,
+                                plot_subgoal_dispertion=True,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
