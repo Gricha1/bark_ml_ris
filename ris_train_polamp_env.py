@@ -492,8 +492,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float)
     parser.add_argument("--n_ensemble",         default=10, type=int) # 10
-    parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
