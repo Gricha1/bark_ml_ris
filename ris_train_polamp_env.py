@@ -11,6 +11,7 @@ import gym
 from gym.envs.registration import register
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import copy
 
 from polamp_env.lib.utils_operations import normalizeAngle
 from utils.logger import Logger
@@ -18,10 +19,12 @@ from polamp_RIS import RIS
 from polamp_RIS import normalize_state
 from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
+from polamp_env.lib.structures import State
 
 
 def evalPolicy(policy, env, 
                plot_full_env=True, plot_subgoals=False, plot_value_function=False,
+               value_function_angles=["theta_agent", np.pi, 0, np.pi/2, -np.pi/2],
                plot_safe_bound=False, 
                plot_decoder_agent_states=False,
                plot_subgoal_dispertion=False,
@@ -52,17 +55,25 @@ def evalPolicy(policy, env,
                 ax_states = fig.add_subplot(121)
                 ax_values_agent = fig.add_subplot(122)
                 ax_values_s = [ax_values_agent]
+                value_function_angles=["theta_agent"]
             else:
-                fig = plt.figure(figsize=[6.4*2, 4.8*3])
-                ax_states = fig.add_subplot(321)
-                ax_values_agent = fig.add_subplot(322)
-                ax_values_left = fig.add_subplot(323)
-                ax_values_right = fig.add_subplot(324)
-                ax_values_down = fig.add_subplot(325)
-                ax_values_up = fig.add_subplot(326)
-                ax_values_s = [ax_values_agent, 
-                            ax_values_left, ax_values_right, 
-                            ax_values_down, ax_values_up]
+                if len(value_function_angles) == 2:
+                    fig = plt.figure(figsize=[6.4, 4.8*3])
+                    ax_states = fig.add_subplot(311)
+                    ax_values_right = fig.add_subplot(312)
+                    ax_values_down = fig.add_subplot(313)
+                    ax_values_s = [ax_values_right, ax_values_down]
+                else:
+                    fig = plt.figure(figsize=[6.4*2, 4.8*3])
+                    ax_states = fig.add_subplot(321)
+                    ax_values_agent = fig.add_subplot(322)
+                    ax_values_left = fig.add_subplot(323)
+                    ax_values_right = fig.add_subplot(324)
+                    ax_values_down = fig.add_subplot(325)
+                    ax_values_up = fig.add_subplot(326)
+                    ax_values_s = [ax_values_agent, 
+                                ax_values_left, ax_values_right, 
+                                ax_values_down, ax_values_up]
         else:
             fig = plt.figure(figsize=[6.4, 4.8])
             ax_states = fig.add_subplot(111)
@@ -202,7 +213,6 @@ def evalPolicy(policy, env,
                                         x_std = std[0][0].item()
                                         y_std = std[0][1].item()
                                         rect = patches.Rectangle((x_subgoal - x_std/2, y_subgoal - y_std/2), x_std, y_std, linewidth=1, edgecolor='r', facecolor='none')
-                                        #circle = plt.Circle((x_subgoal, y_subgoal), std, color='r')
                                         ax_states.add_patch(rect)
 
                         if plot_obstacles:
@@ -258,17 +268,33 @@ def evalPolicy(policy, env,
                                         if env.add_frame_stack:
                                             agent_state = [grid_state_x, grid_state_y, theta, 0, 0]
                                             grid_state = []
+                                            if env.use_lidar_data:
+                                                grid_state_struct = copy.deepcopy(env.environment.agent.current_state)
+                                                grid_state_struct.x = grid_state_x
+                                                grid_state_struct.y = grid_state_y
+                                                grid_state_struct.theta = theta
+                                                grid_state_struct.steer = 0
+                                                grid_state_struct.v = 0
+                                                beams_observation = env.environment.get_observation_without_env_change(grid_state_struct)
+                                                agent_state.extend(beams_observation.tolist())
                                             for _ in range(env.frame_stack):
                                                 grid_state.extend(agent_state)
                                         else:
+                                            assert 1 == 0, "something incorrect here"
                                             grid_state = [grid_state_x, grid_state_y]
                                             grid_state.extend([theta])
-                                            grid_state.extend([0 for _ in range(len(state) - 3)])
+                                            grid_state.extend([0 for _ in range(5 - 3)])
                                         grid_states.append(grid_state)
                                 grid_states = torch.FloatTensor(np.array(grid_states)).to(policy.device)
                                 assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
-                                grid_goals = torch.FloatTensor([goal for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
-                                assert grid_goals.shape == grid_states.shape
+                                numpy_encoded_goal = encoded_goal.cpu().squeeze().numpy()
+                                assert type(goal) == type(numpy_encoded_goal)
+                                grid_goals = torch.FloatTensor([numpy_encoded_goal if policy.use_encoder else goal 
+                                                for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
+                                if policy.use_encoder:
+                                    grid_states = policy.encoder(grid_states)
+                                assert grid_goals.shape == grid_states.shape, \
+                                       f"doesnt equal state shape: {grid_states.shape}   to goal shape: {grid_goals.shape} "
                                 grid_vs = policy.value(grid_states, grid_goals)
                                 grid_vs = grid_vs.detach().cpu().numpy().reshape(grid_resolution_x, grid_resolution_y)[::-1]                
                                 img = ax_values.imshow(grid_vs, extent=[env_min_x,env_max_x, env_min_y,env_max_y])
@@ -284,14 +310,22 @@ def evalPolicy(policy, env,
                                 ax_values.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
                                                 [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
                                                 color="black", s=5)
-                                if plot_subgoals and plot_value_function:
-                                    assert 1 == 0, "didnt implement for decoder"
-                                    for ind, subgoal in enumerate(subgoals):
-                                        ax_values.scatter([subgoal.cpu()[0][0]], [subgoal.cpu()[0][1]], color="orange", s=100)
-                                        ax_values.text(subgoal.cpu()[0][0] + 0.05, subgoal.cpu()[0][1] + 0.05, f"{ind + 1}")
-                                        ax_values.scatter([np.linspace(subgoal.cpu()[0][0], subgoal.cpu()[0][0] + car_length*np.cos(subgoal.cpu()[0][2]), 100)], 
-                                                    [np.linspace(subgoal.cpu()[0][1], subgoal.cpu()[0][1] + car_length*np.sin(subgoal.cpu()[0][2]), 100)], 
-                                                    color="orange", s=5)
+                                if plot_subgoals:
+                                    for ind, (subgoal, std) in enumerate(zip(subgoals, stds)):
+                                        decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
+                                        x_subgoal = decoded_subgoal[0][0]
+                                        y_subgoal = decoded_subgoal[0][1]
+                                        theta_subgoal = decoded_subgoal[0][2]
+                                        ax_values.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
+                                        ax_values.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
+                                                        [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
+                                                        color="orange", s=5)
+                                        if plot_subgoal_dispertion:
+                                            if ind == len(subgoals) // 2:   
+                                                x_std = std[0][0].item()
+                                                y_std = std[0][1].item()
+                                                rect = patches.Rectangle((x_subgoal - x_std/2, y_subgoal - y_std/2), x_std, y_std, linewidth=1, edgecolor='r', facecolor='none')
+                                                ax_values.add_patch(rect)
                                 ax_values.scatter([x_goal], [y_goal], color="yellow", s=100)
                                 ax_values.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
                                                 [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
@@ -300,7 +334,8 @@ def evalPolicy(policy, env,
                                 return cb
 
                         if plot_value_function:
-                            cbs = [plot_values(ax, theta=theta) for ax, theta in zip(ax_values_s, [theta_agent, np.pi, 0, np.pi/2, -np.pi/2])]
+                            cbs = [plot_values(ax, theta=theta_agent) if theta=="theta_agent" else plot_values(ax, theta=theta) 
+                                    for ax, theta in zip(ax_values_s, value_function_angles)]
                         fig.canvas.draw()
                         data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                         data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
@@ -482,14 +517,15 @@ if __name__ == "__main__":
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
+    parser.add_argument("--n_critic",           default=1, type=int)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e4), type=int) # 5e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 1e6
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
-    parser.add_argument("--seed",               default=42, type=int) # 42
+    parser.add_argument("--seed",               default=30, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float)
@@ -605,6 +641,7 @@ if __name__ == "__main__":
                  use_decoder=args.use_decoder,
                  use_encoder=args.use_encoder,
                  safety=args.safety,
+                 n_critic=args.n_critic,
                  safety_add_to_high_policy=args.safety_add_to_high_policy,
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
@@ -722,14 +759,15 @@ if __name__ == "__main__":
                     = evalPolicy(policy, test_env, 
                                 plot_full_env=True,
                                 plot_subgoals=True,
-                                plot_value_function=False,
+                                plot_value_function=True,
                                 render_env=True,
-                                plot_only_agent_values=True, 
+                                plot_only_agent_values=False, 
                                 plot_decoder_agent_states=True,
                                 plot_subgoal_dispertion=True,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
+                                value_function_angles=[0, -np.pi/2],
                                 show_data_to_plot=False)
 
             wandb_log_dict = {

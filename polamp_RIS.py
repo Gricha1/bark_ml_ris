@@ -24,7 +24,8 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 
 class RIS(object):
 	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, 
-				 use_decoder=False, use_encoder=False, 
+				 use_decoder=False, use_encoder=False,
+				 n_critic=1, 
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
@@ -50,8 +51,8 @@ class RIS(object):
 		self.actor_target.load_state_dict(self.actor.state_dict())
 
 		# Critic
-		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
-		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=1).to(device)
+		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=n_critic).to(device)
+		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=n_critic).to(device)
 		self.critic_target.load_state_dict(self.critic.state_dict())
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=q_lr)
 

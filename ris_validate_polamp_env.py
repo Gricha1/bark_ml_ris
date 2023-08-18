@@ -174,9 +174,9 @@ if __name__ == "__main__":
                     = evalPolicy(policy, test_env, 
                                  plot_full_env=True,
                                  plot_subgoals=True,
-                                 plot_value_function=False, 
+                                 plot_value_function=True, 
                                  render_env=False, 
-                                 plot_only_agent_values=True, 
+                                 plot_only_agent_values=False, 
                                  # medium dataset
                                  #video_validate_tasks = [("map4", 8), ("map4", 13)],
                                  #video_validate_tasks = [("map6", 5), ("map6", 18)],
@@ -186,6 +186,7 @@ if __name__ == "__main__":
                                  # hard dataset
                                  #video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
                                  video_validate_tasks = [("map0", 2)],
+                                 value_function_angles=[0, -np.pi/2],
                                  plot_decoder_agent_states=True,
                                  plot_subgoal_dispertion=True,
                                  eval_strategy=None,
