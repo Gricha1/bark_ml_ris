@@ -63,6 +63,13 @@ def evalPolicy(policy, env,
                     ax_values_right = fig.add_subplot(312)
                     ax_values_down = fig.add_subplot(313)
                     ax_values_s = [ax_values_right, ax_values_down]
+                elif len(value_function_angles) == 3:
+                    fig = plt.figure(figsize=[6.4, 4.8*4])
+                    ax_states = fig.add_subplot(411)
+                    ax_values_agent = fig.add_subplot(412)
+                    ax_values_right = fig.add_subplot(413)
+                    ax_values_down = fig.add_subplot(414)
+                    ax_values_s = [ax_values_agent, ax_values_right, ax_values_down] 
                 else:
                     fig = plt.figure(figsize=[6.4*2, 4.8*3])
                     ax_states = fig.add_subplot(321)
@@ -517,7 +524,7 @@ if __name__ == "__main__":
     parser.add_argument("--random_train_dataset",           default=False)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=1, type=int)
+    parser.add_argument("--n_critic",           default=2, type=int)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 5e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -767,7 +774,7 @@ if __name__ == "__main__":
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
-                                value_function_angles=[0, -np.pi/2],
+                                value_function_angles=["theta_agent", 0, -np.pi/2],
                                 show_data_to_plot=False)
 
             wandb_log_dict = {

@@ -30,6 +30,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_dataset",        default=False)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
+    parser.add_argument("--n_critic",           default=2, type=int)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(2e3), type=int)
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -141,6 +142,7 @@ if __name__ == "__main__":
                  use_decoder=args.use_decoder,
                  use_encoder=args.use_encoder,
                  safety=args.safety,
+                 n_critic=args.n_critic,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  device=args.device, logger=logger if args.log_loss else None, 
@@ -186,7 +188,7 @@ if __name__ == "__main__":
                                  # hard dataset
                                  #video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
                                  video_validate_tasks = [("map0", 2)],
-                                 value_function_angles=[0, -np.pi/2],
+                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                  plot_decoder_agent_states=True,
                                  plot_subgoal_dispertion=True,
                                  eval_strategy=None,
