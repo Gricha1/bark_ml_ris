@@ -23,9 +23,11 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	return new_subgoal
 
 class RIS(object):
-	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1, 
+	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1,
+				 sac_alpha=0.2,
 				 use_decoder=False, use_encoder=False,
 				 n_critic=1, 
+				 train_sac=False,
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
@@ -43,6 +45,8 @@ class RIS(object):
 		self.safety_add_to_high_policy = safety_add_to_high_policy
 		self.curriculum_high_policy = curriculum_high_policy
 		self.stop_train_high_policy = False
+		self.train_sac = train_sac
+		self.sac_alpha = sac_alpha
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -164,6 +168,12 @@ class RIS(object):
 		subgoal = subgoal_distribution.rsample((self.n_ensemble,))
 		subgoal = torch.transpose(subgoal, 0, 1)
 		return subgoal
+
+	def sample_action_and_log_prob(self, state, goal):
+		# Sample action and log_prob
+		action, log_prob, _ = self.actor.sample(state, goal)
+
+		return action, log_prob
 
 	def sample_action_and_KL(self, state, goal):
 		batch_size = state.size(0)
@@ -296,9 +306,12 @@ class RIS(object):
 		""" Critic """
 		# Compute target Q
 		with torch.no_grad():
-			next_action, _, _ = self.actor.sample(next_state, goal)
+			next_action, log_prob, _ = self.actor.sample(next_state, goal)
 			target_Q = self.critic_target(next_state, next_action, goal)
-			target_Q = torch.min(target_Q, -1, keepdim=True)[0]
+			if self.train_sac:
+				target_Q = torch.min(target_Q, -1, keepdim=True)[0] - self.sac_alpha * log_prob
+			else:
+				target_Q = torch.min(target_Q, -1, keepdim=True)[0]
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
 			if self.safety:
 				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
@@ -390,6 +403,9 @@ class RIS(object):
 		""" Actor """
 		# Sample action
 		action, D_KL = self.sample_action_and_KL(state, goal)
+		if self.train_sac:
+			# Sample action and log_prob
+			action, log_prob = self.sample_action_and_log_prob(state, goal)
 
 		if self.safety:
 			# Compute actor loss + safety
@@ -401,12 +417,18 @@ class RIS(object):
 				Q_cost = lambda_multiplier * torch.max(Q_cost, -1, keepdim=True)[0]
 			else:
 				Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
-			actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
+			if self.train_sac:
+				actor_loss = (self.sac_alpha * log_prob - Q + Q_cost).mean()
+			else:
+				actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
 		else:
 			# Compute actor loss
 			Q = self.critic(state, action, goal)
 			Q = torch.min(Q, -1, keepdim=True)[0]
-			actor_loss = (self.alpha*D_KL - Q).mean()
+			if self.train_sac:
+				actor_loss = (self.sac_alpha * log_prob - Q).mean()
+			else:
+				actor_loss = (self.alpha*D_KL - Q).mean()
 
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()
