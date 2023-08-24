@@ -527,7 +527,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -842,6 +842,9 @@ if __name__ == "__main__":
                      # additional
                      'alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
                      'lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
+
+                     # SAC
+                     'log_entropy_sac': sum(logger.data["log_entropy_sac"][-args.eval_freq:]) / args.eval_freq,
                     }
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
@@ -869,11 +872,17 @@ if __name__ == "__main__":
                         policy.save(folder)
                         saved_final_result = True
 
+            # Save (current) results
+            folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "last_"
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            logger.save(folder + "log.pkl")
+            policy.save(folder)
             # Save (best) results
             if old_success_rate is None or success_rate >= old_success_rate:
                 old_success_rate = success_rate
                 save_policy_count += 1
-                folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
+                folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "best_"
                 if not os.path.exists(folder):
                     os.makedirs(folder)
                 logger.save(folder + "log.pkl")

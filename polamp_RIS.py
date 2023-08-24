@@ -133,14 +133,15 @@ class RIS(object):
 			if self.use_encoder:
 				torch.save(self.encoder_optimizer.state_dict(), folder + "encoder_opti")
 
-	def load(self, folder):
-		self.actor.load_state_dict(torch.load(folder+"actor.pth", map_location=self.device))
-		self.critic.load_state_dict(torch.load(folder+"critic.pth", map_location=self.device))
+	def load(self, folder, best=True):
+		run_name = "best_" if best else "last_"
+		self.actor.load_state_dict(torch.load(folder+run_name+"actor.pth", map_location=self.device))
+		self.critic.load_state_dict(torch.load(folder+run_name+"critic.pth", map_location=self.device))
 		if self.safety:
-			self.critic_cost.load_state_dict(torch.load(folder+"critic_cost.pth", map_location=self.device))
-		self.subgoal_net.load_state_dict(torch.load(folder+"subgoal_net.pth", map_location=self.device))
+			self.critic_cost.load_state_dict(torch.load(folder+run_name+"critic_cost.pth", map_location=self.device))
+		self.subgoal_net.load_state_dict(torch.load(folder+run_name+"subgoal_net.pth", map_location=self.device))
 		if self.use_encoder:
-			self.encoder.load_state_dict(torch.load(folder+"encoder.pth", map_location=self.device))
+			self.encoder.load_state_dict(torch.load(folder+run_name+"encoder.pth", map_location=self.device))
 
 	def select_action(self, state, goal):
 		with torch.no_grad():
@@ -519,6 +520,6 @@ class RIS(object):
 				actor_loss   = actor_loss.item(),
 				critic_loss  = critic_loss.item(),
 				D_KL		 = D_KL.mean().item(),
-				alpha        = self.alpha,		
-
+				alpha        = self.alpha,	
+				log_entropy_sac = log_prob.mean().item() if self.train_sac else 0,
 			)
