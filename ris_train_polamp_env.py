@@ -525,7 +525,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_sac",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=1, type=int) # 1
+    parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -650,6 +650,7 @@ if __name__ == "__main__":
                  use_encoder=args.use_encoder,
                  safety=args.safety,
                  n_critic=args.n_critic,
+                 train_sac=args.train_sac,
                  safety_add_to_high_policy=args.safety_add_to_high_policy,
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
