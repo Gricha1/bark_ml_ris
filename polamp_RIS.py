@@ -45,8 +45,11 @@ class RIS(object):
 		self.safety_add_to_high_policy = safety_add_to_high_policy
 		self.curriculum_high_policy = curriculum_high_policy
 		self.stop_train_high_policy = False
+
+		# SAC
 		self.train_sac = train_sac
 		self.sac_alpha = sac_alpha
+		self.sac_use_v_entropy = True
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -309,7 +312,7 @@ class RIS(object):
 		with torch.no_grad():
 			next_action, log_prob, _ = self.actor.sample(next_state, goal)
 			target_Q = self.critic_target(next_state, next_action, goal)
-			if self.train_sac:
+			if self.sac_use_v_entropy:
 				target_Q = torch.min(target_Q, -1, keepdim=True)[0] - self.sac_alpha * log_prob
 			else:
 				target_Q = torch.min(target_Q, -1, keepdim=True)[0]
@@ -321,6 +324,10 @@ class RIS(object):
 				else:
 					target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
 				target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
+		if self.logger is not None:
+			self.logger.store(
+				log_entropy_critic = log_prob.mean().item() if self.sac_use_v_entropy else 0,
+		)
 
 		# Compute critic loss
 		Q = self.critic(state, action, goal)

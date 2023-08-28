@@ -522,12 +522,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
-    parser.add_argument("--train_sac",            default=True, type=bool)
+    parser.add_argument("--train_sac",            default=False, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=2, type=int) # 1
+    parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -845,13 +845,16 @@ if __name__ == "__main__":
 
                      # SAC
                      'log_entropy_sac': sum(logger.data["log_entropy_sac"][-args.eval_freq:]) / args.eval_freq,
+                     'log_entropy_critic': sum(logger.data["log_entropy_critic"][-args.eval_freq:]) / args.eval_freq,
                     }
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
                     for key in dict_:
                         wandb_log_dict[f"{key}"] = dict_[key]
                 for map_name, task_indx, video in validation_info["videos"]:
-                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
+                    cur_step = logger.data["t"][-1]
+                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
                 run.log(wandb_log_dict)
      
             # stop train high policy
