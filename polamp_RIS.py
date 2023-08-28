@@ -182,17 +182,16 @@ class RIS(object):
 
 	def dubins_distance(self, state, subgoal, goal):
 		"""
-		Function to compute dubins paths from state -> subgoal
-		and subgoal -> goal
+		Function to compute dubins paths length
 		"""
-		path_x_to_subgoal, path_y_to_subgoal, _, _, _ = dubins_path_planner.plan_dubins_path(
+		_, lengths_to_subgoal = dubins_path_planner.get_dubins_path_length(
 				state[0].item(), state[1].item(), state[2].item(), 
 				subgoal[0].item(), subgoal[1].item(), subgoal[2].item(), self.curvature)
-		path_x_to_goal, path_y_to_goal, _, _, _ = dubins_path_planner.plan_dubins_path(
+		_, lengths_to_goal = dubins_path_planner.get_dubins_path_length(
 				subgoal[0].item(), subgoal[1].item(), subgoal[2].item(), 
 				goal[0].item(), goal[1].item(), goal[2].item(), self.curvature)
-		return self.trajectory_length(path_x_to_subgoal, path_y_to_subgoal) \
-			   + self.trajectory_length(path_x_to_goal, path_y_to_goal)
+
+		return sum(lengths_to_subgoal) + sum(lengths_to_goal)
 
 	def dubins_filter_subgoals(self, state, subgoals, goal, num_subgoals):
 		"""
