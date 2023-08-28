@@ -20,6 +20,7 @@ from polamp_RIS import normalize_state
 from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 from polamp_env.lib.structures import State
+from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 
 def evalPolicy(policy, env, 
@@ -28,6 +29,7 @@ def evalPolicy(policy, env,
                plot_safe_bound=False, 
                plot_decoder_agent_states=False,
                plot_subgoal_dispertion=False,
+               plot_dubins_curve=False,
                add_text=False,
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
                video_validate_tasks = [],                
@@ -208,9 +210,9 @@ def evalPolicy(policy, env,
                         if plot_subgoals:
                             for ind, (subgoal, std) in enumerate(zip(subgoals, stds)):
                                 decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
-                                x_subgoal = decoded_subgoal[0][0]
-                                y_subgoal = decoded_subgoal[0][1]
-                                theta_subgoal = decoded_subgoal[0][2]
+                                x_subgoal = decoded_subgoal[0][0].item()
+                                y_subgoal = decoded_subgoal[0][1].item()
+                                theta_subgoal = decoded_subgoal[0][2].item()
                                 ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
                                 ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                                 [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
@@ -221,6 +223,16 @@ def evalPolicy(policy, env,
                                         y_std = std[0][1].item()
                                         rect = patches.Rectangle((x_subgoal - x_std/2, y_subgoal - y_std/2), x_std, y_std, linewidth=1, edgecolor='r', facecolor='none')
                                         ax_states.add_patch(rect)
+
+                                if plot_dubins_curve and ind == len(subgoals) // 2:
+                                    R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
+                                    curvature = 1 / R
+                                    path_x, path_y, path_yaw, mode, _ = dubins_path_planner.plan_dubins_path(
+                                            x_agent, y_agent, theta_agent, x_subgoal, y_subgoal, theta_subgoal, curvature)
+                                    ax_states.plot(path_x, path_y)
+                                    path_x, path_y, path_yaw, mode, _ = dubins_path_planner.plan_dubins_path(
+                                            x_subgoal, y_subgoal, theta_subgoal, x_goal, y_goal, theta_goal, curvature)
+                                    ax_states.plot(path_x, path_y)
 
                         if plot_obstacles:
                             for obstacle in env.environment.obstacle_segments:
@@ -527,7 +539,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -537,7 +549,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float)
-    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
+    parser.add_argument("--n_ensemble",         default=30, type=int) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
@@ -644,6 +656,8 @@ if __name__ == "__main__":
                               env.environment.agent.dynamic_model.max_vel), 
                         "steer": (-env.environment.agent.dynamic_model.max_steer, 
                                  env.environment.agent.dynamic_model.max_steer)}
+    R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
+    curvature = 1 / R
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
                  use_decoder=args.use_decoder,
@@ -661,7 +675,8 @@ if __name__ == "__main__":
                  env_state_bounds=env_state_bounds,
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
-                 curriculum_high_policy=args.curriculum_high_policy
+                 curriculum_high_policy=args.curriculum_high_policy,
+                 vehicle_curvature=curvature
     )
 
     # Initialize replay buffer and path_builder
@@ -731,6 +746,7 @@ if __name__ == "__main__":
 
         # Train agent after collecting enough data
         if t >= args.batch_size and t >= args.start_timesteps:
+            start_train = time.time()
             state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
                 replay_buffer, 
                 batch_size=args.batch_size,
@@ -743,6 +759,9 @@ if __name__ == "__main__":
                 print("train", args.exp_name, end=" ")
             if args.safety and t % policy.update_lambda == 0:
                 policy.train_lagrangian(state_batch, action_batch, goal_batch)
+            end_train = time.time()
+            logger.store(train_time = end_train - start_train)
+            print("train_step_time:", end_train - start_train)
 
         if done: 
             # Add path to replay buffer and reset path builder
@@ -781,6 +800,7 @@ if __name__ == "__main__":
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
+                    'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,    
 
                      # train logging
                      'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
@@ -793,6 +813,10 @@ if __name__ == "__main__":
                      'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
                      'safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+
+                     # dubins filter
+                     'init_dubins_distance': sum(logger.data["init_dubins_distance"][-args.eval_freq:]) / args.eval_freq,
+                     'filtred_dubins_dinstance': sum(logger.data["filtred_dubins_dinstance"][-args.eval_freq:]) / args.eval_freq,
 
                      # validate logging
                      f'val_distance({args.n_eval} episodes)': eval_distance,

@@ -30,7 +30,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_dataset",        default=False)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=2, type=int)
+    parser.add_argument("--n_critic",           default=1, type=int)
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(2e3), type=int)
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -179,6 +179,7 @@ if __name__ == "__main__":
                                  plot_value_function=True, 
                                  render_env=False, 
                                  plot_only_agent_values=False, 
+                                 plot_dubins_curve=True,
                                  # medium dataset
                                  #video_validate_tasks = [("map4", 8), ("map4", 13)],
                                  #video_validate_tasks = [("map6", 5), ("map6", 18)],

@@ -6,6 +6,7 @@ import torch.nn as nn
 from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder
 from utils.data_aug import random_translate
 from utils.data_aug import NormalNoise
+from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	if not validate:
@@ -24,17 +25,17 @@ def normalize_state(new_subgoal, env_state_bounds, validate=False):
 
 class RIS(object):
 	def __init__(self, state_dim, action_dim, alpha=0.1, Lambda=0.1,
-				 sac_alpha=0.2,
 				 use_decoder=False, use_encoder=False,
 				 n_critic=1, 
-				 train_sac=False,
+				 train_sac=False, sac_alpha=0.2,
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
 				 clip_v_function=-100,
 				 logger=None, device=torch.device("cuda"), env_state_bounds={}, 
 				 env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, 
-				 curriculum_high_policy=False):		
+				 curriculum_high_policy=False,
+				 vehicle_curvature=0.1):		
 
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
@@ -47,9 +48,10 @@ class RIS(object):
 		self.stop_train_high_policy = False
 
 		# SAC
+		self.train_ris_with_sac = False
 		self.train_sac = train_sac
 		self.sac_alpha = sac_alpha
-		self.sac_use_v_entropy = True
+		self.sac_use_v_entropy = False
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -78,6 +80,8 @@ class RIS(object):
 			self.lambda_optimizer = torch.optim.Adam([self.lambda_coefficient], lr=5e-4)
 			
 		# Subgoal policy 
+		self.curvature = vehicle_curvature
+		self.use_dubins_filter = True
 		self.subgoal_net = LaplacePolicy(state_dim).to(device)
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
@@ -167,6 +171,66 @@ class RIS(object):
 		V = self.critic_cost(state, action, goal).min(-1, keepdim=True)[0]
 		return V
 
+	def trajectory_length(self, x_array, y_array):
+		length = 0.0
+		for i in range(len(x_array) - 1):
+			x1, y1 = x_array[i], y_array[i]
+			x2, y2 = x_array[i + 1], y_array[i + 1]
+			segment_length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+			length += segment_length
+		return length
+
+	def dubins_distance(self, state, subgoal, goal):
+		"""
+		Function to compute dubins paths from state -> subgoal
+		and subgoal -> goal
+		"""
+		path_x_to_subgoal, path_y_to_subgoal, _, _, _ = dubins_path_planner.plan_dubins_path(
+				state[0].item(), state[1].item(), state[2].item(), 
+				subgoal[0].item(), subgoal[1].item(), subgoal[2].item(), self.curvature)
+		path_x_to_goal, path_y_to_goal, _, _, _ = dubins_path_planner.plan_dubins_path(
+				subgoal[0].item(), subgoal[1].item(), subgoal[2].item(), 
+				goal[0].item(), goal[1].item(), goal[2].item(), self.curvature)
+		return self.trajectory_length(path_x_to_subgoal, path_y_to_subgoal) \
+			   + self.trajectory_length(path_x_to_goal, path_y_to_goal)
+
+	def dubins_filter_subgoals(self, state, subgoals, goal, num_subgoals):
+		"""
+		Function to take first num_subgoals subgoals with min dubins_distance
+
+		Arguments
+		- subgoals(torch.tensor()): dim = [B, N, L], 
+									B = batch size
+									N = num of subgoals for D_KL estimation
+									L = encoded state dim
+		"""
+		assert len(subgoals.shape) == 3
+		
+		with torch.no_grad():
+			# decode subgoals
+			subgoals = self.encoder.decoder(subgoals)
+
+			filtred_subgoals = torch.ones(subgoals.shape[0], num_subgoals, subgoals.shape[2]).to(self.device)
+			init_dubins_distance = 0
+			filtred_dubins_dinstance = 0
+			for idx, subgoals_for_estimation in enumerate(subgoals):
+				subgoals_distances_for_estimation = []
+				for idx_, subgoal in enumerate(subgoals_for_estimation):
+					dubins_subgoal_distance = self.dubins_distance(state[idx], subgoal, goal[idx])
+					subgoals_distances_for_estimation.append((idx_, dubins_subgoal_distance))		
+				subgoals_distances_for_estimation = sorted(subgoals_distances_for_estimation, key=lambda x: x[1])
+				sorted_subgoal_indexes = [x[0] for x in subgoals_distances_for_estimation]
+				test_subgoals = torch.index_select(subgoals_for_estimation, 0, torch.tensor(sorted_subgoal_indexes).to(self.device))
+				test_subgoals = test_subgoals[0:num_subgoals, :]
+				filtred_subgoals[idx] = test_subgoals
+				init_dubins_distance += sum(x[1] for x in subgoals_distances_for_estimation)
+				filtred_dubins_dinstance += sum(x[1] for x in subgoals_distances_for_estimation[:num_subgoals])
+
+			# encode subgoals
+			filtred_subgoals = self.encoder(filtred_subgoals)
+		
+		return filtred_subgoals, init_dubins_distance, filtred_dubins_dinstance
+
 	def sample_subgoal(self, state, goal):
 		subgoal_distribution = self.subgoal_net(state, goal)
 		subgoal = subgoal_distribution.rsample((self.n_ensemble,))
@@ -176,7 +240,6 @@ class RIS(object):
 	def sample_action_and_log_prob(self, state, goal):
 		# Sample action and log_prob
 		action, log_prob, _ = self.actor.sample(state, goal)
-
 		return action, log_prob
 
 	def sample_action_and_KL(self, state, goal):
@@ -187,6 +250,13 @@ class RIS(object):
 
 		with torch.no_grad():
 			subgoal = self.sample_subgoal(state, goal)
+		if self.use_dubins_filter:
+			subgoal, init_dubins_distance, filtred_dubins_dinstance = self.dubins_filter_subgoals(state, subgoal, goal, 5)
+		if self.logger is not None:
+			self.logger.store(
+				init_dubins_distance = init_dubins_distance if self.use_dubins_filter else 0,
+				filtred_dubins_dinstance = filtred_dubins_dinstance if self.use_dubins_filter else 0,
+			)
 		
 		prior_action_dist = self.actor_target(state.unsqueeze(1).expand(batch_size, subgoal.size(1), self.state_dim), subgoal)
 		prior_prob = prior_action_dist.log_prob(action.unsqueeze(1).expand(batch_size, subgoal.size(1), self.action_dim)).sum(-1, keepdim=True).exp()
@@ -411,7 +481,7 @@ class RIS(object):
 		""" Actor """
 		# Sample action
 		action, D_KL = self.sample_action_and_KL(state, goal)
-		if self.train_sac:
+		if self.train_sac or self.train_ris_with_sac:
 			# Sample action and log_prob
 			action, log_prob = self.sample_action_and_log_prob(state, goal)
 
@@ -427,6 +497,8 @@ class RIS(object):
 				Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
 			if self.train_sac:
 				actor_loss = (self.sac_alpha * log_prob - Q + Q_cost).mean()
+			elif self.train_ris_with_sac:
+				actor_loss = (self.alpha*D_KL + self.sac_alpha * log_prob - Q + Q_cost).mean()
 			else:
 				actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
 		else:
@@ -435,6 +507,8 @@ class RIS(object):
 			Q = torch.min(Q, -1, keepdim=True)[0]
 			if self.train_sac:
 				actor_loss = (self.sac_alpha * log_prob - Q).mean()
+			elif self.train_ris_with_sac:
+				actor_loss = (self.alpha*D_KL + self.sac_alpha * log_prob - Q).mean()
 			else:
 				actor_loss = (self.alpha*D_KL - Q).mean()
 
@@ -528,5 +602,5 @@ class RIS(object):
 				critic_loss  = critic_loss.item(),
 				D_KL		 = D_KL.mean().item(),
 				alpha        = self.alpha,	
-				log_entropy_sac = log_prob.mean().item() if self.train_sac else 0,
+				log_entropy_sac = log_prob.mean().item() if self.train_sac or self.train_ris_with_sac else 0,
 			)
