@@ -537,11 +537,11 @@ if __name__ == "__main__":
     parser.add_argument("--train_sac",            default=False, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=1, type=int) # 1
+    parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
-    parser.add_argument("--batch_size",         default=2048, type=int)
+    parser.add_argument("--batch_size",         default=4096, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
@@ -549,7 +549,8 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float)
-    parser.add_argument("--n_ensemble",         default=30, type=int) # 10
+    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
+    parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
@@ -665,6 +666,7 @@ if __name__ == "__main__":
                  safety=args.safety,
                  n_critic=args.n_critic,
                  train_sac=args.train_sac,
+                 use_dubins_filter=args.use_dubins_filter,
                  safety_add_to_high_policy=args.safety_add_to_high_policy,
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
@@ -761,7 +763,7 @@ if __name__ == "__main__":
                 policy.train_lagrangian(state_batch, action_batch, goal_batch)
             end_train = time.time()
             logger.store(train_time = end_train - start_train)
-            print("train_step_time:", end_train - start_train)
+            #print("train_step_time:", end_train - start_train)
 
         if done: 
             # Add path to replay buffer and reset path builder

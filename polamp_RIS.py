@@ -29,6 +29,7 @@ class RIS(object):
 				 n_critic=1, 
 				 train_sac=False, sac_alpha=0.2,
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
+				 use_dubins_filter = False,
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
 				 clip_v_function=-100,
@@ -81,7 +82,7 @@ class RIS(object):
 			
 		# Subgoal policy 
 		self.curvature = vehicle_curvature
-		self.use_dubins_filter = True
+		self.use_dubins_filter = use_dubins_filter
 		self.subgoal_net = LaplacePolicy(state_dim).to(device)
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
@@ -214,9 +215,10 @@ class RIS(object):
 			filtred_dubins_dinstance = 0
 			for idx, subgoals_for_estimation in enumerate(subgoals):
 				subgoals_distances_for_estimation = []
-				for idx_, subgoal in enumerate(subgoals_for_estimation):
-					dubins_subgoal_distance = self.dubins_distance(state[idx], subgoal, goal[idx])
-					subgoals_distances_for_estimation.append((idx_, dubins_subgoal_distance))		
+				#for idx_, subgoal in enumerate(subgoals_for_estimation):
+				#	dubins_subgoal_distance = self.dubins_distance(state[idx], subgoal, goal[idx])
+				#	subgoals_distances_for_estimation.append((idx_, dubins_subgoal_distance))		
+				subgoals_distances_for_estimation = [(idx_, self.dubins_distance(state[idx], subgoal, goal[idx])) for idx_, subgoal in enumerate(subgoals_for_estimation)]
 				subgoals_distances_for_estimation = sorted(subgoals_distances_for_estimation, key=lambda x: x[1])
 				sorted_subgoal_indexes = [x[0] for x in subgoals_distances_for_estimation]
 				test_subgoals = torch.index_select(subgoals_for_estimation, 0, torch.tensor(sorted_subgoal_indexes).to(self.device))
