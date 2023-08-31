@@ -141,8 +141,11 @@ class RIS(object):
 			if self.use_encoder:
 				torch.save(self.encoder_optimizer.state_dict(), folder + "encoder_opti")
 
-	def load(self, folder, best=True):
-		run_name = "best_" if best else "last_"
+	def load(self, folder, old_version=False, best=True):
+		if old_version:
+			run_name = ""	
+		else:
+			run_name = "best_" if best else "last_"
 		self.actor.load_state_dict(torch.load(folder+run_name+"actor.pth", map_location=self.device))
 		self.critic.load_state_dict(torch.load(folder+run_name+"critic.pth", map_location=self.device))
 		if self.safety:

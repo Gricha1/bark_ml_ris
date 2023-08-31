@@ -151,7 +151,7 @@ if __name__ == "__main__":
                  add_obs_noise=False)
 
     if load_results:
-        policy.load(folder)
+        policy.load(folder, old_version=True)
         print("weights is loaded")
     else:
         print("WEIGHTS ISN'T LOADED")
@@ -179,7 +179,7 @@ if __name__ == "__main__":
                                  plot_value_function=True, 
                                  render_env=False, 
                                  plot_only_agent_values=False, 
-                                 plot_dubins_curve=True,
+                                 plot_dubins_curve=False,
                                  # medium dataset
                                  #video_validate_tasks = [("map4", 8), ("map4", 13)],
                                  #video_validate_tasks = [("map6", 5), ("map6", 18)],
