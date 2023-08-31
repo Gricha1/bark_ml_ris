@@ -216,9 +216,7 @@ def evalPolicy(policy, env,
                                 lidar_data = decoded_subgoal[0][5:44]
                                 if ind == len(subgoals) // 2:
                                     for angle, d in zip(env.environment.angle_space, lidar_data):
-                                        color_lidar = "green"
-                                        if d < env.environment.MAX_DIST_LIDAR:
-                                            color_lidar = "red"
+                                        color_lidar = "red"
                                         obst_x = x_subgoal + d * np.cos(theta_subgoal + angle)
                                         obst_y = y_subgoal + d * np.sin(theta_subgoal + angle)
                                         ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
@@ -276,6 +274,12 @@ def evalPolicy(policy, env,
                                 x_decoded_state = decoded_state[0][0]
                                 y_decoded_state = decoded_state[0][1]
                                 theta_decoded_state = decoded_state[0][2]
+                                lidar_data = decoded_state[0][5:44]
+                                for angle, d in zip(env.environment.angle_space, lidar_data):
+                                    color_lidar = "green"
+                                    obst_x = x_decoded_state + d * np.cos(theta_decoded_state + angle)
+                                    obst_y = y_decoded_state + d * np.sin(theta_decoded_state + angle)
+                                    ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
                                 ax_states.scatter([x_decoded_state], [y_decoded_state], color="red", s=50)
                                 ax_states.scatter([np.linspace(x_decoded_state, x_decoded_state + car_length*np.cos(theta_decoded_state), 100)], 
                                                 [np.linspace(y_decoded_state, y_decoded_state + car_length*np.sin(theta_decoded_state), 100)], 
@@ -548,7 +552,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
