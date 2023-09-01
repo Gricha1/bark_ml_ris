@@ -3,7 +3,6 @@ from torch import nn
 import numpy as np
 
 """ Actor """
-
 class GaussianPolicy(nn.Module):
 	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
 		super(GaussianPolicy, self).__init__()
@@ -35,10 +34,7 @@ class GaussianPolicy(nn.Module):
 		mean = torch.tanh(normal.mean)
 		return action, log_prob, mean
 
-
-
 """ Critic """
-
 class Critic(nn.Module):
 	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256]):
 		super(Critic, self).__init__()
@@ -66,7 +62,6 @@ class EnsembleCritic(nn.Module):
 		return Q
 
 """ High-level policy """
-
 class LaplacePolicy(nn.Module):	
 	def __init__(self, state_dim, hidden_dims=[256, 256]):	
 		super(LaplacePolicy, self).__init__()	
@@ -103,14 +98,6 @@ def weights_init_encoder(m):
 class Encoder(nn.Module):
 	def __init__(self, input_dim, n_channels=3, state_dim=16, use_decoder=False):
 		super(Encoder, self).__init__()
-		#self.encoder_conv = nn.Sequential(
-		#	nn.Conv2d(n_channels, 32, 3, 2), nn.ReLU(),
-		#	nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
-		#	nn.Conv2d(32, 32, 3, 2), nn.ReLU(),
-		#	nn.Conv2d(32, 32, 3, 1), nn.ReLU()
-		#)
-		#self.fc = nn.Linear(32*7*7, state_dim)
-
 		self.encoder = nn.Sequential(
 			nn.Linear(input_dim, 256), nn.ReLU(),
 			nn.Linear(256, 256), nn.ReLU(),
@@ -126,7 +113,6 @@ class Encoder(nn.Module):
 		self.apply(weights_init_encoder)
 
 	def forward(self, x):
-		#h = self.encoder_conv(x).view(x.size(0), -1)
 		state = self.encoder(x)
 		return state
 
@@ -138,4 +124,18 @@ class Encoder(nn.Module):
 		else:
 			assert 1 == 0, "didnt initialize decoder"
 			return
+""" High-level policy: lidar predictor """
+class LidarPredictor(nn.Module):
+	def __init__(self, subgoal_dim=5, agent_state_dim=176, lidar_data_dim=39):
+		super(LidarPredictor, self).__init__()
+		self.predictor = nn.Sequential(
+			nn.Linear(subgoal_dim + 2*agent_state_dim, 256), nn.ReLU(),
+			nn.Linear(256, 256), nn.ReLU(),
+			nn.Linear(256, lidar_data_dim)
+		)
+		self.apply(weights_init_encoder)
+
+	def forward(self, subgoal, state, goal):
+		x = torch.cat([subgoal, state, goal], -1)
+		return self.predictor(x)
 

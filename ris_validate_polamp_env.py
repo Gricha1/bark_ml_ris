@@ -49,7 +49,7 @@ if __name__ == "__main__":
     parser.add_argument("--safety",             default=False, type=bool)
     parser.add_argument("--use_decoder",        default=True, type=bool)
     parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=20, type=int)
+    parser.add_argument("--state_dim",          default=80, type=int)
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
@@ -151,7 +151,7 @@ if __name__ == "__main__":
                  add_obs_noise=False)
 
     if load_results:
-        policy.load(folder, old_version=True)
+        policy.load(folder, old_version=False)
         print("weights is loaded")
     else:
         print("WEIGHTS ISN'T LOADED")
@@ -192,6 +192,7 @@ if __name__ == "__main__":
                                  value_function_angles=["theta_agent", 0, -np.pi/2],
                                  plot_decoder_agent_states=True,
                                  plot_subgoal_dispertion=True,
+                                 plot_lidar_predictor=True,
                                  eval_strategy=None,
                                  validate_one_task=True)
     wandb_log_dict = {}

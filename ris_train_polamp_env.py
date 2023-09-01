@@ -27,13 +27,16 @@ def evalPolicy(policy, env,
                plot_full_env=True, plot_subgoals=False, plot_value_function=False,
                value_function_angles=["theta_agent", np.pi, 0, np.pi/2, -np.pi/2],
                plot_safe_bound=False, 
+               plot_lidar_predictor=False,
                plot_decoder_agent_states=False,
                plot_subgoal_dispertion=False,
+               plot_agent_lidar_data_encoder=False,
+               plot_subgoal_lidar_data=False,
                plot_dubins_curve=False,
                add_text=False,
                plot_only_agent_values=False, plot_actions=False, render_env=False, 
                video_validate_tasks = [],                
-               data_to_plot={}, show_data_to_plot=True, 
+               data_to_plot={}, dataset_plot=True, 
                eval_strategy=None,
                validate_one_task=False):
     """
@@ -192,7 +195,6 @@ def evalPolicy(policy, env,
                         ax_states.scatter(np.linspace(agentBB[3][0].x, agentBB[3][1].x, 500), 
                                         np.linspace(agentBB[3][0].y, agentBB[3][1].y, 500), 
                                         color="green", s=1)
-                    
                         ax_states.set_ylim(bottom=env_min_y, top=env_max_y)
                         ax_states.set_xlim(left=env_min_x, right=env_max_x)
                         ax_states.scatter([x_agent], [y_agent], color="green", s=50)
@@ -203,20 +205,34 @@ def evalPolicy(policy, env,
                         ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
                                         [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
                                         color="yellow", s=5)
+                        if plot_lidar_predictor:
+                            lidar_data = policy.lidar_predictor(to_torch_state[:, 0:policy.subgoal_dim], to_torch_state, to_torch_goal).cpu().squeeze()
+                            for angle, d in zip(env.environment.angle_space, lidar_data):
+                                color_lidar = "green"
+                                obst_x = x_agent + d.item() * np.cos(theta_agent + angle)
+                                obst_y = y_agent + d.item() * np.sin(theta_agent + angle)
+                                ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=5)
                         if add_text:
                             ax_states.text(x_agent + 0.05, y_agent + 0.05, "agent")
                             ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
-
                         if plot_subgoals:
                             for ind, (subgoal, std) in enumerate(zip(subgoals, stds)):
-                                decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
+                                cuda_decoded_subgoal = policy.encoder.decoder(subgoal)
+                                decoded_subgoal = cuda_decoded_subgoal.cpu()
                                 x_subgoal = decoded_subgoal[0][0].item()
                                 y_subgoal = decoded_subgoal[0][1].item()
                                 theta_subgoal = decoded_subgoal[0][2].item()
                                 lidar_data = decoded_subgoal[0][5:44]
-                                if ind == len(subgoals) // 2:
+                                if plot_lidar_predictor and ind == len(subgoals) // 2:
+                                    lidar_data = policy.lidar_predictor(cuda_decoded_subgoal[:, 0:policy.subgoal_dim], to_torch_state, to_torch_goal).cpu().squeeze()
                                     for angle, d in zip(env.environment.angle_space, lidar_data):
                                         color_lidar = "red"
+                                        obst_x = x_subgoal + d.item() * np.cos(theta_subgoal + angle)
+                                        obst_y = y_subgoal + d.item() * np.sin(theta_subgoal + angle)
+                                        ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
+                                if plot_subgoal_lidar_data and ind == len(subgoals) // 2:
+                                    for angle, d in zip(env.environment.angle_space, lidar_data):
+                                        color_lidar = "orange"
                                         obst_x = x_subgoal + d * np.cos(theta_subgoal + angle)
                                         obst_y = y_subgoal + d * np.sin(theta_subgoal + angle)
                                         ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
@@ -255,7 +271,7 @@ def evalPolicy(policy, env,
                                 ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
                                                 np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
                                                 color="blue", s=1)
-                        if len(data_to_plot) != 0 and show_data_to_plot:
+                        if len(data_to_plot) != 0 and dataset_plot:
                             if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
                                 ax_states.scatter(data_to_plot["dataset_x"], 
                                                 data_to_plot["dataset_y"], 
@@ -275,15 +291,16 @@ def evalPolicy(policy, env,
                                 y_decoded_state = decoded_state[0][1]
                                 theta_decoded_state = decoded_state[0][2]
                                 lidar_data = decoded_state[0][5:44]
-                                for angle, d in zip(env.environment.angle_space, lidar_data):
-                                    color_lidar = "green"
-                                    obst_x = x_decoded_state + d * np.cos(theta_decoded_state + angle)
-                                    obst_y = y_decoded_state + d * np.sin(theta_decoded_state + angle)
-                                    ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
-                                ax_states.scatter([x_decoded_state], [y_decoded_state], color="red", s=50)
-                                ax_states.scatter([np.linspace(x_decoded_state, x_decoded_state + car_length*np.cos(theta_decoded_state), 100)], 
-                                                [np.linspace(y_decoded_state, y_decoded_state + car_length*np.sin(theta_decoded_state), 100)], 
-                                                color="red", s=5)
+                                if plot_agent_lidar_data_encoder:
+                                    for angle, d in zip(env.environment.angle_space, lidar_data):
+                                        color_lidar = "green"
+                                        obst_x = x_decoded_state + d * np.cos(theta_decoded_state + angle)
+                                        obst_y = y_decoded_state + d * np.sin(theta_decoded_state + angle)
+                                        ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
+                                    ax_states.scatter([x_decoded_state], [y_decoded_state], color="red", s=50)
+                                    ax_states.scatter([np.linspace(x_decoded_state, x_decoded_state + car_length*np.cos(theta_decoded_state), 100)], 
+                                                    [np.linspace(y_decoded_state, y_decoded_state + car_length*np.sin(theta_decoded_state), 100)], 
+                                                    color="red", s=5)
 
                         # values plot
                         if plot_value_function:
@@ -321,8 +338,11 @@ def evalPolicy(policy, env,
                                 assert type(grid_states) == type(encoded_state), f"{type(grid_states)} == {type(encoded_state)}"                
                                 numpy_encoded_goal = encoded_goal.cpu().squeeze().numpy()
                                 assert type(goal) == type(numpy_encoded_goal)
-                                grid_goals = torch.FloatTensor([numpy_encoded_goal if policy.use_encoder else goal 
-                                                for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
+                                numpy_grid_goals = np.array([numpy_encoded_goal if policy.use_encoder else goal 
+                                                for _ in range(grid_resolution_x * grid_resolution_y)])
+                                grid_goals = torch.FloatTensor(numpy_grid_goals).to(policy.device)
+                                #grid_goals = torch.FloatTensor([numpy_encoded_goal if policy.use_encoder else goal 
+                                #                for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
                                 if policy.use_encoder:
                                     grid_states = policy.encoder(grid_states)
                                 assert grid_goals.shape == grid_states.shape, \
@@ -576,7 +596,7 @@ if __name__ == "__main__":
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
-    parser.add_argument("--state_dim",               default=20, type=int) # 20
+    parser.add_argument("--state_dim",               default=80, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=False, type=bool)
@@ -712,6 +732,9 @@ if __name__ == "__main__":
 
     if load_results:
         policy.load(folder)
+        print("weights is loaded")
+    else:
+        print("WEIGHTS ISN'T LOADED")
 
     # Initialize environment
     obs = env.reset()
@@ -807,17 +830,21 @@ if __name__ == "__main__":
                                 plot_only_agent_values=False, 
                                 plot_decoder_agent_states=True,
                                 plot_subgoal_dispertion=True,
+                                plot_lidar_predictor=True,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
-                                show_data_to_plot=False)
+                                dataset_plot=False)
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
                     'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,    
 
                      # train logging
+                     'lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
+                     'lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq,    
+                     'v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,    
                      'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
                      'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,

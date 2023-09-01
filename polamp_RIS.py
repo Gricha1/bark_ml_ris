@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder
+from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder, LidarPredictor
 from utils.data_aug import random_translate
 from utils.data_aug import NormalNoise
 from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
@@ -85,6 +85,17 @@ class RIS(object):
 		self.use_dubins_filter = use_dubins_filter
 		self.subgoal_net = LaplacePolicy(state_dim).to(device)
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
+		# Lidar data predictor
+		self.use_lidar_predictor = True
+		if self.use_lidar_predictor:
+			self.subgoal_dim = 5
+			self.agent_state_dim = 176
+			self.lidar_data_dim = 39
+			self.lidar_predictor = LidarPredictor(subgoal_dim=self.subgoal_dim, 
+												  agent_state_dim=self.agent_state_dim, 
+												  lidar_data_dim=self.lidar_data_dim).to(device)
+			self.lidar_predictor_criterion = nn.MSELoss()
+			self.lidar_predictor_optimizer = torch.optim.Adam(self.lidar_predictor.predictor.parameters(), lr=enc_lr)
 
 		# Encoder
 		self.add_obs_noise = add_obs_noise
@@ -134,6 +145,8 @@ class RIS(object):
 		torch.save(self.subgoal_net.state_dict(),   folder + "subgoal_net.pth")
 		if self.use_encoder:
 			torch.save(self.encoder.state_dict(), folder + "encoder.pth")
+		if self.use_lidar_predictor:
+			torch.save(self.lidar_predictor.state_dict(), folder + "lidar.pth")
 		if save_optims:
 			torch.save(self.actor_optimizer.state_dict(), 	folder + "actor_opti.pth")
 			torch.save(self.critic_optimizer.state_dict(), 	folder + "critic_opti.pth")
@@ -153,6 +166,8 @@ class RIS(object):
 		self.subgoal_net.load_state_dict(torch.load(folder+run_name+"subgoal_net.pth", map_location=self.device))
 		if self.use_encoder:
 			self.encoder.load_state_dict(torch.load(folder+run_name+"encoder.pth", map_location=self.device))
+		if self.use_lidar_predictor:
+			self.lidar_predictor.load_state_dict(torch.load(folder+run_name+"lidar.pth", map_location=self.device))
 
 	def select_action(self, state, goal):
 		with torch.no_grad():
@@ -269,6 +284,29 @@ class RIS(object):
 
 		action = torch.tanh(action)
 		return action, D_KL
+	
+	def train_lidar_predictor(self, env_state, env_subgoal, env_goal):
+		subgoal_from_state = env_state[:, 0:self.subgoal_dim]
+		subgoal_from_subgoal = env_subgoal[:, 0:self.subgoal_dim]
+		lidar_data_state = env_state[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
+		lidar_data_subgoal = env_state[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
+		# state
+		y = self.lidar_predictor(subgoal_from_state, env_state, env_goal)
+		lidar_predictor_loss_state = self.lidar_predictor_criterion(lidar_data_state, y)
+		self.lidar_predictor_optimizer.zero_grad()
+		lidar_predictor_loss_state.backward()
+		self.lidar_predictor_optimizer.step()
+		# subgoal
+		y = self.lidar_predictor(subgoal_from_subgoal, env_subgoal, env_goal)
+		lidar_predictor_loss_target_subgoal = self.lidar_predictor_criterion(lidar_data_subgoal, y)
+		self.lidar_predictor_optimizer.zero_grad()
+		lidar_predictor_loss_target_subgoal.backward()
+		self.lidar_predictor_optimizer.step()
+		if self.logger is not None:
+			self.logger.store(
+				lidar_predictor_loss_state = lidar_predictor_loss_state.mean().item(),
+				lidar_predictor_loss_target_subgoal = lidar_predictor_loss_target_subgoal.mean().item(),
+			)
 
 	def train_highlevel_policy(self, state, goal, subgoal):
 		# Compute subgoal distribution 
@@ -315,16 +353,6 @@ class RIS(object):
 						 "y_min": new_subgoal[:, 1].min().item(),
 						 }
 
-		if self.logger is not None:
-			self.logger.store(
-				train_subgoal_x_max = train_subgoal["x_max"],
-				train_subgoal_x_mean = train_subgoal["x_mean"],
-				train_subgoal_x_min = train_subgoal["x_min"],
-				train_subgoal_y_max = train_subgoal["y_max"],
-				train_subgoal_y_mean = train_subgoal["y_mean"],
-				train_subgoal_y_min = train_subgoal["y_min"],
-			)
-
 		# Log variables
 		if self.logger is not None:
 			self.logger.store(
@@ -332,7 +360,14 @@ class RIS(object):
 				ratio_adv = adv.ge(0.0).float().mean().item(),
 				subgoal_loss = subgoal_loss.item(),
 				high_policy_v = policy_v.mean().item(),
-				high_v = v.mean().item()
+				high_v = v.mean().item(),
+				v1_v2_diff = policy_v_1.mean().item() - policy_v_2.mean().item(),
+				train_subgoal_x_max = train_subgoal["x_max"],
+				train_subgoal_x_mean = train_subgoal["x_mean"],
+				train_subgoal_x_min = train_subgoal["x_min"],
+				train_subgoal_y_max = train_subgoal["y_max"],
+				train_subgoal_y_mean = train_subgoal["y_mean"],
+				train_subgoal_y_min = train_subgoal["y_min"],
 			)
 
 	# if self.safety
@@ -373,8 +408,12 @@ class RIS(object):
         		#action = ctrl_noise.perturb_action(action, -max_action, max_action)
 
 			# Stop gradient for subgoal goal and next state
+			if self.use_lidar_predictor:
+				env_state = state.clone().detach().to(self.device)
+				env_subgoal = subgoal.clone().detach().to(self.device)
+				env_goal = goal.clone().detach().to(self.device)
 			if self.use_decoder:
-				environment_state = state.clone().detach()
+				env_state_decoder = state.clone().detach().to(self.device)
 			state = self.encoder(state)
 			with torch.no_grad():
 				goal = self.encoder(goal)
@@ -422,8 +461,8 @@ class RIS(object):
 
 		# Optimize autoencoder
 		if self.use_decoder:
-			y = self.encoder.autoencoder_forward(environment_state)
-			autoencoder_loss = self.autoencoder_criterion(environment_state, y)
+			y = self.encoder.autoencoder_forward(env_state_decoder)
+			autoencoder_loss = self.autoencoder_criterion(env_state_decoder, y)
 			self.autoencoder_optimizer.zero_grad()
 			autoencoder_loss.backward()
 			self.autoencoder_optimizer.step()
@@ -460,6 +499,8 @@ class RIS(object):
 				)
 
 		""" High-level policy learning """
+		if self.use_lidar_predictor:
+			self.train_lidar_predictor(env_state, env_subgoal, env_goal)
 		if self.curriculum_high_policy:
 			if self.stop_train_high_policy:
 				if self.logger is not None:
