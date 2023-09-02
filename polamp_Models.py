@@ -63,15 +63,17 @@ class EnsembleCritic(nn.Module):
 
 """ High-level policy """
 class LaplacePolicy(nn.Module):	
-	def __init__(self, state_dim, hidden_dims=[256, 256]):	
+	def __init__(self, state_dim, goal_dim, hidden_dims=[256, 256]):	
 		super(LaplacePolicy, self).__init__()	
 		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
 		for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
 			fc += [nn.Linear(hidden_dim_in, hidden_dim_out), nn.ReLU()]
 		self.fc = nn.Sequential(*fc)
 
-		self.mean = nn.Linear(hidden_dims[-1], state_dim)	
-		self.log_scale = nn.Linear(hidden_dims[-1], state_dim)	
+		#self.mean = nn.Linear(hidden_dims[-1], state_dim)	
+		#self.log_scale = nn.Linear(hidden_dims[-1], state_dim)	
+		self.mean = nn.Linear(hidden_dims[-1], goal_dim)	
+		self.log_scale = nn.Linear(hidden_dims[-1], goal_dim)	
 		self.LOG_SCALE_MIN = -20	
 		self.LOG_SCALE_MAX = 2	
 
@@ -124,6 +126,7 @@ class Encoder(nn.Module):
 		else:
 			assert 1 == 0, "didnt initialize decoder"
 			return
+
 """ High-level policy: lidar predictor """
 class LidarPredictor(nn.Module):
 	def __init__(self, subgoal_dim=5, agent_state_dim=176, lidar_data_dim=39):

@@ -45,7 +45,8 @@ def evalPolicy(policy, env,
     """
     assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     assert type(video_validate_tasks) == type(list())
-    assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or not plot_subgoals
+    assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or (plot_subgoals and not policy.use_encoder)
+    assert (plot_decoder_agent_states and policy.use_decoder) or not plot_decoder_agent_states
     print()
 
     plot_obstacles = env.static_env
@@ -150,15 +151,14 @@ def evalPolicy(policy, env,
                         else:
                             encoded_state = to_torch_state
                             encoded_goal = to_torch_goal
-                        subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
-                        subgoal = subgoal_distribution.loc
-                        log_std = subgoal_distribution.scale
                         if plot_subgoals:
                             def generate_subgoals(encoded_state, encoded_goal, subgoals, stds, K=2, add_to_end=True):
                                 if K == 0:
                                     return
                                 subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
                                 subgoal = subgoal_distribution.loc
+                                if policy.use_lidar_predictor:
+                                    subgoal = policy.add_lidar_data_to_subgoals(subgoal, encoded_state, encoded_goal)
                                 std = subgoal_distribution.scale
                                 if add_to_end:
                                     subgoals.append(subgoal)
@@ -217,8 +217,12 @@ def evalPolicy(policy, env,
                             ax_states.text(x_goal + 0.05, y_goal + 0.05, "goal")
                         if plot_subgoals:
                             for ind, (subgoal, std) in enumerate(zip(subgoals, stds)):
-                                cuda_decoded_subgoal = policy.encoder.decoder(subgoal)
-                                decoded_subgoal = cuda_decoded_subgoal.cpu()
+                                if policy.use_encoder:
+                                    cuda_decoded_subgoal = policy.encoder.decoder(subgoal)
+                                    decoded_subgoal = cuda_decoded_subgoal.cpu()
+                                else:
+                                    cuda_decoded_subgoal = subgoal
+                                    decoded_subgoal = subgoal.cpu()
                                 x_subgoal = decoded_subgoal[0][0].item()
                                 y_subgoal = decoded_subgoal[0][1].item()
                                 theta_subgoal = decoded_subgoal[0][2].item()
@@ -285,22 +289,21 @@ def evalPolicy(policy, env,
                         ax_states.text(env_max_x - 4.5, env_max_y - 2, f"t:{t}")
 
                         if plot_decoder_agent_states:
-                            with torch.no_grad():
-                                decoded_state = policy.encoder.decoder(encoded_state).cpu()
-                                x_decoded_state = decoded_state[0][0]
-                                y_decoded_state = decoded_state[0][1]
-                                theta_decoded_state = decoded_state[0][2]
-                                lidar_data = decoded_state[0][5:44]
-                                if plot_agent_lidar_data_encoder:
-                                    for angle, d in zip(env.environment.angle_space, lidar_data):
-                                        color_lidar = "green"
-                                        obst_x = x_decoded_state + d * np.cos(theta_decoded_state + angle)
-                                        obst_y = y_decoded_state + d * np.sin(theta_decoded_state + angle)
-                                        ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
-                                    ax_states.scatter([x_decoded_state], [y_decoded_state], color="red", s=50)
-                                    ax_states.scatter([np.linspace(x_decoded_state, x_decoded_state + car_length*np.cos(theta_decoded_state), 100)], 
-                                                    [np.linspace(y_decoded_state, y_decoded_state + car_length*np.sin(theta_decoded_state), 100)], 
-                                                    color="red", s=5)
+                            decoded_state = policy.encoder.decoder(encoded_state).cpu()
+                            x_decoded_state = decoded_state[0][0]
+                            y_decoded_state = decoded_state[0][1]
+                            theta_decoded_state = decoded_state[0][2]
+                            lidar_data = decoded_state[0][5:44]
+                            if plot_agent_lidar_data_encoder:
+                                for angle, d in zip(env.environment.angle_space, lidar_data):
+                                    color_lidar = "green"
+                                    obst_x = x_decoded_state + d * np.cos(theta_decoded_state + angle)
+                                    obst_y = y_decoded_state + d * np.sin(theta_decoded_state + angle)
+                                    ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
+                                ax_states.scatter([x_decoded_state], [y_decoded_state], color="red", s=50)
+                                ax_states.scatter([np.linspace(x_decoded_state, x_decoded_state + car_length*np.cos(theta_decoded_state), 100)], 
+                                                [np.linspace(y_decoded_state, y_decoded_state + car_length*np.sin(theta_decoded_state), 100)], 
+                                                color="red", s=5)
 
                         # values plot
                         if plot_value_function:
@@ -364,7 +367,12 @@ def evalPolicy(policy, env,
                                                 color="black", s=5)
                                 if plot_subgoals:
                                     for ind, (subgoal, std) in enumerate(zip(subgoals, stds)):
-                                        decoded_subgoal = policy.encoder.decoder(subgoal).cpu()
+                                        if policy.use_encoder:
+                                            cuda_decoded_subgoal = policy.encoder.decoder(subgoal)
+                                            decoded_subgoal = cuda_decoded_subgoal.cpu()
+                                        else:
+                                            cuda_decoded_subgoal = subgoal
+                                            decoded_subgoal = subgoal.cpu()
                                         x_subgoal = decoded_subgoal[0][0]
                                         y_subgoal = decoded_subgoal[0][1]
                                         theta_subgoal = decoded_subgoal[0][2]
@@ -572,7 +580,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -594,8 +602,8 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # encoder
-    parser.add_argument("--use_decoder",             default=True, type=bool)
-    parser.add_argument("--use_encoder",             default=True, type=bool)
+    parser.add_argument("--use_decoder",             default=False, type=bool)
+    parser.add_argument("--use_encoder",             default=False, type=bool)
     parser.add_argument("--state_dim",               default=80, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
@@ -828,7 +836,7 @@ if __name__ == "__main__":
                                 plot_value_function=True,
                                 render_env=True,
                                 plot_only_agent_values=False, 
-                                plot_decoder_agent_states=True,
+                                plot_decoder_agent_states=False,
                                 plot_subgoal_dispertion=True,
                                 plot_lidar_predictor=True,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
@@ -842,6 +850,8 @@ if __name__ == "__main__":
                     'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,    
 
                      # train logging
+                     'autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,    
+                     'lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq,    
                      'lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
                      'lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq,    
                      'v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,    

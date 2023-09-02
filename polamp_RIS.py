@@ -80,15 +80,11 @@ class RIS(object):
 			self.lambda_coefficient = torch.tensor(1.0, requires_grad=True)
 			self.lambda_optimizer = torch.optim.Adam([self.lambda_coefficient], lr=5e-4)
 			
-		# Subgoal policy 
-		self.curvature = vehicle_curvature
-		self.use_dubins_filter = use_dubins_filter
-		self.subgoal_net = LaplacePolicy(state_dim).to(device)
-		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 		# Lidar data predictor
 		self.use_lidar_predictor = True
 		if self.use_lidar_predictor:
 			self.subgoal_dim = 5
+			self.frame_stack = 4
 			self.agent_state_dim = 176
 			self.lidar_data_dim = 39
 			self.lidar_predictor = LidarPredictor(subgoal_dim=self.subgoal_dim, 
@@ -96,6 +92,12 @@ class RIS(object):
 												  lidar_data_dim=self.lidar_data_dim).to(device)
 			self.lidar_predictor_criterion = nn.MSELoss()
 			self.lidar_predictor_optimizer = torch.optim.Adam(self.lidar_predictor.predictor.parameters(), lr=enc_lr)
+		# Subgoal policy 
+		self.curvature = vehicle_curvature
+		self.use_dubins_filter = use_dubins_filter
+		self.subgoal_net = LaplacePolicy(state_dim=state_dim, 
+										 goal_dim=self.subgoal_dim*self.frame_stack if self.use_lidar_predictor else state_dim).to(device)
+		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
 		# Encoder
 		self.add_obs_noise = add_obs_noise
@@ -254,6 +256,15 @@ class RIS(object):
 		subgoal_distribution = self.subgoal_net(state, goal)
 		subgoal = subgoal_distribution.rsample((self.n_ensemble,))
 		subgoal = torch.transpose(subgoal, 0, 1)
+		if self.use_lidar_predictor:
+			batch_size = state.shape[0]
+			n_subgoals = subgoal.shape[1]
+			subgoal = subgoal.view(batch_size, n_subgoals, self.frame_stack, self.subgoal_dim) # 2048x10x4x5
+			new_subgoal_lidar_data = self.lidar_predictor(subgoal, 
+						state.unsqueeze(1).unsqueeze(2).expand(batch_size, n_subgoals, self.frame_stack, self.agent_state_dim), 
+						goal.unsqueeze(1).unsqueeze(2).expand(batch_size, n_subgoals, self.frame_stack, self.agent_state_dim)
+			)
+			subgoal = torch.cat([subgoal, new_subgoal_lidar_data], -1).reshape(batch_size, n_subgoals, self.agent_state_dim)
 		return subgoal
 
 	def sample_action_and_log_prob(self, state, goal):
@@ -288,10 +299,10 @@ class RIS(object):
 	def train_lidar_predictor(self, env_state, env_subgoal, env_goal):
 		subgoal_from_state = env_state[:, 0:self.subgoal_dim]
 		subgoal_from_subgoal = env_subgoal[:, 0:self.subgoal_dim]
-		#subgoal_from_goal = env_goal[:, 0:self.subgoal_dim]
+		subgoal_from_goal = env_goal[:, 0:self.subgoal_dim]
 		lidar_data_state = env_state[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
 		lidar_data_subgoal = env_subgoal[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
-		#lidar_data_goal = env_goal[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
+		lidar_data_goal = env_goal[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
 		# state
 		y = self.lidar_predictor(subgoal_from_state, env_state, env_goal)
 		lidar_predictor_loss_state = self.lidar_predictor_criterion(lidar_data_state, y)
@@ -305,25 +316,49 @@ class RIS(object):
 		lidar_predictor_loss_target_subgoal.backward()
 		self.lidar_predictor_optimizer.step()
 		# goal
-		#y = self.lidar_predictor(subgoal_from_goal, env_state, env_goal)
-		#lidar_predictor_loss_goal = self.lidar_predictor_criterion(lidar_data_goal, y)
-		#self.lidar_predictor_optimizer.zero_grad()
-		#lidar_predictor_loss_goal.backward()
-		#self.lidar_predictor_optimizer.step()
+		y = self.lidar_predictor(subgoal_from_goal, env_state, env_goal)
+		lidar_predictor_loss_goal = self.lidar_predictor_criterion(lidar_data_goal, y)
+		self.lidar_predictor_optimizer.zero_grad()
+		lidar_predictor_loss_goal.backward()
+		self.lidar_predictor_optimizer.step()
 		if self.logger is not None:
 			self.logger.store(
 				lidar_predictor_loss_state = lidar_predictor_loss_state.mean().item(),
 				lidar_predictor_loss_target_subgoal = lidar_predictor_loss_target_subgoal.mean().item(),
-				#lidar_predictor_loss_goal = lidar_predictor_loss_goal.mean().item(),
+				lidar_predictor_loss_goal = lidar_predictor_loss_goal.mean().item(),
 			)
+	
+	def add_lidar_data_to_subgoals(self, new_subgoal, state, goal):
+		batch_size = state.shape[0] # 2048
+		new_subgoal = new_subgoal.view(batch_size, self.frame_stack, self.subgoal_dim) # 2048 x 4 x 5
+		new_subgoal_lidar_data = self.lidar_predictor(new_subgoal, 
+				state.unsqueeze(1).expand(batch_size, self.frame_stack, self.agent_state_dim), 
+				goal.unsqueeze(1).expand(batch_size, self.frame_stack, self.agent_state_dim)
+		)
+		new_subgoal = torch.cat([new_subgoal, new_subgoal_lidar_data], -1)
+		new_subgoal = new_subgoal.view(batch_size, self.agent_state_dim) # 2048 x 176
+
+		return new_subgoal
 
 	def train_highlevel_policy(self, state, goal, subgoal):
 		# Compute subgoal distribution 
-		subgoal_distribution = self.subgoal_net(state, goal)
-
+		batch_size = state.shape[0] # 2048
+		subgoal_distribution = self.subgoal_net(state, goal) # 2048 x 20
 		with torch.no_grad():
 			# Compute target value
 			new_subgoal = subgoal_distribution.loc
+			if self.use_lidar_predictor:
+				new_subgoal = self.add_lidar_data_to_subgoals(new_subgoal, state, goal)
+				# transform subgoal prediction
+				#new_subgoal = new_subgoal.view(batch_size, self.frame_stack, self.subgoal_dim) # 2048 x 4 x 5
+				#new_subgoal_lidar_data = self.lidar_predictor(new_subgoal, 
+				#		state.unsqueeze(1).expand(batch_size, self.frame_stack, self.agent_state_dim), 
+				#		goal.unsqueeze(1).expand(batch_size, self.frame_stack, self.agent_state_dim)
+				#)
+				#new_subgoal = torch.cat([new_subgoal, new_subgoal_lidar_data], -1)
+				#new_subgoal = new_subgoal.view(batch_size, self.agent_state_dim) # 2048 x 176
+
+
 			policy_v_1 = self.value(state, new_subgoal)
 			policy_v_2 = self.value(new_subgoal, goal)
 			policy_v = torch.cat([policy_v_1, policy_v_2], -1).clamp(min=self.clip_v_function, max=0.0).abs().max(-1)[0]
@@ -344,6 +379,12 @@ class RIS(object):
 				v += safety_v
 			adv = - (v - policy_v)
 			weight = F.softmax(adv/self.Lambda, dim=0)
+		
+		if self.use_lidar_predictor:
+			# transform target subgoal
+			subgoal = subgoal.view(batch_size, self.frame_stack, -1)
+			subgoal = subgoal[:, :, 0:self.subgoal_dim]
+			subgoal = subgoal.reshape(batch_size, -1)
 
 		log_prob = subgoal_distribution.log_prob(subgoal).sum(-1)
 		subgoal_loss = - (log_prob * weight).mean()
@@ -403,9 +444,12 @@ class RIS(object):
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
 		assert cost.min().item() >= 0, f"batch cost:{cost.min().item()}, cant be negative"
 		assert done.min().item() >= 0, f"done{done.min().item()}"
-		""" Encode images (if vision-based environment), use data augmentation """
-		if self.use_encoder:
-			if self.add_obs_noise:
+
+		if self.use_lidar_predictor:
+			env_state = state.clone().detach().to(self.device)
+			env_subgoal = subgoal.clone().detach().to(self.device)
+			env_goal = goal.clone().detach().to(self.device)
+		if self.add_obs_noise:
 				assert 1 == 0, "didnt implement"
 				state = obs_noise_x.perturb_action(state, min_action=-np.inf, max_action=np.inf)
 				obs_noise_y = NormalNoise(sigma=1)
@@ -415,12 +459,9 @@ class RIS(object):
 				#ctrl_noise = utils.NormalNoise(sigma=args.ctrl_noise_sigma)
 				#action = controller_policy.select_action(state, subgoal)
         		#action = ctrl_noise.perturb_action(action, -max_action, max_action)
-
+		""" Encode images (if vision-based environment), use data augmentation """
+		if self.use_encoder:
 			# Stop gradient for subgoal goal and next state
-			if self.use_lidar_predictor:
-				env_state = state.clone().detach().to(self.device)
-				env_subgoal = subgoal.clone().detach().to(self.device)
-				env_goal = goal.clone().detach().to(self.device)
 			if self.use_decoder:
 				env_state_decoder = state.clone().detach().to(self.device)
 			state = self.encoder(state)
@@ -479,7 +520,8 @@ class RIS(object):
 		if self.logger is not None:
 			self.logger.store(
 				critic_value   = Q.mean().item(),
-				target_value  = target_Q.mean().item()
+				target_value  = target_Q.mean().item(),
+				autoencoder_loss = autoencoder_loss.item() if self.use_decoder else 0,
 			)
 
 		# Stop backpropagation to encoder
