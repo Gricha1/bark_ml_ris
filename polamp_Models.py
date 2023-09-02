@@ -129,8 +129,9 @@ class Encoder(nn.Module):
 
 """ High-level policy: lidar predictor """
 class LidarPredictor(nn.Module):
-	def __init__(self, subgoal_dim=5, agent_state_dim=176, lidar_data_dim=39):
+	def __init__(self, subgoal_dim=5, agent_state_dim=176, lidar_data_dim=39, lidar_max_dist=None):
 		super(LidarPredictor, self).__init__()
+		self.lidar_max_dist = lidar_max_dist
 		self.predictor = nn.Sequential(
 			nn.Linear(subgoal_dim + 2*agent_state_dim, 256), nn.ReLU(),
 			nn.Linear(256, 256), nn.ReLU(),
@@ -140,5 +141,5 @@ class LidarPredictor(nn.Module):
 
 	def forward(self, subgoal, state, goal):
 		x = torch.cat([subgoal, state, goal], -1)
-		return self.predictor(x)
+		return torch.clamp(self.predictor(x), min=0, max=self.lidar_max_dist)
 

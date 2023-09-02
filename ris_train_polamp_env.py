@@ -693,7 +693,7 @@ if __name__ == "__main__":
     
     # Initialize policy
     env_state_bounds = {"x": 100, "y": 100, 
-                        "theta": (-3.14, 3.14),
+                        "theta": (-np.pi, np.pi),
                         "v": (env.environment.agent.dynamic_model.min_vel, 
                               env.environment.agent.dynamic_model.max_vel), 
                         "steer": (-env.environment.agent.dynamic_model.max_steer, 
@@ -715,11 +715,12 @@ if __name__ == "__main__":
                  n_ensemble=args.n_ensemble,
                  clip_v_function=args.clip_v_function,
                  device=args.device, logger=logger if args.log_loss else None, 
-                 env_state_bounds=env_state_bounds,
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
                  curriculum_high_policy=args.curriculum_high_policy,
-                 vehicle_curvature=curvature
+                 vehicle_curvature=curvature,
+                 env_state_bounds=env_state_bounds,
+                 lidar_max_dist=env.environment.MAX_DIST_LIDAR,
     )
 
     # Initialize replay buffer and path_builder
@@ -850,6 +851,18 @@ if __name__ == "__main__":
                     'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,    
 
                      # train logging
+                     'predicted_lidar_data_min': sum(logger.data["predicted_lidar_data_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_lidar_data_max': sum(logger.data["predicted_lidar_data_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_x_min': sum(logger.data["predicted_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_x_max': sum(logger.data["predicted_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_y_min': sum(logger.data["predicted_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_y_max': sum(logger.data["predicted_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_theta_min': sum(logger.data["predicted_subgoal_theta_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_theta_max': sum(logger.data["predicted_subgoal_theta_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_v_min': sum(logger.data["predicted_subgoal_v_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_v_max': sum(logger.data["predicted_subgoal_v_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_steer_min': sum(logger.data["predicted_subgoal_steer_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted_subgoal_steer_max': sum(logger.data["predicted_subgoal_steer_max"][-args.eval_freq:]) / args.eval_freq,    
                      'autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,    
                      'lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq,    
                      'lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
