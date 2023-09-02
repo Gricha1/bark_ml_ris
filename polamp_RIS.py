@@ -288,8 +288,10 @@ class RIS(object):
 	def train_lidar_predictor(self, env_state, env_subgoal, env_goal):
 		subgoal_from_state = env_state[:, 0:self.subgoal_dim]
 		subgoal_from_subgoal = env_subgoal[:, 0:self.subgoal_dim]
+		#subgoal_from_goal = env_goal[:, 0:self.subgoal_dim]
 		lidar_data_state = env_state[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
-		lidar_data_subgoal = env_state[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
+		lidar_data_subgoal = env_subgoal[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
+		#lidar_data_goal = env_goal[:, self.subgoal_dim:self.subgoal_dim+self.lidar_data_dim]
 		# state
 		y = self.lidar_predictor(subgoal_from_state, env_state, env_goal)
 		lidar_predictor_loss_state = self.lidar_predictor_criterion(lidar_data_state, y)
@@ -302,10 +304,17 @@ class RIS(object):
 		self.lidar_predictor_optimizer.zero_grad()
 		lidar_predictor_loss_target_subgoal.backward()
 		self.lidar_predictor_optimizer.step()
+		# goal
+		#y = self.lidar_predictor(subgoal_from_goal, env_state, env_goal)
+		#lidar_predictor_loss_goal = self.lidar_predictor_criterion(lidar_data_goal, y)
+		#self.lidar_predictor_optimizer.zero_grad()
+		#lidar_predictor_loss_goal.backward()
+		#self.lidar_predictor_optimizer.step()
 		if self.logger is not None:
 			self.logger.store(
 				lidar_predictor_loss_state = lidar_predictor_loss_state.mean().item(),
 				lidar_predictor_loss_target_subgoal = lidar_predictor_loss_target_subgoal.mean().item(),
+				#lidar_predictor_loss_goal = lidar_predictor_loss_goal.mean().item(),
 			)
 
 	def train_highlevel_policy(self, state, goal, subgoal):
