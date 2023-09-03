@@ -6,7 +6,7 @@ import torch.nn as nn
 from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder, LidarPredictor
 from utils.data_aug import random_translate
 from utils.data_aug import NormalNoise
-from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
+#from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 def normalize_state(new_subgoal, env_state_bounds, validate=False):
 	if not validate:
@@ -38,7 +38,8 @@ class RIS(object):
 				 curriculum_high_policy=False,
 				 vehicle_curvature=0.1,
 				 lidar_max_dist=None,
-				 env_state_bounds={}):		
+				 env_state_bounds={},
+				 train_env=None):		
 
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
@@ -88,7 +89,7 @@ class RIS(object):
 		if self.use_lidar_predictor:
 			self.subgoal_dim = 5
 			self.frame_stack = 4
-			self.agent_state_dim = 176
+			self.agent_state_dim = state_dim # 176
 			self.lidar_data_dim = 39
 			self.lidar_predictor = LidarPredictor(subgoal_dim=self.subgoal_dim, 
 												  agent_state_dim=self.agent_state_dim, 
@@ -407,9 +408,9 @@ class RIS(object):
 		
 		if self.use_lidar_predictor:
 			# transform target subgoal
-			subgoal = subgoal.view(batch_size, self.frame_stack, -1)
-			subgoal = subgoal[:, :, 0:self.subgoal_dim]
-			subgoal = subgoal.reshape(batch_size, -1)
+			subgoal = subgoal.view(batch_size, self.frame_stack, -1) # 2048 x 4 x 44
+			subgoal = subgoal[:, :, 0:self.subgoal_dim] # 2048 x 4 x 5
+			subgoal = subgoal.reshape(batch_size, -1) # 2048 x 20
 
 		log_prob = subgoal_distribution.log_prob(subgoal).sum(-1)
 		subgoal_loss = - (log_prob * weight).mean()

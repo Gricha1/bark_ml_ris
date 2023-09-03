@@ -20,7 +20,7 @@ from polamp_RIS import normalize_state
 from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 from polamp_env.lib.structures import State
-from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
+#from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 
 def evalPolicy(policy, env, 
@@ -344,8 +344,6 @@ def evalPolicy(policy, env,
                                 numpy_grid_goals = np.array([numpy_encoded_goal if policy.use_encoder else goal 
                                                 for _ in range(grid_resolution_x * grid_resolution_y)])
                                 grid_goals = torch.FloatTensor(numpy_grid_goals).to(policy.device)
-                                #grid_goals = torch.FloatTensor([numpy_encoded_goal if policy.use_encoder else goal 
-                                #                for _ in range(grid_resolution_x * grid_resolution_y)]).to(policy.device)
                                 if policy.use_encoder:
                                     grid_states = policy.encoder(grid_states)
                                 assert grid_goals.shape == grid_states.shape, \
@@ -573,7 +571,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
-    parser.add_argument("--uniform_feasible_train_dataset", default=False)
+    parser.add_argument("--uniform_feasible_train_dataset", default=True)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
     # ris
@@ -721,6 +719,7 @@ if __name__ == "__main__":
                  vehicle_curvature=curvature,
                  env_state_bounds=env_state_bounds,
                  lidar_max_dist=env.environment.MAX_DIST_LIDAR,
+                 train_env=env,
     )
 
     # Initialize replay buffer and path_builder
