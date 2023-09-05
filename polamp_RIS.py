@@ -510,7 +510,7 @@ class RIS(object):
 		with torch.no_grad():
 			next_action, log_prob, _ = self.actor.sample(next_state, goal)
 			target_Q = self.critic_target(next_state, next_action, goal)
-			if self.sac_use_v_entropy:
+			if self.sac_use_v_entropy or self.train_sac:
 				target_Q = torch.min(target_Q, -1, keepdim=True)[0] - self.sac_alpha * log_prob
 			else:
 				target_Q = torch.min(target_Q, -1, keepdim=True)[0]
@@ -524,7 +524,7 @@ class RIS(object):
 				target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
 		if self.logger is not None:
 			self.logger.store(
-				log_entropy_critic = log_prob.mean().item() if self.sac_use_v_entropy else 0,
+				log_entropy_critic = log_prob.mean().item() if self.sac_use_v_entropy or self.train_sac else 0,
 		)
 
 		# Compute critic loss

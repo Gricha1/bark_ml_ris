@@ -573,12 +573,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=True)
     parser.add_argument("--random_train_dataset",           default=False)
-    parser.add_argument("--train_sac",            default=False, type=bool)
+    parser.add_argument("--train_sac",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -838,7 +838,7 @@ if __name__ == "__main__":
                                 plot_only_agent_values=False, 
                                 plot_decoder_agent_states=False,
                                 plot_subgoal_dispertion=True,
-                                plot_lidar_predictor=True,
+                                plot_lidar_predictor=False,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
