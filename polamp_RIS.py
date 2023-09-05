@@ -233,16 +233,13 @@ class RIS(object):
 		
 		with torch.no_grad():
 			# decode subgoals
-			subgoals = self.encoder.decoder(subgoals)
+			subgoals = self.encoder.decoder(subgoals) # 2048 x 10 x 176
 
 			filtred_subgoals = torch.ones(subgoals.shape[0], num_subgoals, subgoals.shape[2]).to(self.device)
 			init_dubins_distance = 0
 			filtred_dubins_dinstance = 0
 			for idx, subgoals_for_estimation in enumerate(subgoals):
 				subgoals_distances_for_estimation = []
-				#for idx_, subgoal in enumerate(subgoals_for_estimation):
-				#	dubins_subgoal_distance = self.dubins_distance(state[idx], subgoal, goal[idx])
-				#	subgoals_distances_for_estimation.append((idx_, dubins_subgoal_distance))		
 				subgoals_distances_for_estimation = [(idx_, self.dubins_distance(state[idx], subgoal, goal[idx])) for idx_, subgoal in enumerate(subgoals_for_estimation)]
 				subgoals_distances_for_estimation = sorted(subgoals_distances_for_estimation, key=lambda x: x[1])
 				sorted_subgoal_indexes = [x[0] for x in subgoals_distances_for_estimation]

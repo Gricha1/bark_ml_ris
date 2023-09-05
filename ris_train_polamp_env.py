@@ -833,7 +833,7 @@ if __name__ == "__main__":
                     = evalPolicy(policy, test_env, 
                                 plot_full_env=True,
                                 plot_subgoals=True,
-                                plot_value_function=True,
+                                plot_value_function=False,
                                 render_env=True,
                                 plot_only_agent_values=False, 
                                 plot_decoder_agent_states=False,
@@ -934,7 +934,7 @@ if __name__ == "__main__":
                      # SAC
                      'log_entropy_sac': sum(logger.data["log_entropy_sac"][-args.eval_freq:]) / args.eval_freq,
                      'log_entropy_critic': sum(logger.data["log_entropy_critic"][-args.eval_freq:]) / args.eval_freq,
-                    }
+                    } if args.using_wandb else {}
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
                     for key in dict_:
@@ -944,6 +944,7 @@ if __name__ == "__main__":
                     wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
                         wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
                 run.log(wandb_log_dict)
+                del wandb_log_dict
      
             # stop train high policy
             if args.curriculum_high_policy:
