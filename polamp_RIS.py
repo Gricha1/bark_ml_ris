@@ -86,7 +86,9 @@ class RIS(object):
 		# Lidar data predictor
 		self.env_state_bounds = env_state_bounds
 		self.use_lidar_predictor = True
-		assert not self.use_lidar_predictor or (self.use_lidar_predictor and not self.use_encoder)
+		if train_sac:
+			self.use_lidar_predictor = False
+		assert not self.use_lidar_predictor or (self.use_lidar_predictor and not use_encoder)
 		if self.use_lidar_predictor:
 			self.without_state_goal = True
 			self.subgoal_dim = 5
@@ -101,9 +103,12 @@ class RIS(object):
 			self.lidar_predictor_criterion = nn.MSELoss()
 			self.lidar_predictor_optimizer = torch.optim.Adam(self.lidar_predictor.predictor.parameters(), lr=enc_lr)
 		# Subgoal policy 
-		self.high_level_without_frame = True
-		self.curvature = vehicle_curvature
+		self.high_level_without_frame = False
 		self.use_dubins_filter = use_dubins_filter
+		self.curvature = vehicle_curvature
+		if train_sac:
+			self.high_level_without_frame = False
+			self.use_dubins_filter = False
 		if self.high_level_without_frame:
 				self.subgoal_net = LaplacePolicy(state_dim=state_dim, 
 											goal_dim=self.subgoal_dim if self.use_lidar_predictor else state_dim).to(device)
@@ -601,27 +606,7 @@ class RIS(object):
 		""" High-level policy learning """
 		if self.use_lidar_predictor:
 			self.train_lidar_predictor(env_state, env_subgoal, env_goal)
-		if self.curriculum_high_policy:
-			if self.stop_train_high_policy:
-				if self.logger is not None:
-					self.logger.store(
-						train_subgoal_x_max = 0,
-						train_subgoal_x_mean = 0,
-						train_subgoal_x_min = 0,
-						train_subgoal_y_max = 0,
-						train_subgoal_y_mean = 0,
-						train_subgoal_y_min = 0,
-					)
-					if self.logger is not None:
-						self.logger.data["adv"] = [0]
-						self.logger.data["ratio_adv"] = [0]
-						self.logger.data["subgoal_loss"] = [0]
-						self.logger.data["high_policy_v"] = [0]
-						self.logger.data["high_v"] = [0]
-			else:
-				self.train_highlevel_policy(state, goal, subgoal)
-		else:
-			self.train_highlevel_policy(state, goal, subgoal)
+		self.train_highlevel_policy(state, goal, subgoal)
 
 		""" Actor """
 		# Sample action

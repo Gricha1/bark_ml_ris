@@ -47,6 +47,7 @@ def evalPolicy(policy, env,
     assert type(video_validate_tasks) == type(list())
     assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or (plot_subgoals and not policy.use_encoder)
     assert (plot_decoder_agent_states and policy.use_decoder) or not plot_decoder_agent_states
+    assert not plot_lidar_predictor or (plot_lidar_predictor and policy.use_lidar_predictor)
     print()
 
     plot_obstacles = env.static_env
@@ -589,12 +590,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
-    parser.add_argument("--train_sac",            default=False, type=bool)
+    parser.add_argument("--train_sac",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -616,8 +617,8 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # encoder
-    parser.add_argument("--use_decoder",             default=False, type=bool)
-    parser.add_argument("--use_encoder",             default=False, type=bool)
+    parser.add_argument("--use_decoder",             default=True, type=bool)
+    parser.add_argument("--use_encoder",             default=True, type=bool)
     parser.add_argument("--state_dim",               default=80, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
@@ -850,14 +851,15 @@ if __name__ == "__main__":
                                 plot_full_env=True,
                                 plot_subgoals=True,
                                 plot_value_function=False,
-                                render_env=True,
+                                render_env=False,
                                 plot_only_agent_values=False, 
                                 plot_decoder_agent_states=False,
                                 plot_subgoal_dispertion=True,
-                                plot_lidar_predictor=True,
+                                plot_lidar_predictor=False,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
-                                video_validate_tasks = [("map0", 10)],
+                                #video_validate_tasks = [("map0", 10)],
+                                video_validate_tasks = [("map0", 10), ("map0", 5)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=False)
 
@@ -879,9 +881,9 @@ if __name__ == "__main__":
                      'predicted_subgoal_steer_min': sum(logger.data["predicted_subgoal_steer_min"][-args.eval_freq:]) / args.eval_freq,    
                      'predicted_subgoal_steer_max': sum(logger.data["predicted_subgoal_steer_max"][-args.eval_freq:]) / args.eval_freq,    
                      'autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,    
-                     'lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq,    
-                     'lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
-                     'lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq,    
+                     'lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
+                     'lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
+                     'lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
                      'v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,    
                      'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
                      'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
