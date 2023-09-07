@@ -21,35 +21,51 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    
+    parser.add_argument("--train_dataset",        default=True)
+    # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset") # hard_dataset, medium_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
+    parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
+    parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
-    parser.add_argument("--random_train_dataset", default=False)
-    parser.add_argument("--train_dataset",        default=False)
+    parser.add_argument("--random_train_dataset",           default=False)
+    parser.add_argument("--train_sac",            default=False, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=1, type=int)
+    parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(2e3), type=int)
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
-    parser.add_argument("--replay_buffer_size", default=1e6, type=int)
+    parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
-    parser.add_argument("--seed",               default=42, type=int)
+    parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float)
+    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
+    parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
-    parser.add_argument("--pi_lr",              default=1e-3, type=float)
+    parser.add_argument("--pi_lr",              default=1e-4, type=float)
+    parser.add_argument("--clip_v_function",    default=-368, type=float) # -368
+    parser.add_argument("--add_obs_noise",           default=False, type=bool)
+    parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
+    parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
+    parser.add_argument("--curriculum_alpha",        default=False, type=bool)
+    parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    # encoder
+    parser.add_argument("--use_decoder",             default=False, type=bool)
+    parser.add_argument("--use_encoder",             default=False, type=bool)
+    parser.add_argument("--state_dim",               default=80, type=int) # 20
     # safety
-    parser.add_argument("--safety",             default=False, type=bool)
-    parser.add_argument("--use_decoder",        default=True, type=bool)
-    parser.add_argument("--use_encoder",        default=True, type=bool)
-    parser.add_argument("--state_dim",          default=80, type=int)
+    parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
+    parser.add_argument("--safety",                    default=False, type=bool)
+    parser.add_argument("--cost_limit",                default=0.5, type=float)
+    parser.add_argument("--update_lambda",             default=1000, type=int)
+    # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss',           dest='log_loss', action='store_true')
@@ -135,20 +151,37 @@ if __name__ == "__main__":
         run = wandb.init(project=args.wandb_project)
     
     # Initialize policy
-    env_state_bounds = {"x": 100, "y": 100, "theta": 3.14,
-                        "v": 2.778, "steer": 0.7854}
+    env_state_bounds = {"x": 100, "y": 100, 
+                        "theta": (-np.pi, np.pi),
+                        "v": (env.environment.agent.dynamic_model.min_vel, 
+                              env.environment.agent.dynamic_model.max_vel), 
+                        "steer": (-env.environment.agent.dynamic_model.max_steer, 
+                                 env.environment.agent.dynamic_model.max_steer)}
+    R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
+    curvature = 1 / R
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
                  use_decoder=args.use_decoder,
                  use_encoder=args.use_encoder,
                  safety=args.safety,
                  n_critic=args.n_critic,
+                 train_sac=args.train_sac,
+                 use_dubins_filter=args.use_dubins_filter,
+                 safety_add_to_high_policy=args.safety_add_to_high_policy,
+                 cost_limit=args.cost_limit, update_lambda=args.update_lambda,
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
+                 n_ensemble=args.n_ensemble,
+                 clip_v_function=args.clip_v_function,
                  device=args.device, logger=logger if args.log_loss else None, 
-                 env_state_bounds=env_state_bounds,
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
-                 add_obs_noise=False)
+                 add_obs_noise=args.add_obs_noise,
+                 curriculum_high_policy=args.curriculum_high_policy,
+                 vehicle_curvature=curvature,
+                 env_state_bounds=env_state_bounds,
+                 lidar_max_dist=env.environment.MAX_DIST_LIDAR,
+                 train_env=env,
+    )
 
     if load_results:
         policy.load(folder, old_version=False)
@@ -176,7 +209,7 @@ if __name__ == "__main__":
                     = evalPolicy(policy, test_env, 
                                  plot_full_env=True,
                                  plot_subgoals=True,
-                                 plot_value_function=True, 
+                                 plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=False, 
                                  plot_dubins_curve=False,
@@ -188,12 +221,13 @@ if __name__ == "__main__":
                                  #video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)],
                                  # hard dataset
                                  #video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
-                                 video_validate_tasks = [("map0", 2)],
+                                 #video_validate_tasks = [("map0", 2)],
+                                 video_validate_tasks = [("map0", 14), ("map0", 62), ("map0", 84), ("map0", 95), ("map0", 103), ("map0", 112), ("map0", 128), ("map0", 135)],
                                  value_function_angles=["theta_agent", 0, -np.pi/2],
-                                 plot_decoder_agent_states=True,
+                                 plot_decoder_agent_states=False,
                                  plot_subgoal_dispertion=True,
                                  plot_lidar_predictor=True,
-                                 eval_strategy=None,
+                                 eval_strategy=None, # eval_strategy=action=[a, w], else None
                                  validate_one_task=True)
     wandb_log_dict = {}
     for map_name, task_indx, video in validation_info["videos"]:

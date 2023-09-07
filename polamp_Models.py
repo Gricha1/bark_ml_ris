@@ -129,17 +129,28 @@ class Encoder(nn.Module):
 
 """ High-level policy: lidar predictor """
 class LidarPredictor(nn.Module):
-	def __init__(self, subgoal_dim=5, agent_state_dim=176, lidar_data_dim=39, lidar_max_dist=None):
+	def __init__(self, subgoal_dim=5, agent_state_dim=176, lidar_data_dim=39, lidar_max_dist=None, without_state_goal=False):
 		super(LidarPredictor, self).__init__()
 		self.lidar_max_dist = lidar_max_dist
-		self.predictor = nn.Sequential(
-			nn.Linear(subgoal_dim + 2*agent_state_dim, 256), nn.ReLU(),
-			nn.Linear(256, 256), nn.ReLU(),
-			nn.Linear(256, lidar_data_dim)
-		)
+		self.without_state_goal = without_state_goal
+		if without_state_goal:
+			self.predictor = nn.Sequential(
+				nn.Linear(subgoal_dim, 256), nn.ReLU(),
+				nn.Linear(256, 256), nn.ReLU(),
+				nn.Linear(256, lidar_data_dim)
+			)
+		else:
+			self.predictor = nn.Sequential(
+				nn.Linear(subgoal_dim + 2*agent_state_dim, 256), nn.ReLU(),
+				nn.Linear(256, 256), nn.ReLU(),
+				nn.Linear(256, lidar_data_dim)
+			)
 		self.apply(weights_init_encoder)
 
 	def forward(self, subgoal, state, goal):
-		x = torch.cat([subgoal, state, goal], -1)
+		if self.without_state_goal:
+			x = subgoal
+		else:
+			x = torch.cat([subgoal, state, goal], -1)
 		return torch.clamp(self.predictor(x), min=0, max=self.lidar_max_dist)
 

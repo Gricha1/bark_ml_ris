@@ -86,7 +86,9 @@ class RIS(object):
 		# Lidar data predictor
 		self.env_state_bounds = env_state_bounds
 		self.use_lidar_predictor = True
+		assert not self.use_lidar_predictor or (self.use_lidar_predictor and not self.use_encoder)
 		if self.use_lidar_predictor:
+			self.without_state_goal = True
 			self.subgoal_dim = 5
 			self.frame_stack = 4
 			self.agent_state_dim = state_dim # 176
@@ -94,14 +96,20 @@ class RIS(object):
 			self.lidar_predictor = LidarPredictor(subgoal_dim=self.subgoal_dim, 
 												  agent_state_dim=self.agent_state_dim, 
 												  lidar_data_dim=self.lidar_data_dim, 
-												  lidar_max_dist=lidar_max_dist).to(device)
+												  lidar_max_dist=lidar_max_dist,
+												  without_state_goal=self.without_state_goal).to(device)
 			self.lidar_predictor_criterion = nn.MSELoss()
 			self.lidar_predictor_optimizer = torch.optim.Adam(self.lidar_predictor.predictor.parameters(), lr=enc_lr)
 		# Subgoal policy 
+		self.high_level_without_frame = True
 		self.curvature = vehicle_curvature
 		self.use_dubins_filter = use_dubins_filter
-		self.subgoal_net = LaplacePolicy(state_dim=state_dim, 
-										 goal_dim=self.subgoal_dim*self.frame_stack if self.use_lidar_predictor else state_dim).to(device)
+		if self.high_level_without_frame:
+				self.subgoal_net = LaplacePolicy(state_dim=state_dim, 
+											goal_dim=self.subgoal_dim if self.use_lidar_predictor else state_dim).to(device)
+		else:
+			self.subgoal_net = LaplacePolicy(state_dim=state_dim, 
+											goal_dim=self.subgoal_dim*self.frame_stack if self.use_lidar_predictor else state_dim).to(device)
 		self.subgoal_optimizer = torch.optim.Adam(self.subgoal_net.parameters(), lr=h_lr)
 
 		# Encoder
@@ -269,7 +277,9 @@ class RIS(object):
 	def sample_subgoal(self, state, goal):
 		subgoal_distribution = self.subgoal_net(state, goal)
 		subgoal = subgoal_distribution.rsample((self.n_ensemble,))
-		subgoal = torch.transpose(subgoal, 0, 1)
+		subgoal = torch.transpose(subgoal, 0, 1) # 2048x10x20
+		if self.high_level_without_frame: # subgoal = 2048x10x5
+			subgoal = subgoal.repeat(1, 1, 4) # 2048x10x20
 		if self.use_lidar_predictor:
 			batch_size = state.shape[0]
 			n_subgoals = subgoal.shape[1]
@@ -380,6 +390,8 @@ class RIS(object):
 		with torch.no_grad():
 			# Compute target value
 			new_subgoal = subgoal_distribution.loc # 2048 x 20
+			if self.high_level_without_frame: # new_subgoal = 2048 x 5
+				new_subgoal = new_subgoal.repeat(1, 4) # 2048 x 20
 			if self.use_lidar_predictor:
 				new_subgoal, info = self.add_lidar_data_to_subgoals(new_subgoal, state, goal, output_info=True)
 			policy_v_1 = self.value(state, new_subgoal)
@@ -408,6 +420,8 @@ class RIS(object):
 			subgoal = subgoal.view(batch_size, self.frame_stack, -1) # 2048 x 4 x 44
 			subgoal = subgoal[:, :, 0:self.subgoal_dim] # 2048 x 4 x 5
 			subgoal = subgoal.reshape(batch_size, -1) # 2048 x 20
+			if self.high_level_without_frame: 
+				subgoal = subgoal[:, 0:self.subgoal_dim] # 2048 x 5
 
 		log_prob = subgoal_distribution.log_prob(subgoal).sum(-1)
 		subgoal_loss = - (log_prob * weight).mean()
@@ -441,18 +455,18 @@ class RIS(object):
 				train_subgoal_y_max = train_subgoal["y_max"],
 				train_subgoal_y_mean = train_subgoal["y_mean"],
 				train_subgoal_y_min = train_subgoal["y_min"],
-				predicted_lidar_data_min = info["predicted_lidar_data_min"],
-				predicted_lidar_data_max = info["predicted_lidar_data_max"],
-				predicted_subgoal_x_min = info["predicted_subgoal_x_min"],
-				predicted_subgoal_x_max = info["predicted_subgoal_x_max"],
-				predicted_subgoal_y_min = info["predicted_subgoal_y_min"],
-				predicted_subgoal_y_max = info["predicted_subgoal_y_max"],
-				predicted_subgoal_theta_min = info["predicted_subgoal_theta_min"],
-				predicted_subgoal_theta_max = info["predicted_subgoal_theta_max"],
-				predicted_subgoal_v_min = info["predicted_subgoal_v_min"],
-				predicted_subgoal_v_max = info["predicted_subgoal_v_max"],
-				predicted_subgoal_steer_min = info["predicted_subgoal_steer_min"],
-				predicted_subgoal_steer_max = info["predicted_subgoal_steer_max"],
+				predicted_lidar_data_min = info["predicted_lidar_data_min"] if self.use_lidar_predictor else 0,
+				predicted_lidar_data_max = info["predicted_lidar_data_max"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_x_min = info["predicted_subgoal_x_min"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_x_max = info["predicted_subgoal_x_max"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_y_min = info["predicted_subgoal_y_min"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_y_max = info["predicted_subgoal_y_max"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_theta_min = info["predicted_subgoal_theta_min"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_theta_max = info["predicted_subgoal_theta_max"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_v_min = info["predicted_subgoal_v_min"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_v_max = info["predicted_subgoal_v_max"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_steer_min = info["predicted_subgoal_steer_min"] if self.use_lidar_predictor else 0,
+				predicted_subgoal_steer_max = info["predicted_subgoal_steer_max"] if self.use_lidar_predictor else 0,
 			)
 
 	# if self.safety

@@ -157,6 +157,8 @@ def evalPolicy(policy, env,
                                     return
                                 subgoal_distribution = policy.subgoal_net(encoded_state, encoded_goal)
                                 subgoal = subgoal_distribution.loc
+                                if policy.high_level_without_frame:
+                                    subgoal = subgoal.repeat(1, 4)
                                 if policy.use_lidar_predictor:
                                     subgoal = policy.add_lidar_data_to_subgoals(subgoal, encoded_state, encoded_goal)
                                 std = subgoal_distribution.scale
@@ -227,6 +229,13 @@ def evalPolicy(policy, env,
                                 y_subgoal = decoded_subgoal[0][1].item()
                                 theta_subgoal = decoded_subgoal[0][2].item()
                                 lidar_data = decoded_subgoal[0][5:44]
+                                if policy.use_lidar_predictor:
+                                    x_subgoal_1 = decoded_subgoal[0][policy.subgoal_dim+policy.lidar_data_dim].item()
+                                    y_subgoal_1 = decoded_subgoal[0][policy.subgoal_dim+policy.lidar_data_dim+1].item()
+                                    x_subgoal_2 = decoded_subgoal[0][2*(policy.subgoal_dim+policy.lidar_data_dim)].item()
+                                    y_subgoal_2 = decoded_subgoal[0][2*(policy.subgoal_dim+policy.lidar_data_dim)+1].item()
+                                    x_subgoal_3 = decoded_subgoal[0][3*(policy.subgoal_dim+policy.lidar_data_dim)].item()
+                                    y_subgoal_3 = decoded_subgoal[0][3*(policy.subgoal_dim+policy.lidar_data_dim)+1].item()
                                 if plot_lidar_predictor and ind == len(subgoals) // 2:
                                     lidar_data = policy.lidar_predictor(cuda_decoded_subgoal[:, 0:policy.subgoal_dim], to_torch_state, to_torch_goal).cpu().squeeze()
                                     for angle, d in zip(env.environment.angle_space, lidar_data):
@@ -241,6 +250,13 @@ def evalPolicy(policy, env,
                                         obst_y = y_subgoal + d * np.sin(theta_subgoal + angle)
                                         ax_states.scatter([obst_x], [obst_y], color=color_lidar, s=10)
                                 ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=50)
+                                if policy.use_lidar_predictor and ind == len(subgoals) // 2:
+                                    ax_states.scatter([x_subgoal_1], [y_subgoal_1], color="orange", s=15)
+                                    ax_states.text(x_subgoal_1, y_subgoal_1, "1")
+                                    ax_states.scatter([x_subgoal_2], [y_subgoal_2], color="orange", s=15)
+                                    ax_states.text(x_subgoal_2, y_subgoal_2, "2")
+                                    ax_states.scatter([x_subgoal_3], [y_subgoal_3], color="orange", s=15)
+                                    ax_states.text(x_subgoal_3, y_subgoal_3, "3")
                                 ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                                 [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
                                                 color="orange", s=5)
@@ -571,9 +587,9 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
-    parser.add_argument("--uniform_feasible_train_dataset", default=True)
+    parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
-    parser.add_argument("--train_sac",            default=True, type=bool)
+    parser.add_argument("--train_sac",            default=False, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
@@ -838,7 +854,7 @@ if __name__ == "__main__":
                                 plot_only_agent_values=False, 
                                 plot_decoder_agent_states=False,
                                 plot_subgoal_dispertion=True,
-                                plot_lidar_predictor=False,
+                                plot_lidar_predictor=True,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 video_validate_tasks = [("map0", 10)],
