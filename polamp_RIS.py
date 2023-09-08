@@ -448,6 +448,8 @@ class RIS(object):
 		# Log variables
 		if self.logger is not None:
 			self.logger.store(
+				subgoal_weight = weight.mean().item(),
+				log_prob_target_subgoal = log_prob.mean().item(),
 				adv = adv.mean().item(),
 				ratio_adv = adv.ge(0.0).float().mean().item(),
 				subgoal_loss = subgoal_loss.item(),
