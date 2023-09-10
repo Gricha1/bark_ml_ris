@@ -85,7 +85,7 @@ class RIS(object):
 			
 		# Lidar data predictor
 		self.env_state_bounds = env_state_bounds
-		self.use_lidar_predictor = True
+		self.use_lidar_predictor = False
 		if train_sac:
 			self.use_lidar_predictor = False
 		assert not self.use_lidar_predictor or (self.use_lidar_predictor and not use_encoder)

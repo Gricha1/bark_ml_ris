@@ -604,7 +604,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=10, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
@@ -617,9 +617,9 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # encoder
-    parser.add_argument("--use_decoder",             default=False, type=bool)
-    parser.add_argument("--use_encoder",             default=False, type=bool)
-    parser.add_argument("--state_dim",               default=80, type=int) # 20
+    parser.add_argument("--use_decoder",             default=True, type=bool)
+    parser.add_argument("--use_encoder",             default=True, type=bool)
+    parser.add_argument("--state_dim",               default=20, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=False, type=bool)
@@ -776,6 +776,7 @@ if __name__ == "__main__":
     assert args.eval_freq > env._max_episode_steps, "logger is erased after each eval"
     logger.store(train_step_x = state[0])
     logger.store(train_step_y = state[1])
+    logger.store(train_rate = 1.0*done)
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
@@ -789,7 +790,7 @@ if __name__ == "__main__":
             action = policy.select_action(state, goal)
 
         # Perform action
-        next_obs, reward, done, _ = env.step(action) 
+        next_obs, reward, done, train_info = env.step(action) 
         next_state = next_obs["observation"]
         next_agent_state = next_obs["state_observation"]
 
@@ -827,10 +828,12 @@ if __name__ == "__main__":
             #print("train_step_time:", end_train - start_train)
 
         if done: 
+            train_success = 1.0 * train_info["goal_achieved"]
             # Add path to replay buffer and reset path builder
             replay_buffer.add_path(path_builder.get_all_stacked())
             path_builder = PathBuilder()
-            logger.store(t=t, reward=reward)		
+            logger.store(t=t, reward=reward)
+            logger.store(train_rate=train_success)		
 
             # Reset environment
             obs = env.reset()
@@ -855,7 +858,7 @@ if __name__ == "__main__":
                                 plot_only_agent_values=False, 
                                 plot_decoder_agent_states=False,
                                 plot_subgoal_dispertion=True,
-                                plot_lidar_predictor=True,
+                                plot_lidar_predictor=False,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
                                 #video_validate_tasks = [("map0", 10)],
@@ -865,8 +868,9 @@ if __name__ == "__main__":
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
-                    'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,    
-
+                    'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,
+                    'train_rate': sum(logger.data["train_rate"][-args.eval_freq:]) / args.eval_freq,    
+                    
                      # train logging
                      'subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,    
                      'log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
