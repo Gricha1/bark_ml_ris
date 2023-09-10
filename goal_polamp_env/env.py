@@ -36,6 +36,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            or self.dataset == "safety_dataset" \
            or self.dataset == "ris_easy_dataset" \
            or self.dataset == "test_medium_dataset" \
+           or self.dataset == "hard_dataset_simplified" \
            ,"not impemented other datasets for random sampling"
     assert self.reward_config["clearance"] \
            == self.reward_config["reverse"] \
@@ -86,7 +87,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def reset_goal_env(self, **kwargs):
     self.dataset_info = {}
-    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset" or self.dataset == "ris_easy_dataset" or not self.static_env:
+    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset" or self.dataset == "hard_dataset_simplified" or self.dataset == "ris_easy_dataset" or not self.static_env:
       self.dataset_info["min_x"] = -5
       self.dataset_info["max_x"] = 40
       self.dataset_info["min_y"] = -5
@@ -242,7 +243,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                         return [0, 0, 0, 0, 0]
 
                     else:
-                      assert 1 == 0
+                      assert 1 == 0, "doesnt exist random tasks for this dataset"
 
                     current_task["start"] = get_random_sampled_state() 
                     current_task["goal"] = get_random_sampled_state() 

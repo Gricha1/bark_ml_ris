@@ -21,11 +21,11 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train_dataset",        default=True)
+    parser.add_argument("--train_dataset",        default=False)
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset") # medium_dataset, hard_dataset, ris_easy_dataset
+    parser.add_argument("--dataset",              default="hard_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # encoder
-    parser.add_argument("--use_decoder",             default=False, type=bool)
-    parser.add_argument("--use_encoder",             default=False, type=bool)
+    parser.add_argument("--use_decoder",             default=True, type=bool)
+    parser.add_argument("--use_encoder",             default=True, type=bool)
     parser.add_argument("--state_dim",               default=80, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
@@ -222,11 +222,13 @@ if __name__ == "__main__":
                                  # hard dataset
                                  #video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)],
                                  #video_validate_tasks = [("map0", 2)],
-                                 video_validate_tasks = [("map0", 14), ("map0", 62), ("map0", 84), ("map0", 95), ("map0", 103), ("map0", 112), ("map0", 128), ("map0", 135)],
+                                 #video_validate_tasks = [("map0", 14), ("map0", 62), ("map0", 84), ("map0", 95), ("map0", 103), ("map0", 112), ("map0", 128), ("map0", 135)],
+                                 # hard dataset simplified
+                                 video_validate_tasks = [("map0", 0)],
                                  value_function_angles=["theta_agent", 0, -np.pi/2],
                                  plot_decoder_agent_states=False,
                                  plot_subgoal_dispertion=True,
-                                 plot_lidar_predictor=True,
+                                 plot_lidar_predictor=False,
                                  eval_strategy=None, # eval_strategy=action=[a, w], else None
                                  validate_one_task=True)
     wandb_log_dict = {}
