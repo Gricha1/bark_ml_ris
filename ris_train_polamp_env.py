@@ -585,7 +585,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="hard_dataset_simplified_v2") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -595,7 +595,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=1, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -863,7 +863,8 @@ if __name__ == "__main__":
                                               "train_step_y": logger.data["train_step_y"]},
                                 #video_validate_tasks = [("map0", 10)],
                                 #video_validate_tasks = [("map0", 10), ("map0", 5)],
-                                video_validate_tasks = [("map0", 0)],
+                                #video_validate_tasks = [("map0", 0)],
+                                video_validate_tasks = [("map0", 0), ("map0", 1)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=False)
 

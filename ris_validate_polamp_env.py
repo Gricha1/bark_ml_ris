@@ -21,11 +21,11 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train_dataset",        default=False)
+    parser.add_argument("--train_dataset",        default=True)
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="hard_dataset_simplified_v2") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -224,7 +224,7 @@ if __name__ == "__main__":
                                  #video_validate_tasks = [("map0", 2)],
                                  #video_validate_tasks = [("map0", 14), ("map0", 62), ("map0", 84), ("map0", 95), ("map0", 103), ("map0", 112), ("map0", 128), ("map0", 135)],
                                  # hard dataset simplified
-                                 video_validate_tasks = [("map0", 0)],
+                                 video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2)],
                                  value_function_angles=["theta_agent", 0, -np.pi/2],
                                  plot_decoder_agent_states=False,
                                  plot_subgoal_dispertion=True,
