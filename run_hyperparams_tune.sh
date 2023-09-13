@@ -21,8 +21,10 @@ do
             do
                 run=$((run + 1))
                 echo "run: $run"
+                exp_name="$folder_name""_"$run
+                echo "exp_name: $exp_name"
                 if [ $run -ge $start_run ]; then
-                    python ris_train_polamp_env.py --exp_name $folder_name_$run --max_timesteps $max_timesteps --state_dim $state_dim --Lambda $Lambda --alpha $alpha --n_ensemble $n_ensemble
+                    python ris_train_polamp_env.py --exp_name $exp_name --max_timesteps $max_timesteps --state_dim $state_dim --Lambda $Lambda --alpha $alpha --n_ensemble $n_ensemble
                 fi
             done
         done
