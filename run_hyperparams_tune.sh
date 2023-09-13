@@ -3,11 +3,12 @@
 # HyperParams
 folder_name="hyperparam_tune"
 run=0
+start_run=45
 max_timesteps=200000
-state_dims=(20 80)
-Lambdas=(10 1 0.1 0.01 0.001)
-alphas=(1 0.1 0.01)
-n_ensembles=(5 10 25)
+state_dims=(20 80) # 2
+Lambdas=(10 1 0.1 0.01 0.001) # 5
+alphas=(1 0.1 0.01) # 3
+n_ensembles=(5 10 25) # 3
 
 # cycle for HyperParams tune
 for state_dim in "${state_dims[@]}"
@@ -20,7 +21,9 @@ do
             do
                 run=$((run + 1))
                 echo "run: $run"
-                python ris_train_polamp_env.py --exp_name $folder_name_$run --max_timesteps $max_timesteps --state_dim $state_dim --Lambda $Lambda --alpha $alpha --n_ensemble $n_ensemble
+                if [ $run -ge $start_run ]; then
+                    python ris_train_polamp_env.py --exp_name $folder_name_$run --max_timesteps $max_timesteps --state_dim $state_dim --Lambda $Lambda --alpha $alpha --n_ensemble $n_ensemble
+                fi
             done
         done
     done
