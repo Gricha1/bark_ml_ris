@@ -604,7 +604,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
+    parser.add_argument("--Lambda",             default=10, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=10, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
@@ -632,7 +632,13 @@ if __name__ == "__main__":
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
-    print(args)
+    #print(args)
+    print("**************")
+    print("state_dim:", args.state_dim)
+    print("max_timesteps:", args.max_timesteps)
+    print("Lambda:", args.Lambda)
+    print("alpha:", args.alpha)
+    print("n_ensemble:", args.n_ensemble)
 
     assert args.dataset_curriculum == False, "didnt implement"
 
@@ -704,7 +710,10 @@ if __name__ == "__main__":
     # Create logger
     logger = Logger(vars(args), save_git_head_hash=False)
     if args.using_wandb:
-        run = wandb.init(project=args.wandb_project)
+        run = wandb.init(project=args.wandb_project, 
+                         name="RIS," 
+                              + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
+                              + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
     
     # Initialize policy
     env_state_bounds = {"x": 100, "y": 100, 
