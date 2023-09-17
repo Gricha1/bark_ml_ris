@@ -546,12 +546,7 @@ def sample_and_preprocess_batch(replay_buffer, batch_size=256, device=torch.devi
         cost_batch = (np.ones_like(done_batch) * next_state_batch[:, 3:4]) * (1.0 - clearance_is_enough_batch)
     else:
         cost_batch = (- np.ones_like(done_batch) * 0)
-    if env.static_env and env.collision_reward_to_episode_end:
-        assert 1 == 0, "didnt implement correct for frame stack"
-        done_batch   = 1.0 * ( (1.0 * (reward_batch < env.SOFT_EPS) + collision_batch) >= 1.0)
-        reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
-                    + (current_step_batch - env._max_episode_steps) * collision_batch
-    elif env.static_env and env.add_collision_reward:
+    if env.static_env and env.add_collision_reward:
         if env.add_ppo_reward:
             assert 1 == 0, "didnt implement add ppo reward"
             done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
@@ -879,8 +874,8 @@ if __name__ == "__main__":
 
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
-                    'train_time': sum(logger.data["train_time"][-args.eval_freq:]) / args.eval_freq,
-                    'train_rate': sum(logger.data["train_rate"][-args.eval_freq:]) / args.eval_freq,    
+                    'train_time': sum(logger.data["train_time"]) / len(logger.data["train_time"]),
+                    'train_rate': sum(logger.data["train_rate"]) / len(logger.data["train_rate"]),    
                     
                      # train logging
                      'subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,    

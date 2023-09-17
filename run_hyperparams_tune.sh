@@ -3,7 +3,7 @@
 # HyperParams
 folder_name="hyperparam_tune"
 run=0
-start_run=45
+start_run=1
 max_timesteps=200000
 state_dims=(20 80) # 2
 Lambdas=(10 1 0.1 0.01 0.001) # 5

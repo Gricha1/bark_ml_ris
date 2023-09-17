@@ -26,7 +26,6 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.teleport_back_steps = goal_env_config["teleport_back_steps"]
     self.add_ppo_reward = goal_env_config["add_ppo_reward"]
     self.add_collision_reward = goal_env_config["add_collision_reward"]
-    self.collision_reward_to_episode_end = goal_env_config["collision_reward_to_episode_end"]
     self.is_terminal_dist = goal_env_config["is_terminal_dist"]
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
@@ -47,9 +46,12 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            == self.reward_config["distance"] \
            == 0.0, "didnt implement these rewards"
     assert (self.static_env and self.random_train_dataset == self.inside_obstacles_movement) or not self.static_env
-    assert 1.0 * self.inside_obstacles_movement \
-           + 1.0 * self.teleport_back_on_collision \
-           + 1.0 * self.static_env == 2.0 or not self.static_env
+    assert not self.static_env or \
+          (self.static_env and 
+              (self.inside_obstacles_movement != self.teleport_back_on_collision) or
+              (not self.inside_obstacles_movement and not self.teleport_back_on_collision)
+          )
+
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
     observation_size = 5
     if self.add_frame_stack:
@@ -402,9 +404,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       elif self.inside_obstacles_movement:
         if not self.add_ppo_reward:
           reward += self.collision_reward
-      elif self.collision_reward_to_episode_end:
+      else:
         isDone = True
-        reward += self.step_counter - self._max_episode_steps
+        reward += self.collision_reward
     
     agent = self.environment.agent.current_state
     goal = self.environment.agent.goal_state
