@@ -435,7 +435,7 @@ def evalPolicy(policy, env,
                 goal_dists["goal_steer"].append(goal[4])
                 
                 if eval_strategy is None:
-                    action = policy.select_action(state, goal)
+                    action = policy.select_deterministic_action(state, goal)
                 else:
                     print("EVAL ACTION = ", eval_strategy)
                     action = eval_strategy
@@ -777,7 +777,7 @@ if __name__ == "__main__":
     if args.curriculum_alpha:
         saved_final_result = False
 
-    assert args.eval_freq > env._max_episode_steps, "logger is erased after each eval"
+    assert args.eval_freq > 250, "logger is erased after each eval"
     logger.store(train_step_x = state[0])
     logger.store(train_step_y = state[1])
     logger.store(train_rate = 1.0*done)
@@ -871,11 +871,11 @@ if __name__ == "__main__":
                                 video_validate_tasks = [("map0", 0), ("map0", 1)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=False)
-
+            train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
                     'train_time': sum(logger.data["train_time"]) / len(logger.data["train_time"]),
-                    'train_rate': sum(logger.data["train_rate"]) / len(logger.data["train_rate"]),    
+                    'train_rate': train_success_rate,    
                     
                      # train logging
                      'subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,    
@@ -978,7 +978,7 @@ if __name__ == "__main__":
      
             # stop train high policy
             if args.curriculum_high_policy:
-                if success_rate >= 0.95:
+                if train_success_rate >= 0.95:
                     policy.stop_train_high_policy = True
 
             # stop high policy influence on low policy
@@ -1001,8 +1001,8 @@ if __name__ == "__main__":
             logger.save(folder + "log.pkl")
             policy.save(folder)
             # Save (best) results
-            if old_success_rate is None or success_rate >= old_success_rate:
-                old_success_rate = success_rate
+            if old_success_rate is None or train_success_rate >= old_success_rate:
+                old_success_rate = train_success_rate
                 save_policy_count += 1
                 folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "best_"
                 if not os.path.exists(folder):
