@@ -179,6 +179,7 @@ class RIS(object):
 			run_name = ""	
 		else:
 			run_name = "best_" if best else "last_"
+		print(f"load run_name: {run_name}")
 		self.actor.load_state_dict(torch.load(folder+run_name+"actor.pth", map_location=self.device))
 		self.critic.load_state_dict(torch.load(folder+run_name+"critic.pth", map_location=self.device))
 		if self.safety:
@@ -198,6 +199,18 @@ class RIS(object):
 				goal = self.encoder(goal)
 			action, _, _ = self.actor.sample(state, goal)
 		return action.cpu().data.numpy().flatten()
+	
+	def select_deterministic_action(self, state, goal):
+		# print("select_deterministic_action")
+		with torch.no_grad():
+			state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+			goal = torch.FloatTensor(goal).to(self.device).unsqueeze(0)
+			if self.use_encoder:
+				state = self.encoder(state)
+				goal = self.encoder(goal)
+			_, _, mean_action = self.actor.sample(state, goal)
+			print(mean_action)
+		return mean_action.cpu().data.numpy().flatten()
 		
 	def value(self, state, goal):
 		_, _, action = self.actor.sample(state, goal)
