@@ -84,6 +84,11 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
               } 
     self.observation_space = gym.spaces.dict.Dict(obs_dict)
 
+    self.action_space = gym.spaces.Box(
+                                        low=np.array([-1.0, -1.0], dtype=np.float32),\
+                                        high=np.array([1.0, 1.0], dtype=np.float32)
+                                        )
+
   def compute_rewards(self, new_actions, new_next_obs_dict):    
     return -1.0 * self.abs_time_step_reward * np.ones((new_actions.shape[0], 1))
 
