@@ -209,7 +209,7 @@ class RIS(object):
 				state = self.encoder(state)
 				goal = self.encoder(goal)
 			_, _, mean_action = self.actor.sample(state, goal)
-			print(mean_action)
+
 		return mean_action.cpu().data.numpy().flatten()
 		
 	def value(self, state, goal):
