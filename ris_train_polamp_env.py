@@ -12,6 +12,7 @@ from gym.envs.registration import register
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import copy
+from math import pi
 
 from polamp_env.lib.utils_operations import normalizeAngle
 from utils.logger import Logger
@@ -301,9 +302,13 @@ def evalPolicy(policy, env,
                                 ax_states.scatter(data_to_plot["train_step_x"], 
                                                 data_to_plot["train_step_y"], 
                                                 color="red", s=3)
-                        ax_states.text(env_max_x - 21, env_max_y - 2, f"R:{int(acc_reward*10)/10}")
-                        ax_states.text(env_max_x - 13, env_max_y - 2, f"C:{int(acc_cost*10)/10}")
-                        ax_states.text(env_max_x - 4.5, env_max_y - 2, f"t:{t}")
+                        ax_states.text(env_max_x - 46, env_max_y - 2, f"a:{round(env.environment.agent.action[0], 2)}")
+                        ax_states.text(env_max_x - 39, env_max_y - 2, f"w:{round(env.environment.agent.action[1], 2)}")
+                        ax_states.text(env_max_x - 32, env_max_y - 2, f"v:{round(env.environment.agent.current_state.v, 2)}")
+                        ax_states.text(env_max_x - 25, env_max_y - 2, f"st:{round(env.environment.agent.current_state.steer * 180 / pi, 1)}")
+                        ax_states.text(env_max_x - 18, env_max_y - 2, f"R:{int(acc_reward*10)/10}")
+                        ax_states.text(env_max_x - 11, env_max_y - 2, f"C:{int(acc_cost*10)/10}")
+                        ax_states.text(env_max_x - 4, env_max_y - 2, f"t:{t}")
 
                         if plot_decoder_agent_states:
                             decoded_state = policy.encoder.decoder(encoded_state).cpu()
@@ -588,7 +593,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_sac",            default=False, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=1, type=int) # 1
+    parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -599,13 +604,13 @@ if __name__ == "__main__":
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=10, type=float) # 0.1
+    parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=10, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
     parser.add_argument("--pi_lr",              default=1e-4, type=float)
-    parser.add_argument("--clip_v_function",    default=-368, type=float) # -368
+    parser.add_argument("--clip_v_function",    default=-150, type=float) # -368
     parser.add_argument("--add_obs_noise",           default=False, type=bool)
     parser.add_argument("--curriculum_alpha_val",        default=0, type=float)
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
