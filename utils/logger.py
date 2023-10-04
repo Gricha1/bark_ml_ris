@@ -30,6 +30,9 @@ class Logger(object):
 			if key not in self.data.keys():
 				self.data[key] = []
 			self.data[key].append(value)
+	
+	def clear(self):
+		self.data = dict()
 
 	def __str__(self):
 		# Print the last values of logger.data

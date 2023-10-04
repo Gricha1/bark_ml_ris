@@ -786,6 +786,7 @@ if __name__ == "__main__":
     logger.store(train_step_x = state[0])
     logger.store(train_step_y = state[1])
     logger.store(train_rate = 1.0*done)
+    cumulative_reward = 0
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
@@ -802,6 +803,7 @@ if __name__ == "__main__":
         next_obs, reward, done, train_info = env.step(action) 
         next_state = next_obs["observation"]
         next_agent_state = next_obs["state_observation"]
+        cumulative_reward += reward
 
         path_builder.add_all(
             observations=obs,
@@ -842,8 +844,9 @@ if __name__ == "__main__":
             replay_buffer.add_path(path_builder.get_all_stacked())
             path_builder = PathBuilder()
             logger.store(t=t, reward=reward)
-            logger.store(train_rate=train_success)		
-
+            logger.store(cumulative_reward=cumulative_reward)
+            logger.store(train_rate=train_success)
+            cumulative_reward = 0
             # Reset environment
             obs = env.reset()
             done = False
@@ -880,95 +883,97 @@ if __name__ == "__main__":
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
                     'train_time': sum(logger.data["train_time"]) / len(logger.data["train_time"]),
-                    'train_rate': train_success_rate,    
-                    
-                     # train logging
-                     'subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,    
-                     'log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_lidar_data_min': sum(logger.data["predicted_lidar_data_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_lidar_data_max': sum(logger.data["predicted_lidar_data_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_x_min': sum(logger.data["predicted_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_x_max': sum(logger.data["predicted_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_y_min': sum(logger.data["predicted_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_y_max': sum(logger.data["predicted_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_theta_min': sum(logger.data["predicted_subgoal_theta_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_theta_max': sum(logger.data["predicted_subgoal_theta_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_v_min': sum(logger.data["predicted_subgoal_v_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_v_max': sum(logger.data["predicted_subgoal_v_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_steer_min': sum(logger.data["predicted_subgoal_steer_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted_subgoal_steer_max': sum(logger.data["predicted_subgoal_steer_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,    
-                     'lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
-                     'lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
-                     'lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
-                     'v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,    
-                     'train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
-                     'train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
-                     'subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
-                     'target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
-                     'actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-
-                     # dubins filter
-                     'init_dubins_distance': sum(logger.data["init_dubins_distance"][-args.eval_freq:]) / args.eval_freq,
-                     'filtred_dubins_dinstance': sum(logger.data["filtred_dubins_dinstance"][-args.eval_freq:]) / args.eval_freq,
-
-                     # validate logging
-                     f'val_distance({args.n_eval} episodes)': eval_distance,
-                     f'eval_reward({args.n_eval} episodes)': eval_reward,
-                     f'eval_cost({args.n_eval} episodes)': validation_info["eval_cost"],
-                     f'val_rate({args.n_eval} episodes)': success_rate,
-                     f'eval_collisions({args.n_eval} episodes)': validation_info["eval_collisions"],
-                     "val_episode_length": eval_episode_length, 
-
-                     # batch state
-                     'train_state_x_max': sum(logger.data["train_state_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_state_x_mean': sum(logger.data["train_state_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'train_state_x_min': sum(logger.data["train_state_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_state_y_max': sum(logger.data["train_state_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_state_y_mean': sum(logger.data["train_state_y_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'train_state_y_min': sum(logger.data["train_state_y_min"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled subgoal
-                     'train_subgoal_x_max': sum(logger.data["train_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_x_min': sum(logger.data["train_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_x_mean': sum(logger.data["train_subgoal_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_y_max': sum(logger.data["train_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_y_min': sum(logger.data["train_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_y_mean': sum(logger.data["train_subgoal_y_mean"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled goal
-                     'train_goal_x_max': sum(logger.data["train_goal_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_goal_x_min': sum(logger.data["train_goal_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_goal_x_mean': sum(logger.data["train_goal_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'train_goal_y_max': sum(logger.data["train_goal_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_goal_y_min': sum(logger.data["train_goal_y_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_goal_y_mean': sum(logger.data["train_goal_y_mean"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled reward
-                     'train_reward_max': sum(logger.data["train_reward_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_reward_min': sum(logger.data["train_reward_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_reward_mean': sum(logger.data["train_reward_mean"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled goal
-                     'train_subgoal_data_x_max': sum(logger.data["train_subgoal_data_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_data_x_min': sum(logger.data["train_subgoal_data_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_data_x_mean': sum(logger.data["train_subgoal_data_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_data_y_max': sum(logger.data["train_subgoal_data_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_data_y_min': sum(logger.data["train_subgoal_data_y_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
-
+                    'train/train_rate': train_success_rate,    
+                    'train/avg_cumulative_reward': sum(logger.data["cumulative_reward"]) / len(logger.data["cumulative_reward"]),
+                    'train/max_cumulative_reward': max(logger.data["cumulative_reward"]),
+                    'train/min_cumulative_reward': min(logger.data["cumulative_reward"]),
+                    'train/autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'train/v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,
+                     'train/high_policy_v': sum(logger.data["high_policy_v"][-args.eval_freq:]) / args.eval_freq,    
+                     'train/high_v': sum(logger.data["high_v"][-args.eval_freq:]) / args.eval_freq,   
+                     'train/train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
+                     'train/train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
+                     'train/subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'train/train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'train/critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                     'train/critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
+                     'train/target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
+                     'train/actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                     'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                     'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
+                     'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
+                     
                      # additional
-                     'alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
-                     'lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
+                     'train/alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
+                     'train/lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
+                     'train/fraction_goals_rollout_goals': replay_buffer.fraction_goals_rollout_goals,
+                     'train/fraction_resampled_goals_replay_buffer_goals': replay_buffer.fraction_resampled_goals_replay_buffer_goals,
 
                      # SAC
-                     'log_entropy_sac': sum(logger.data["log_entropy_sac"][-args.eval_freq:]) / args.eval_freq,
-                     'log_entropy_critic': sum(logger.data["log_entropy_critic"][-args.eval_freq:]) / args.eval_freq,
+                     'train/log_entropy_sac': sum(logger.data["log_entropy_sac"][-args.eval_freq:]) / args.eval_freq,
+                     'train/log_entropy_critic': sum(logger.data["log_entropy_critic"][-args.eval_freq:]) / args.eval_freq,
+
+                     # train logging    
+                     'predicted/lidar_data_min': sum(logger.data["predicted_lidar_data_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/lidar_data_max': sum(logger.data["predicted_lidar_data_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_x_min': sum(logger.data["predicted_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_x_max': sum(logger.data["predicted_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_y_min': sum(logger.data["predicted_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_y_max': sum(logger.data["predicted_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_theta_min': sum(logger.data["predicted_subgoal_theta_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_theta_max': sum(logger.data["predicted_subgoal_theta_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_v_min': sum(logger.data["predicted_subgoal_v_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_v_max': sum(logger.data["predicted_subgoal_v_max"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_steer_min': sum(logger.data["predicted_subgoal_steer_min"][-args.eval_freq:]) / args.eval_freq,    
+                     'predicted/subgoal_steer_max': sum(logger.data["predicted_subgoal_steer_max"][-args.eval_freq:]) / args.eval_freq,   
+                     'predicted/lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
+                     'predicted/lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
+                     'predicted/lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,
+
+                     # dubins filter
+                     'extra/init_dubins_distance': sum(logger.data["init_dubins_distance"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/filtred_dubins_dinstance': sum(logger.data["filtred_dubins_dinstance"][-args.eval_freq:]) / args.eval_freq,
+
+                     # validate logging
+                     f'validation/val_distance({args.n_eval} episodes)': eval_distance,
+                     f'validation/eval_reward({args.n_eval} episodes)': eval_reward,
+                     f'validation/eval_cost({args.n_eval} episodes)': validation_info["eval_cost"],
+                     f'validation/val_rate({args.n_eval} episodes)': success_rate,
+                     f'validation/eval_collisions({args.n_eval} episodes)': validation_info["eval_collisions"],
+                     "validation/val_episode_length": eval_episode_length, 
+
+                     # batch state
+                     'extra/train_state_x_max': sum(logger.data["train_state_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_state_x_mean': sum(logger.data["train_state_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_state_x_min': sum(logger.data["train_state_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_state_y_max': sum(logger.data["train_state_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_state_y_mean': sum(logger.data["train_state_y_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_state_y_min': sum(logger.data["train_state_y_min"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled subgoal
+                     'extra/train_subgoal_x_max': sum(logger.data["train_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_x_min': sum(logger.data["train_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_x_mean': sum(logger.data["train_subgoal_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_y_max': sum(logger.data["train_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_y_min': sum(logger.data["train_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_y_mean': sum(logger.data["train_subgoal_y_mean"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled goal
+                     'extra/train_goal_x_max': sum(logger.data["train_goal_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_goal_x_min': sum(logger.data["train_goal_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_goal_x_mean': sum(logger.data["train_goal_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_goal_y_max': sum(logger.data["train_goal_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_goal_y_min': sum(logger.data["train_goal_y_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_goal_y_mean': sum(logger.data["train_goal_y_mean"][-args.eval_freq:]) / args.eval_freq,
+
+                     # batch sampled goal
+                     'extra/train_subgoal_data_x_max': sum(logger.data["train_subgoal_data_x_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_data_x_min': sum(logger.data["train_subgoal_data_x_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_data_x_mean': sum(logger.data["train_subgoal_data_x_mean"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_data_y_max': sum(logger.data["train_subgoal_data_y_max"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_data_y_min': sum(logger.data["train_subgoal_data_y_min"][-args.eval_freq:]) / args.eval_freq,
+                     'extra/train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
                     } if args.using_wandb else {}
             if args.using_wandb:
                 for dict_ in val_state + val_goal:
@@ -982,6 +987,12 @@ if __name__ == "__main__":
                 del wandb_log_dict
      
             # stop train high policy
+            # if not policy.stop_train_high_policy and train_success_rate >= 0.94:
+            #     policy.stop_train_high_policy = True
+            #     replay_buffer.fraction_goals_rollout_goals = 1.0
+            #     replay_buffer.fraction_resampled_goals_replay_buffer_goals = 0.0
+            #     policy.alpha = 0.0
+
             if args.curriculum_high_policy:
                 if train_success_rate >= 0.95:
                     policy.stop_train_high_policy = True
@@ -1014,7 +1025,8 @@ if __name__ == "__main__":
                     os.makedirs(folder)
                 logger.save(folder + "log.pkl")
                 policy.save(folder)
-                run.log({"save_policy_count": save_policy_count})
+                if args.using_wandb:
+                    run.log({"save_policy_count": save_policy_count})
 
             # change medium dataset to hard dataset
             if args.dataset_curriculum:
@@ -1045,7 +1057,7 @@ if __name__ == "__main__":
                     logger.store(dataset_y = state[1])
                     
             # clean log buffer
-            logger.data = dict()
+            logger.clear()
             print("eval", end=" ")
         if t % 1e4 == 0 or (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
             print()
