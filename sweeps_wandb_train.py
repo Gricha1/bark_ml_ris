@@ -21,6 +21,7 @@ from polamp_RIS import normalize_state
 from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 from polamp_env.lib.structures import State
+from ris_train_polamp_env import train
 #from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 
@@ -580,462 +581,24 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
 
     return state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch
 
-def train(args=None):   
-    # chech if hyperparams tuning
-    if type(args) == type(argparse.Namespace()):
-        hyperparams_tune = False
-        wandb.init(project=args.wandb_project, config=args, 
-                   name="RIS," 
-                        + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
-                        + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
-    else:
-        hyperparams_tune = True
-        wandb.init(config=args, name="hyperparams_tune_RIS")
-        args = wandb.config
-    
-    print("**************")
-    print("state_dim:", args.state_dim)
-    print("max_timesteps:", args.max_timesteps)
-    print("Lambda:", args.Lambda)
-    print("alpha:", args.alpha)
-    print("n_ensemble:", args.n_ensemble)
-
-    assert args.dataset_curriculum == False, "didnt implement"
-
-    with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
-        goal_our_env_config = json.load(f)
-    with open("polamp_env/configs/train_configs.json", 'r') as f:
-        train_config = json.load(f)
-    with open("polamp_env/configs/environment_configs.json", 'r') as f:
-        our_env_config = json.load(f)
-    with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
-        reward_config = json.load(f)
-    with open("polamp_env/configs/car_configs.json", 'r') as f:
-        car_config = json.load(f)
-
-    if args.dataset == "medium_dataset":
-        total_maps = 12
-    elif args.dataset == "test_medium_dataset":
-        total_maps = 3
-    else:
-        total_maps = 1
-    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
-    maps, trainTask, valTasks = dataSet["obstacles"]
-    goal_our_env_config["dataset"] = args.dataset
-    goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
-    goal_our_env_config["random_train_dataset"] = args.random_train_dataset
-    if not goal_our_env_config["static_env"]:
-        maps["map0"] = []
-
-    args.evaluation = False
-    environment_config = {
-        'vehicle_config': car_config,
-        'tasks': trainTask,
-        'valTasks': valTasks,
-        'maps': maps,
-        'our_env_config' : our_env_config,
-        'reward_config' : reward_config,
-        'evaluation': args.evaluation,
-        'goal_our_env_config' : goal_our_env_config,
-    }
-    args.other_keys = environment_config
-
-    train_env_name = "polamp_env-v0"
-    test_env_name = train_env_name
-
-    # Set seed
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
-    # register polamp env
-    env_dict = gym.envs.registration.registry.env_specs.copy()
-    for env in env_dict:
-        if train_env_name in env:
-            print("Remove {} from registry".format(env))
-            del gym.envs.registration.registry.env_specs[env]
-    register(
-        id=train_env_name,
-        entry_point='goal_polamp_env.env:GCPOLAMPEnvironment',
-        kwargs={'full_env_name': "polamp_env", "config": args.other_keys}
-    )
-
-    env         = gym.make(train_env_name)
-    test_env    = gym.make(test_env_name)
-    vectorized = True
-    action_dim = env.action_space.shape[0]
-    env_obs_dim = env.observation_space["observation"].shape[0]
-    if args.use_encoder:
-        state_dim = args.state_dim 
-    else:
-        state_dim = env_obs_dim
-    folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
-    load_results = os.path.isdir(folder)
-
-    # Create logger
-    logger = Logger(vars(args), save_git_head_hash=False)
-    
-    # Initialize policy
-    env_state_bounds = {"x": 100, "y": 100, 
-                        "theta": (-np.pi, np.pi),
-                        "v": (env.environment.agent.dynamic_model.min_vel, 
-                              env.environment.agent.dynamic_model.max_vel), 
-                        "steer": (-env.environment.agent.dynamic_model.max_steer, 
-                                 env.environment.agent.dynamic_model.max_steer)}
-    R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
-    curvature = 1 / R
-    policy = RIS(state_dim=state_dim, action_dim=action_dim, 
-                 alpha=args.alpha,
-                 use_decoder=args.use_decoder,
-                 use_encoder=args.use_encoder,
-                 safety=args.safety,
-                 n_critic=args.n_critic,
-                 train_sac=args.train_sac,
-                 use_dubins_filter=args.use_dubins_filter,
-                 safety_add_to_high_policy=args.safety_add_to_high_policy,
-                 cost_limit=args.cost_limit, update_lambda=args.update_lambda,
-                 Lambda=args.Lambda, epsilon=args.epsilon,
-                 h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
-                 n_ensemble=args.n_ensemble,
-                 clip_v_function=args.clip_v_function,
-                 device=args.device, logger=logger if args.log_loss else None, 
-                 env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
-                 add_obs_noise=args.add_obs_noise,
-                 curriculum_high_policy=args.curriculum_high_policy,
-                 vehicle_curvature=curvature,
-                 env_state_bounds=env_state_bounds,
-                 lidar_max_dist=env.environment.MAX_DIST_LIDAR,
-                 train_env=env,
-    )
-
-    # Initialize replay buffer and path_builder
-    replay_buffer = HERReplayBuffer(
-        max_size=args.replay_buffer_size,
-        env=env,
-        fraction_goals_are_rollout_goals = 0.2,
-        fraction_resampled_goals_are_env_goals = 0.0,
-        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
-        desired_goal_keys   =["desired_goal", "state_desired_goal"],
-        observation_key     = 'observation',
-        desired_goal_key    = 'desired_goal',
-        achieved_goal_key   = 'achieved_goal',
-        vectorized          = vectorized 
-    )
-    path_builder = PathBuilder()
-
-    if load_results and not hyperparams_tune:
-        policy.load(folder)
-        print("weights is loaded")
-    else:
-        print("WEIGHTS ISN'T LOADED")
-
-    # Initialize environment
-    obs = env.reset()
-    done = False
-    state = obs["observation"]
-    goal = obs["desired_goal"]
-    episode_timesteps = 0
-    episode_num = 0 
-    old_success_rate = None
-    save_policy_count = 0 
-    if args.curriculum_alpha:
-        saved_final_result = False
-
-    assert args.eval_freq > 250, "logger is erased after each eval"
-    logger.store(train_step_x = state[0])
-    logger.store(train_step_y = state[1])
-    logger.store(train_rate = 1.0*done)
-    cumulative_reward = 0
-
-    for t in range(int(args.max_timesteps)):
-        episode_timesteps += 1
-        if t % 1e4 == 0:
-            print("step:", t, end=" ")
-
-        # Select action
-        if t < args.start_timesteps:
-            action = env.action_space.sample()
-        else:
-            action = policy.select_action(state, goal)
-
-        # Perform action
-        next_obs, reward, done, train_info = env.step(action) 
-        next_state = next_obs["observation"]
-        next_agent_state = next_obs["state_observation"]
-        cumulative_reward += reward
-
-        path_builder.add_all(
-            observations=obs,
-            actions=action,
-            rewards=reward,
-            next_observations=next_obs,
-            terminals=[1.0*done]
-        )
-        
-        state = next_state
-        agent_state = next_agent_state
-        obs = next_obs
-        logger.store(train_step_x = agent_state[0])
-        logger.store(train_step_y = agent_state[1])
-
-        # Train agent after collecting enough data
-        if t >= args.batch_size and t >= args.start_timesteps:
-            start_train = time.time()
-            state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch = sample_and_preprocess_batch(
-                replay_buffer, 
-                env=env,
-                batch_size=args.batch_size,
-                device=args.device
-            )
-            # Sample subgoal candidates uniformly in the replay buffer
-            subgoal_batch = torch.FloatTensor(replay_buffer.random_state_batch(args.batch_size)).to(args.device)
-            policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
-            if t % 1e4 == 0:
-                print("train", args.exp_name, end=" ")
-            if args.safety and t % policy.update_lambda == 0:
-                policy.train_lagrangian(state_batch, action_batch, goal_batch)
-            end_train = time.time()
-            logger.store(train_time = end_train - start_train)
-            #print("train_step_time:", end_train - start_train)
-
-        if done: 
-            train_success = 1.0 * train_info["goal_achieved"]
-            # Add path to replay buffer and reset path builder
-            replay_buffer.add_path(path_builder.get_all_stacked())
-            path_builder = PathBuilder()
-            logger.store(t=t, reward=reward)
-            logger.store(cumulative_reward=cumulative_reward)
-            logger.store(train_rate=train_success)
-            cumulative_reward = 0
-            # Reset environment
-            obs = env.reset()
-            done = False
-            state = obs["observation"]
-            goal = obs["desired_goal"]
-            episode_timesteps = 0
-            episode_num += 1 
-            logger.store(dataset_x = state[0])
-            logger.store(dataset_y = state[1])
-
-        if (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
-            # Eval policy
-            eval_distance, success_rate, eval_reward, \
-            val_state, val_goal, \
-            mean_actions, eval_episode_length, validation_info \
-                    = evalPolicy(policy, test_env, 
-                                plot_full_env=True,
-                                plot_subgoals=True,
-                                plot_value_function=False,
-                                render_env=False,
-                                plot_only_agent_values=False, 
-                                plot_decoder_agent_states=False,
-                                plot_subgoal_dispertion=True,
-                                plot_lidar_predictor=False,
-                                data_to_plot={"train_step_x": logger.data["train_step_x"], 
-                                              "train_step_y": logger.data["train_step_y"]},
-                                #video_validate_tasks = [("map0", 10)],
-                                #video_validate_tasks = [("map0", 10), ("map0", 5)],
-                                #video_validate_tasks = [("map0", 0)],
-                                video_validate_tasks = [("map0", 0), ("map0", 1)],
-                                value_function_angles=["theta_agent", 0, -np.pi/2],
-                                dataset_plot=False)
-            train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
-            wandb_log_dict = {
-                    'steps': logger.data["t"][-1],
-                    'train_time': sum(logger.data["train_time"]) / len(logger.data["train_time"]),
-                    'train/train_rate': train_success_rate,    
-                    'train/avg_cumulative_reward': sum(logger.data["cumulative_reward"]) / len(logger.data["cumulative_reward"]),
-                    'train/max_cumulative_reward': max(logger.data["cumulative_reward"]),
-                    'train/min_cumulative_reward': min(logger.data["cumulative_reward"]),
-                    'train/autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,
-                     'train/high_policy_v': sum(logger.data["high_policy_v"][-args.eval_freq:]) / args.eval_freq,    
-                     'train/high_v': sum(logger.data["high_v"][-args.eval_freq:]) / args.eval_freq,   
-                     'train/train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
-                     'train/train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
-                     'train/subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
-                     'train/target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
-                     'train/actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
-                     'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
-                     
-                     # additional
-                     'train/alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
-                     'train/lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
-                     'train/fraction_goals_rollout_goals': replay_buffer.fraction_goals_rollout_goals,
-                     'train/fraction_resampled_goals_replay_buffer_goals': replay_buffer.fraction_resampled_goals_replay_buffer_goals,
-
-                     # SAC
-                     'train/log_entropy_sac': sum(logger.data["log_entropy_sac"][-args.eval_freq:]) / args.eval_freq,
-                     'train/log_entropy_critic': sum(logger.data["log_entropy_critic"][-args.eval_freq:]) / args.eval_freq,
-
-                     # train logging    
-                     'predicted/lidar_data_min': sum(logger.data["predicted_lidar_data_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/lidar_data_max': sum(logger.data["predicted_lidar_data_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_x_min': sum(logger.data["predicted_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_x_max': sum(logger.data["predicted_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_y_min': sum(logger.data["predicted_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_y_max': sum(logger.data["predicted_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_theta_min': sum(logger.data["predicted_subgoal_theta_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_theta_max': sum(logger.data["predicted_subgoal_theta_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_v_min': sum(logger.data["predicted_subgoal_v_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_v_max': sum(logger.data["predicted_subgoal_v_max"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_steer_min': sum(logger.data["predicted_subgoal_steer_min"][-args.eval_freq:]) / args.eval_freq,    
-                     'predicted/subgoal_steer_max': sum(logger.data["predicted_subgoal_steer_max"][-args.eval_freq:]) / args.eval_freq,   
-                     'predicted/lidar_predictor_loss_goal': sum(logger.data["lidar_predictor_loss_goal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
-                     'predicted/lidar_predictor_loss_target_subgoal': sum(logger.data["lidar_predictor_loss_target_subgoal"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,    
-                     'predicted/lidar_predictor_loss_state': sum(logger.data["lidar_predictor_loss_state"][-args.eval_freq:]) / args.eval_freq if policy.use_lidar_predictor else 0,
-
-                     # dubins filter
-                     'extra/init_dubins_distance': sum(logger.data["init_dubins_distance"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/filtred_dubins_dinstance': sum(logger.data["filtred_dubins_dinstance"][-args.eval_freq:]) / args.eval_freq,
-
-                     # validate logging
-                     f'validation/val_distance({args.n_eval} episodes)': eval_distance,
-                     f'validation/eval_reward({args.n_eval} episodes)': eval_reward,
-                     f'validation/eval_cost({args.n_eval} episodes)': validation_info["eval_cost"],
-                     f'validation/val_rate({args.n_eval} episodes)': success_rate,
-                     f'validation/eval_collisions({args.n_eval} episodes)': validation_info["eval_collisions"],
-                     "validation/val_episode_length": eval_episode_length, 
-
-                     # batch state
-                     'extra/train_state_x_max': sum(logger.data["train_state_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_state_x_mean': sum(logger.data["train_state_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_state_x_min': sum(logger.data["train_state_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_state_y_max': sum(logger.data["train_state_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_state_y_mean': sum(logger.data["train_state_y_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_state_y_min': sum(logger.data["train_state_y_min"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled subgoal
-                     'extra/train_subgoal_x_max': sum(logger.data["train_subgoal_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_x_min': sum(logger.data["train_subgoal_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_x_mean': sum(logger.data["train_subgoal_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_y_max': sum(logger.data["train_subgoal_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_y_min': sum(logger.data["train_subgoal_y_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_y_mean': sum(logger.data["train_subgoal_y_mean"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled goal
-                     'extra/train_goal_x_max': sum(logger.data["train_goal_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_goal_x_min': sum(logger.data["train_goal_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_goal_x_mean': sum(logger.data["train_goal_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_goal_y_max': sum(logger.data["train_goal_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_goal_y_min': sum(logger.data["train_goal_y_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_goal_y_mean': sum(logger.data["train_goal_y_mean"][-args.eval_freq:]) / args.eval_freq,
-
-                     # batch sampled goal
-                     'extra/train_subgoal_data_x_max': sum(logger.data["train_subgoal_data_x_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_data_x_min': sum(logger.data["train_subgoal_data_x_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_data_x_mean': sum(logger.data["train_subgoal_data_x_mean"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_data_y_max': sum(logger.data["train_subgoal_data_y_max"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_data_y_min': sum(logger.data["train_subgoal_data_y_min"][-args.eval_freq:]) / args.eval_freq,
-                     'extra/train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
-                    } if args.using_wandb else {}
-            if args.using_wandb:
-                for dict_ in val_state + val_goal:
-                    for key in dict_:
-                        wandb_log_dict[f"{key}"] = dict_[key]
-                for map_name, task_indx, video in validation_info["videos"]:
-                    cur_step = logger.data["t"][-1]
-                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
-                        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
-                wandb.log(wandb_log_dict)
-                del wandb_log_dict
-     
-            if args.curriculum_high_policy:
-                if train_success_rate >= 0.95:
-                    policy.stop_train_high_policy = True
-
-            # stop high policy influence on low policy
-            if args.curriculum_alpha:
-                if (t + 1) >= args.curriculum_alpha_treshold:
-                    policy.alpha = args.curriculum_alpha_val
-                    # save results after change alpha
-                    if not saved_final_result:
-                        folder = "results/{}/RIS/{}_final/".format(args.env, args.exp_name)
-                        if not os.path.exists(folder):
-                            os.makedirs(folder)
-                        if not hyperparams_tune:
-                            logger.save(folder + "log.pkl")
-                            policy.save(folder)
-                        saved_final_result = True
-
-            # Save (current) results
-            folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "last_"
-            if not os.path.exists(folder):
-                os.makedirs(folder)
-            if not hyperparams_tune:
-                logger.save(folder + "log.pkl")
-                policy.save(folder)
-            # Save (best) results
-            if old_success_rate is None or train_success_rate >= old_success_rate:
-                old_success_rate = train_success_rate
-                save_policy_count += 1
-                folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "best_"
-                if not os.path.exists(folder):
-                    os.makedirs(folder)
-                if not hyperparams_tune:
-                    logger.save(folder + "log.pkl")
-                    policy.save(folder)
-                if args.using_wandb:
-                    wandb.log({"save_policy_count": save_policy_count})
-
-            # change medium dataset to hard dataset
-            if args.dataset_curriculum:
-                if success_rate >= args.dataset_curriculum_treshold:
-                    # erase previous expirience
-                    replay_buffer = HERReplayBuffer(
-                        max_size=args.replay_buffer_size,
-                        env=env,
-                        fraction_goals_are_rollout_goals = 0.2,
-                        fraction_resampled_goals_are_env_goals = 0.0,
-                        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-                        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
-                        desired_goal_keys   =["desired_goal", "state_desired_goal"],
-                        observation_key     = 'observation',
-                        desired_goal_key    = 'desired_goal',
-                        achieved_goal_key   = 'achieved_goal',
-                        vectorized          = vectorized 
-                    )
-                    path_builder = PathBuilder()		
-                    # Reset environment
-                    obs = env.reset()
-                    done = False
-                    state = obs["observation"]
-                    goal = obs["desired_goal"]
-                    episode_timesteps = 0
-                    episode_num += 1 
-                    logger.store(dataset_x = state[0])
-                    logger.store(dataset_y = state[1])
-                    
-            # clean log buffer
-            logger.clear()
-            print("eval", end=" ")
-        if t % 1e4 == 0 or (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
-            print()
-
-if __name__ == "__main__":	
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="hard_dataset_simplified_turns") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
+    parser.add_argument("--sweep",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
-    parser.add_argument("--max_timesteps",      default=5e6, type=int)
+    parser.add_argument("--max_timesteps",      default=10600, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
     parser.add_argument("--n_eval",             default=5, type=int)
@@ -1066,10 +629,49 @@ if __name__ == "__main__":
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
-    parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
+    parser.add_argument("--wandb_project",      default="sweep_train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
+    
+    # agrparse to dictionary params
+    parse_parameters_dict = vars(args)
+    parameters_dict = {}
+    for key_ in parse_parameters_dict:
+        parameters_dict[key_] = {"value": parse_parameters_dict[key_]}
+    parameters_dict.update({
+        'pi_lr': {
+            'values': [1e-3, 1e-4, 1e-5]},
+        'q_lr': {
+            'values': [1e-3, 1e-4, 1e-5]},
+        'h_lr': {
+            'values': [1e-3, 1e-4, 1e-5]},
+        'state_dim': {
+            'values': [20, 40, 60, 80]},
+        'alpha': {
+            'values': [10, 1, 0.1, 0.01, 0.001, 0.0001]},
+        'Lambda': {
+            'values': [10, 1, 0.1, 0.01, 0.001, 0.0001]},
+        'n_ensemble': {
+            'values': [5, 10, 15, 20, 40]},
+        'n_critic': {
+            'values': [1, 2]},
+    })
+    # set sweep config
+    sweep_config = {
+        'method': 'bayes'
+    }
+    metric = {
+        'name': 'train_rate',
+        'goal': 'maximize'   
+    }
+    sweep_config['metric'] = metric
+    sweep_config['parameters'] = parameters_dict
 
-    train(args)
+    import pprint
+    pprint.pprint(sweep_config) 
+
+    sweep_id = wandb.sweep(sweep_config, project=args.wandb_project)
+    wandb.agent(sweep_id, train, count=10)
+
