@@ -39,6 +39,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            or self.dataset == "hard_dataset_simplified_v2" \
            or self.dataset == "hard_dataset_simplified_turns" \
            or self.dataset == "hard_dataset_simplified_expanded" \
+           or self.dataset == "hard_dataset_simplified_test" \
            ,"not impemented other datasets for random sampling"
     assert self.reward_config["clearance"] \
            == self.reward_config["reverse"] \
@@ -97,7 +98,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def reset_goal_env(self, **kwargs):
     self.dataset_info = {}
-    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset" or self.dataset == "hard_dataset_simplified" or self.dataset == "hard_dataset_simplified_v2" or self.dataset == "hard_dataset_simplified_turns" or self.dataset == "hard_dataset_simplified_expanded" or self.dataset == "ris_easy_dataset" or not self.static_env:
+    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset" or self.dataset == "hard_dataset_simplified" or self.dataset == "hard_dataset_simplified_v2" or self.dataset == "hard_dataset_simplified_turns" or self.dataset == "hard_dataset_simplified_expanded" or self.dataset == "hard_dataset_simplified_test" or self.dataset == "ris_easy_dataset" or not self.static_env:
       self.dataset_info["min_x"] = -5
       self.dataset_info["max_x"] = 40
       self.dataset_info["min_y"] = -5

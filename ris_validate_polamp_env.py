@@ -23,15 +23,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="hard_dataset_simplified_test") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
-    parser.add_argument("--train_sac",            default=False, type=bool)
+    parser.add_argument("--train_sac",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
-    parser.add_argument("--n_critic",           default=1, type=int) # 1
+    parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
-    parser.add_argument("--wandb_project",      default="validate_ris_sac_polamp", type=str)
+    parser.add_argument("--wandb_project",      default="validate_ris_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
@@ -90,6 +90,8 @@ if __name__ == "__main__":
         total_maps = 12
     elif args.dataset == "test_medium_dataset":
         total_maps = 3
+    elif args.dataset == "hard_dataset_simplified_test":
+        total_maps = 2
     else:
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
@@ -224,13 +226,17 @@ if __name__ == "__main__":
                                  #video_validate_tasks = [("map0", 2)],
                                  #video_validate_tasks = [("map0", 14), ("map0", 62), ("map0", 84), ("map0", 95), ("map0", 103), ("map0", 112), ("map0", 128), ("map0", 135)],
                                  # hard dataset simplified
-                                 video_validate_tasks = [("map0", i) for i in range(15)],
+                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2)],
+                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2), ("map0", 3), ("map0", 4)],
+                                 video_validate_tasks = [("map0", i) for i in range(200)] + [("map1", i) for i in range(200)],
+                                 #video_validate_tasks = [("map0", 1), ("map1", 1)],
                                  value_function_angles=["theta_agent", 0, -np.pi/2],
                                  plot_decoder_agent_states=False,
                                  plot_subgoal_dispertion=True,
                                  plot_lidar_predictor=False,
                                  eval_strategy=None, # eval_strategy=action=[a, w], else None
-                                 validate_one_task=True)
+                                 skip_not_video_tasks=True,
+                                 plot_only_start_position=True)
     wandb_log_dict = {}
     for map_name, task_indx, video in validation_info["videos"]:
         wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")

@@ -39,7 +39,8 @@ def evalPolicy(policy, env,
                video_validate_tasks = [],                
                data_to_plot={}, dataset_plot=True, 
                eval_strategy=None,
-               validate_one_task=False):
+               skip_not_video_tasks=False,
+               plot_only_start_position=False):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
@@ -113,7 +114,7 @@ def evalPolicy(policy, env,
         for task_id in range(eval_tasks):  
             need_to_plot_task = (plot_full_env or plot_value_function or render_env) \
                                 and (val_key, task_id) in video_validate_tasks
-            if validate_one_task and not need_to_plot_task:
+            if skip_not_video_tasks and not need_to_plot_task:
                 continue
             if need_to_plot_task:
                 images = []
@@ -137,6 +138,9 @@ def evalPolicy(policy, env,
 
             while not done:
                 if plot_full_env and need_to_plot_task:
+                    if plot_only_start_position and t > 0:
+                        done = True
+                        break
                     env_min_x = env.dataset_info["min_x"]
                     env_max_x = env.dataset_info["max_x"]
                     env_min_y = env.dataset_info["min_y"]
@@ -617,6 +621,8 @@ def train(args=None):
         total_maps = 12
     elif args.dataset == "test_medium_dataset":
         total_maps = 3
+    elif args.dataset == "hard_dataset_simplified_test":
+        total_maps = 2
     else:
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
@@ -837,7 +843,7 @@ def train(args=None):
                                 #video_validate_tasks = [("map0", 10)],
                                 #video_validate_tasks = [("map0", 10), ("map0", 5)],
                                 #video_validate_tasks = [("map0", 0)],
-                                video_validate_tasks = [("map0", 0), ("map0", 1)],
+                                video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=False)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
@@ -1024,7 +1030,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="hard_dataset_simplified_test") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -1034,7 +1040,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
