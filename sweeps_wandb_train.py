@@ -586,7 +586,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified_turns") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="hard_dataset_simplified_test") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -597,8 +597,8 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
-    parser.add_argument("--max_timesteps",      default=10600, type=int)
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--max_timesteps",      default=400000, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
     parser.add_argument("--n_eval",             default=5, type=int)
@@ -618,6 +618,10 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    # her
+    parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
+    parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
+    parser.add_argument("--fraction_resampled_goals_are_replay_buffer_goals",  default=0.5, type=float) # 20
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
@@ -629,7 +633,7 @@ if __name__ == "__main__":
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
-    parser.add_argument("--wandb_project",      default="sweep_train_ris_sac_polamp", type=str)
+    parser.add_argument("--wandb_project",      default="sweep_train_ris_sac_polamp_1", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
@@ -641,22 +645,15 @@ if __name__ == "__main__":
     for key_ in parse_parameters_dict:
         parameters_dict[key_] = {"value": parse_parameters_dict[key_]}
     parameters_dict.update({
-        'pi_lr': {
-            'values': [1e-3, 1e-4, 1e-5]},
-        'q_lr': {
-            'values': [1e-3, 1e-4, 1e-5]},
-        'h_lr': {
-            'values': [1e-3, 1e-4, 1e-5]},
+        # ris
         'state_dim': {
-            'values': [20, 40, 60, 80]},
+            'values': [20, 40]},
         'alpha': {
-            'values': [10, 1, 0.1, 0.01, 0.001, 0.0001]},
+            'values': [1, 0.1, 0.01, 0.001, 0.0001]},
         'Lambda': {
-            'values': [10, 1, 0.1, 0.01, 0.001, 0.0001]},
+            'values': [1, 0.1, 0.01, 0.001, 0.0001]},
         'n_ensemble': {
-            'values': [5, 10, 15, 20, 40]},
-        'n_critic': {
-            'values': [1, 2]},
+            'values': [10, 20]},
     })
     # set sweep config
     sweep_config = {
@@ -673,5 +670,5 @@ if __name__ == "__main__":
     pprint.pprint(sweep_config) 
 
     sweep_id = wandb.sweep(sweep_config, project=args.wandb_project)
-    wandb.agent(sweep_id, train, count=10)
+    wandb.agent(sweep_id, train, count=40)
 

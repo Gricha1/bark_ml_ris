@@ -718,9 +718,9 @@ def train(args=None):
     replay_buffer = HERReplayBuffer(
         max_size=args.replay_buffer_size,
         env=env,
-        fraction_goals_are_rollout_goals = 0.2,
-        fraction_resampled_goals_are_env_goals = 0.0,
-        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
+        fraction_goals_are_rollout_goals = args.fraction_goals_are_rollout_goals,
+        fraction_resampled_goals_are_env_goals = args.fraction_resampled_goals_are_env_goals,
+        fraction_resampled_goals_are_replay_buffer_goals = args.fraction_resampled_goals_are_replay_buffer_goals,
         ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
         desired_goal_keys   =["desired_goal", "state_desired_goal"],
         observation_key     = 'observation',
@@ -1061,6 +1061,10 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    # her
+    parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
+    parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
+    parser.add_argument("--fraction_resampled_goals_are_replay_buffer_goals",  default=0.5, type=float) # 20
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)

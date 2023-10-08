@@ -42,8 +42,13 @@ python train_ris_ppo_polamp.py --name_val test_RIS_PPO_polamp_ex51
 
 python utilite_video_generator.py 
 
+# sweeps
+python 
+
 ## Train RIS_SAC
 python ris_train_polamp_env.py --exp_name polamp_env_ex_1
 python ris_validate_polamp_env.py --exp_name polamp_env_ex_1
 
+
+python sweeps_wandb_train.py --wandb_project sweep_train_ris_sac_polamp_1
 
