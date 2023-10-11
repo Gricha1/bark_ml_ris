@@ -40,14 +40,15 @@ def evalPolicy(policy, env,
                data_to_plot={}, dataset_plot=True, 
                eval_strategy=None,
                skip_not_video_tasks=False,
-               plot_only_start_position=False):
+               plot_only_start_position=False,
+               dataset_validation=None):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
     """
     assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     assert type(video_validate_tasks) == type(list())
-    assert (plot_subgoals and policy.use_encoder and policy.use_decoder) or (plot_subgoals and not policy.use_encoder)
+    assert not plot_subgoals or (plot_subgoals and policy.use_encoder and policy.use_decoder) or (plot_subgoals and not policy.use_encoder)
     assert (plot_decoder_agent_states and policy.use_decoder) or not plot_decoder_agent_states
     assert not plot_lidar_predictor or (plot_lidar_predictor and policy.use_lidar_predictor)
     print()
@@ -108,6 +109,17 @@ def evalPolicy(policy, env,
     acc_collisions = []
     episode_lengths = []
     task_statuses = []
+    if dataset_validation == "cross_dataset_simplified":
+        patern_nums = 12
+        task_count = 15
+        validation_tasks = []
+        for i in range(12):
+            j = i * task_count
+            validation_tasks.append(("map0", j))
+            validation_tasks.append(("map0", j+1))
+            validation_tasks.append(("map0", j+2))
+        video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
+                                validation_tasks[np.random.randint(len(validation_tasks))]]
 
     for val_key in env.maps.keys():
         eval_tasks = len(env.valTasks[val_key])
@@ -115,6 +127,8 @@ def evalPolicy(policy, env,
             need_to_plot_task = (plot_full_env or plot_value_function or render_env) \
                                 and (val_key, task_id) in video_validate_tasks
             if skip_not_video_tasks and not need_to_plot_task:
+                continue
+            if dataset_validation == "cross_dataset_simplified" and (val_key, task_id) not in validation_tasks:
                 continue
             if need_to_plot_task:
                 images = []
@@ -840,12 +854,11 @@ def train(args=None):
                                 plot_lidar_predictor=False,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
                                               "train_step_y": logger.data["train_step_y"]},
-                                #video_validate_tasks = [("map0", 10)],
-                                #video_validate_tasks = [("map0", 10), ("map0", 5)],
-                                #video_validate_tasks = [("map0", 0)],
-                                video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
+                                #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
+                                video_validate_tasks = [],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
-                                dataset_plot=False)
+                                dataset_plot=False,
+                                dataset_validation=args.dataset)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
@@ -1030,7 +1043,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified_test") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)

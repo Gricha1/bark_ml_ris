@@ -23,12 +23,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified_test") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=True, type=bool)
+    parser.add_argument("--validate_train_dataset",  default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
@@ -96,7 +97,7 @@ if __name__ == "__main__":
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
-    if args.dataset:
+    if args.validate_train_dataset:
         valTasks = trainTask
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
@@ -210,7 +211,7 @@ if __name__ == "__main__":
     mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
                                  plot_full_env=True,
-                                 plot_subgoals=True,
+                                 plot_subgoals=False,
                                  plot_value_function=False, 
                                  render_env=False, 
                                  plot_only_agent_values=False, 
@@ -227,8 +228,8 @@ if __name__ == "__main__":
                                  #video_validate_tasks = [("map0", 14), ("map0", 62), ("map0", 84), ("map0", 95), ("map0", 103), ("map0", 112), ("map0", 128), ("map0", 135)],
                                  # hard dataset simplified
                                  #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2)],
-                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2), ("map0", 3), ("map0", 4)],
-                                 video_validate_tasks = [("map0", i) for i in range(200)] + [("map1", i) for i in range(200)],
+                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2), ("map0", 3)] if not args.validate_train_dataset else [("map0", i) for i in range(600)],
+                                 video_validate_tasks = [("map0", i) for i in range(600)],
                                  #video_validate_tasks = [("map0", 1), ("map1", 1)],
                                  value_function_angles=["theta_agent", 0, -np.pi/2],
                                  plot_decoder_agent_states=False,
