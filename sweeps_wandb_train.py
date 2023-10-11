@@ -586,7 +586,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="hard_dataset_simplified_test") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -598,7 +598,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
     parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
-    parser.add_argument("--max_timesteps",      default=400000, type=int)
+    parser.add_argument("--max_timesteps",      default=800000, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
     parser.add_argument("--n_eval",             default=5, type=int)
@@ -670,5 +670,5 @@ if __name__ == "__main__":
     pprint.pprint(sweep_config) 
 
     sweep_id = wandb.sweep(sweep_config, project=args.wandb_project)
-    wandb.agent(sweep_id, train, count=40)
+    wandb.agent(sweep_id, train, count=60)
 
