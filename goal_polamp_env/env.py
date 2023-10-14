@@ -55,7 +55,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
               (self.inside_obstacles_movement != self.teleport_back_on_collision) or
               (not self.inside_obstacles_movement and not self.teleport_back_on_collision)
           )
-
+    self.goal_observation = None
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
     observation_size = 5
     if self.add_frame_stack:
@@ -311,14 +311,14 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     self.reset_goal_env(**kwargs)
     agent = self.environment.agent.current_state
-    goal = self.environment.agent.goal_state
-    assert -np.pi <= goal.theta <= np.pi, "incorrect dataset"
+    self.goal = self.environment.agent.goal_state
+    assert -np.pi <= self.goal.theta <= np.pi, "incorrect dataset"
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    goal_state = [self.goal.x, self.goal.y, self.goal.theta, self.goal.v, self.goal.steer]
     if self.use_lidar_data:
         beams_observation = self.environment.get_observation(agent)
         agent_state.extend(beams_observation.tolist())
-        beams_observation = self.environment.get_observation(goal)
+        beams_observation = self.environment.get_observation(self.goal)
         goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
       observation = []
@@ -342,6 +342,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     state_observation = observation 
     state_desired_goal = desired_goal 
     state_achieved_goal = state_observation
+    self.goal_observation = desired_goal
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
                 "achieved_goal" : achieved_goal,
@@ -362,27 +363,29 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       self.previous_agent_observations = [self.previous_agent_observation for _ in range(self.frame_stack)]
     else:
       self.previous_agent_observations = [self.previous_agent_observation] 
+    self.max_acc = self.environment.agent.dynamic_model.max_acc
+    self.max_ang_vel = self.environment.agent.dynamic_model.max_ang_vel
 
     return obs_dict
 
   def step(self, action, **kwargs):
     # action = [-1:1, -1:1]
     assert len(action) == 2
-    action = [action[0] * self.environment.agent.dynamic_model.max_acc, 
-              action[1] * self.environment.agent.dynamic_model.max_ang_vel]
+    action = [action[0] * self.max_acc, 
+              action[1] * self.max_ang_vel]
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
     # CMDP get clearance for HER buffer (dont change!!!)
     clearance_is_enough = self.environment.clearance_is_enough
 
     agent = self.environment.agent.current_state
-    goal = self.environment.agent.goal_state
+    # goal = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
 
     info["last_step_num"] = self.step_counter
 
     isDone = False
     distance_to_goal = info["EuclideanDistance"]
-    angle_to_goal = abs(normalizeAngle(abs(agent.theta - goal.theta)))
+    angle_to_goal = abs(normalizeAngle(abs(agent.theta - self.goal.theta)))
     goal_achieved = 1.0 * self.is_terminal_dist * (distance_to_goal < self.SOFT_EPS) \
                   + 1.0 * self.is_terminal_angle * (angle_to_goal < self.ANGLE_EPS)
     goal_achieved = bool(goal_achieved // (1.0 * self.is_terminal_dist + 1.0 * self.is_terminal_angle))
@@ -418,35 +421,36 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         reward += self.collision_reward
     
     agent = self.environment.agent.current_state
-    goal = self.environment.agent.goal_state
+    # goal = self.environment.agent.goal_state
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    # goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
-        beams_observation = self.environment.get_observation(agent)
-        agent_state.extend(beams_observation.tolist())
-        beams_observation = self.environment.get_observation(goal)
-        goal_state.extend(beams_observation.tolist())
+        # beams_observation = self.environment.get_observation(agent)
+        agent_state.extend(self.beams_observation.tolist())
+        # beams_observation = self.environment.get_observation(goal)
+        # goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
       observation = agent_state.copy()
-      goal_state = goal_state.copy()
-      desired_goal = []
+      # goal_state = goal_state.copy()
+      # desired_goal = []
       current_step = [1.0 * self.step_counter for _ in range(self.frame_stack)] # for last state
       for i in range(1, self.frame_stack):
         observation.extend(self.previous_agent_observations[-i])
-      for _ in range(self.frame_stack):
-        desired_goal.extend(goal_state)
+      # for _ in range(self.frame_stack):
+      #   desired_goal.extend(goal_state)
       observation = np.array(observation)
-      desired_goal = np.array(desired_goal)
+      # desired_goal = np.array(desired_goal)
       achieved_goal = observation
       current_step = np.array([current_step])
     else:
       observation = np.array(agent_state)
-      desired_goal = np.array(goal_state)
+      # desired_goal = np.array(goal_state)
       achieved_goal = observation
       current_step = np.array([1.0 * self.step_counter])
     collision = np.array([1.0 * ("Collision" in info)])
     state_observation = observation 
-    state_desired_goal = desired_goal 
+    desired_goal = self.goal_observation 
+    state_desired_goal = desired_goal
     state_achieved_goal = state_observation
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
@@ -460,7 +464,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision_happend_on_trajectory": 1.0 * self.collision_happend_on_trajectory,
               } 
     info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    info["goal_state"] = [self.goal.x, self.goal.y, self.goal.theta, self.goal.v, self.goal.steer]
     self.previous_agent_state = agent
     self.previous_agent_states.append(self.previous_agent_state)
     self.previous_agent_observation = agent_state
