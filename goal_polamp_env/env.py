@@ -380,6 +380,14 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     agent = self.environment.agent.current_state
     # goal = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
+    # Checking the bounds of map0
+    lower_x = 0
+    upper_x = 35
+    lower_y = -5
+    upper_y = 36
+    if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
+      info["Collision"] = True
+      isDone = True
 
     info["last_step_num"] = self.step_counter
 
@@ -466,10 +474,12 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
     info["goal_state"] = [self.goal.x, self.goal.y, self.goal.theta, self.goal.v, self.goal.steer]
     self.previous_agent_state = agent
-    self.previous_agent_states.append(self.previous_agent_state)
+    if self.teleport_back_on_collision:
+      self.previous_agent_states.append(self.previous_agent_state)
     self.previous_agent_observation = agent_state
     self.previous_agent_observations.append(self.previous_agent_observation)
-
+    self.previous_agent_observations = self.previous_agent_observations[1:]
+    
     return obs_dict, reward, isDone, info
 
   def HER_reward(self, state, action, next_state, goal, collision, goal_was_reached, step_counter):
