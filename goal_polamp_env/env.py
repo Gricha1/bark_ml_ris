@@ -382,7 +382,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
     # Checking the bounds of map0
     lower_x = 0
-    upper_x = 35
+    upper_x = 36
     lower_y = -5
     upper_y = 36
     if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
