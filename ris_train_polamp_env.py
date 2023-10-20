@@ -109,6 +109,7 @@ def evalPolicy(policy, env,
     acc_collisions = []
     episode_lengths = []
     task_statuses = []
+    video_validate_tasks = []
     if dataset_validation == "cross_dataset_simplified":
         patern_nums = 12
         task_count = 15
@@ -118,9 +119,10 @@ def evalPolicy(policy, env,
             validation_tasks.append(("map0", j))
             validation_tasks.append(("map0", j+1))
             validation_tasks.append(("map0", j+2))
-        video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
-                                validation_tasks[np.random.randint(len(validation_tasks))]]
-
+            video_validate_tasks.append(("map0", j))
+        # video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
+        #                         validation_tasks[np.random.randint(len(validation_tasks))]]
+    dataset_plot_is_already_visualized = False
     for val_key in env.maps.keys():
         eval_tasks = len(env.valTasks[val_key])
         for task_id in range(eval_tasks):  
@@ -311,11 +313,12 @@ def evalPolicy(policy, env,
                                 ax_states.scatter(np.linspace(obstacle[3][0].x, obstacle[3][1].x, 500), 
                                                 np.linspace(obstacle[3][0].y, obstacle[3][1].y, 500), 
                                                 color="blue", s=1)
-                        if len(data_to_plot) != 0 and dataset_plot:
+                        if not dataset_plot_is_already_visualized and len(data_to_plot) != 0 and dataset_plot:
+                            dataset_plot_is_already_visualized = True
                             if "dataset_x" in data_to_plot and "dataset_y" in data_to_plot:
                                 ax_states.scatter(data_to_plot["dataset_x"], 
                                                 data_to_plot["dataset_y"], 
-                                                color="red", s=5)
+                                                color="green", s=5)
                             if "train_step_x" in data_to_plot and "train_step_y" in data_to_plot:
                                 ax_states.scatter(data_to_plot["train_step_x"], 
                                                 data_to_plot["train_step_y"], 
@@ -566,7 +569,7 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
     angle_batch = abs(np.vectorize(normalizeAngle)(abs(np.array(next_state_batch - goal_batch)[:, 2:3])))
     if env.static_env:
-        cost_batch = (np.ones_like(done_batch) * next_state_batch[:, 3:4]) * (1.0 - clearance_is_enough_batch)
+        cost_batch = (np.ones_like(done_batch) * np.abs(next_state_batch[:, 3:4])) * (1.0 - clearance_is_enough_batch)
     else:
         cost_batch = (- np.ones_like(done_batch) * 0)
     if env.static_env and env.add_collision_reward:
@@ -578,8 +581,11 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
                                           collision=collision_batch, goal_was_reached=done_batch, 
                                           step_counter=current_step_batch)
         else:
-            done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) \
-                         + 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS) # terminal condition
+            # if the state has zero velocity we can reward agent multiple times
+            done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS)
+                        #  + 1.0 * (np.array(next_state_batch)[:, 3:4] > 0.5)# terminal condition
+            if env.is_terminal_angle:
+                done_batch += 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS)
             done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
             reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                             + (env.collision_reward) * collision_batch
@@ -600,16 +606,17 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
 
 def train(args=None):   
     # chech if hyperparams tuning
-    if type(args) == type(argparse.Namespace()):
-        hyperparams_tune = False
-        wandb.init(project=args.wandb_project, config=args, 
-                   name="RIS," 
-                        + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
-                        + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
-    else:
-        hyperparams_tune = True
-        wandb.init(config=args, name="hyperparams_tune_RIS")
-        args = wandb.config
+    if  args.using_wandb:
+        if type(args) == type(argparse.Namespace()):
+            hyperparams_tune = False
+            wandb.init(project=args.wandb_project, config=args, 
+                    name="RIS," 
+                            + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
+                            + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
+        else:
+            hyperparams_tune = True
+            wandb.init(config=args, name="hyperparams_tune_RIS")
+            args = wandb.config
     
     print("**************")
     print("state_dim:", args.state_dim)
@@ -685,6 +692,7 @@ def train(args=None):
     vectorized = True
     action_dim = env.action_space.shape[0]
     env_obs_dim = env.observation_space["observation"].shape[0]
+    print(f"env_obs_dim: {env_obs_dim}")
     if args.use_encoder:
         state_dim = args.state_dim 
     else:
@@ -821,12 +829,14 @@ def train(args=None):
 
         if done: 
             train_success = 1.0 * train_info["goal_achieved"]
+            collision_end = 1.0 * ("Collision" in train_info)
             # Add path to replay buffer and reset path builder
             replay_buffer.add_path(path_builder.get_all_stacked())
             path_builder = PathBuilder()
             logger.store(t=t, reward=reward)
             logger.store(cumulative_reward=cumulative_reward)
             logger.store(train_rate=train_success)
+            logger.store(collision_rate=collision_end)
             cumulative_reward = 0
             # Reset environment
             obs = env.reset()
@@ -837,6 +847,8 @@ def train(args=None):
             episode_num += 1 
             logger.store(dataset_x = state[0])
             logger.store(dataset_y = state[1])
+            logger.store(dataset_x = goal[0])
+            logger.store(dataset_y = goal[1])
 
         if (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
             # Eval policy
@@ -853,17 +865,21 @@ def train(args=None):
                                 plot_subgoal_dispertion=True,
                                 plot_lidar_predictor=False,
                                 data_to_plot={"train_step_x": logger.data["train_step_x"], 
-                                              "train_step_y": logger.data["train_step_y"]},
+                                              "train_step_y": logger.data["train_step_y"],
+                                              "dataset_x": logger.data["dataset_x"],
+                                              "dataset_y": logger.data["dataset_y"]},
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                                 video_validate_tasks = [],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
-                                dataset_plot=False,
+                                dataset_plot=True,
                                 dataset_validation=args.dataset)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
+            train_collision_rate = sum(logger.data["collision_rate"]) / len(logger.data["collision_rate"])
             wandb_log_dict = {
                     'steps': logger.data["t"][-1],
                     'train_time': sum(logger.data["train_time"]) / len(logger.data["train_time"]),
-                    'train/train_rate': train_success_rate,    
+                    'train/train_rate': train_success_rate, 
+                    'train/collision_rate': train_collision_rate,    
                     'train/avg_cumulative_reward': sum(logger.data["cumulative_reward"]) / len(logger.data["cumulative_reward"]),
                     'train/max_cumulative_reward': max(logger.data["cumulative_reward"]),
                     'train/min_cumulative_reward': min(logger.data["cumulative_reward"]),
@@ -992,8 +1008,8 @@ def train(args=None):
                 logger.save(folder + "log.pkl")
                 policy.save(folder)
             # Save (best) results
-            if old_success_rate is None or train_success_rate >= old_success_rate:
-                old_success_rate = train_success_rate
+            if old_success_rate is None or success_rate >= old_success_rate:
+                old_success_rate = success_rate
                 save_policy_count += 1
                 folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "best_"
                 if not os.path.exists(folder):
@@ -1063,7 +1079,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
-    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
+    parser.add_argument("--n_ensemble",         default=20, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
@@ -1081,7 +1097,7 @@ if __name__ == "__main__":
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
-    parser.add_argument("--state_dim",               default=20, type=int) # 20
+    parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=False, type=bool)
