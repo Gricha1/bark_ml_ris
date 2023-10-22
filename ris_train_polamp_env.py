@@ -582,17 +582,22 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
                                           step_counter=current_step_batch)
         else:
             # if the state has zero velocity we can reward agent multiple times
-            done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS)
-                        #  + 1.0 * (np.array(next_state_batch)[:, 3:4] > 0.5)# terminal condition
+            done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) + 1.0 * (np.array(next_state_batch)[:, 3:4] > 0.01)# terminal condition
+            #done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS)# terminal condition
             if env.is_terminal_angle:
                 done_batch += 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS)
-            done_batch = done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle)
+            done_batch = 1.0 * collision_batch + (1.0 - 1.0 * collision_batch) * (done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle + 1.0))
+            #done_batch = 1.0 * collision_batch + (1.0 - 1.0 * collision_batch) * (done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle))
             reward_batch = (- np.ones_like(done_batch) * env.abs_time_step_reward) * (1.0 - collision_batch) \
                             + (env.collision_reward) * collision_batch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
     
+    # check if (collision == 1) then (done == 1)
+    if env.static_env and not env.teleport_back_on_collision:
+        assert ( (1.0 - 1.0 * collision_batch) + (1.0 * collision_batch) * (1.0 * done_batch) ).all()
+
     # Convert to Pytorch
     state_batch         = torch.FloatTensor(state_batch).to(device)
     action_batch        = torch.FloatTensor(action_batch).to(device)
@@ -1069,7 +1074,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(15000), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -1077,7 +1082,7 @@ if __name__ == "__main__":
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
-    parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--alpha",              default=5.0, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=20, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
