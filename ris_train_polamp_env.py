@@ -611,17 +611,17 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
 
 def train(args=None):   
     # chech if hyperparams tuning
-    if  args.using_wandb:
-        if type(args) == type(argparse.Namespace()):
-            hyperparams_tune = False
+    if type(args) == type(argparse.Namespace()):
+        hyperparams_tune = False
+        if args.using_wandb:
             wandb.init(project=args.wandb_project, config=args, 
                     name="RIS," 
                             + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
                             + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
-        else:
-            hyperparams_tune = True
-            wandb.init(config=args, name="hyperparams_tune_RIS")
-            args = wandb.config
+    else:
+        hyperparams_tune = True
+        wandb.init(config=args, name="hyperparams_tune_RIS")
+        args = wandb.config
     
     print("**************")
     print("state_dim:", args.state_dim)
