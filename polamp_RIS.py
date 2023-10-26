@@ -32,7 +32,7 @@ class RIS(object):
 				 use_dubins_filter = False,
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
-				 clip_v_function=-100,
+				 clip_v_function=-100, max_grad_norm = 4.0,
 				 logger=None, device=torch.device("cuda"),
 				 env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, 
 				 curriculum_high_policy=False,
@@ -50,7 +50,7 @@ class RIS(object):
 		self.safety_add_to_high_policy = safety_add_to_high_policy
 		self.curriculum_high_policy = curriculum_high_policy
 		self.stop_train_high_policy = False
-
+		self.max_grad_norm = max_grad_norm
 		# SAC
 		self.train_ris_with_sac = False
 		self.train_sac = train_sac
@@ -574,9 +574,16 @@ class RIS(object):
 		self.critic_optimizer.zero_grad()
 		if self.safety and self.test_case_soft_critic: self.critic_cost_optimizer.zero_grad()
 		critic_loss.backward()
+		if self.max_grad_norm > 0:
+			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=self.max_grad_norm)
 		if self.use_encoder: self.encoder_optimizer.step()
 		self.critic_optimizer.step()
 		if self.safety and self.test_case_soft_critic: self.critic_cost_optimizer.step()
+
+		with torch.no_grad():
+			critic_grad_norm = (
+            sum(p.grad.data.norm(2).item() ** 2 for p in self.critic.parameters() if p.grad is not None) ** 0.5
+        	)
 
 		# Optimize autoencoder
 		if self.use_decoder:
@@ -660,7 +667,14 @@ class RIS(object):
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
+		if self.max_grad_norm > 0:
+			torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=self.max_grad_norm)
 		self.actor_optimizer.step()
+
+		with torch.no_grad():
+			actor_grad_norm = (
+            sum(p.grad.data.norm(2).item() ** 2 for p in self.actor.parameters() if p.grad is not None) ** 0.5
+        	)
 
 		# Update target networks
 		self.total_it += 1
@@ -748,4 +762,6 @@ class RIS(object):
 				D_KL		 = D_KL.mean().item(),
 				alpha        = self.alpha,	
 				log_entropy_sac = log_prob.mean().item() if self.train_sac or self.train_ris_with_sac else 0,
+				critic_grad_norm = critic_grad_norm,
+				actor_grad_norm = actor_grad_norm,
 			)
