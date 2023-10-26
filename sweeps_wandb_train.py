@@ -592,7 +592,6 @@ if __name__ == "__main__":
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
-    parser.add_argument("--sweep",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
@@ -607,7 +606,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
-    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
+    parser.add_argument("--n_ensemble",         default=20, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
@@ -619,13 +618,13 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     # her
-    parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
-    parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
+    parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) 
+    parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) 
     parser.add_argument("--fraction_resampled_goals_are_replay_buffer_goals",  default=0.5, type=float) # 20
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
-    parser.add_argument("--state_dim",               default=20, type=int) # 20
+    parser.add_argument("--state_dim",               default=40, type=int) # 40
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=False, type=bool)
@@ -646,14 +645,23 @@ if __name__ == "__main__":
         parameters_dict[key_] = {"value": parse_parameters_dict[key_]}
     parameters_dict.update({
         # ris
-        'state_dim': {
-            'values': [20, 40]},
+        #'state_dim': {
+        #    'values': [20, 40]
+        #},
         'alpha': {
-            'values': [1, 0.1, 0.01, 0.001, 0.0001]},
+            #'values': [1, 0.1, 0.01, 0.001, 0.0001]
+            'distribution': 'uniform',
+            'min': 0.0001,
+            'max': 5
+        },
         'Lambda': {
-            'values': [1, 0.1, 0.01, 0.001, 0.0001]},
-        'n_ensemble': {
-            'values': [10, 20]},
+            #'values': [1, 0.1, 0.01, 0.001, 0.0001]
+            'distribution': 'uniform',
+            'min': 0.001,
+            'max': 10
+        },
+        #'n_ensemble': {
+        #    'values': [10, 20]},
     })
     # set sweep config
     sweep_config = {
