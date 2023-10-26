@@ -730,7 +730,7 @@ def train(args=None):
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  n_ensemble=args.n_ensemble,
-                 clip_v_function=args.clip_v_function,
+                 clip_v_function=args.clip_v_function, max_grad_norm=args.max_grad_norm,
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
@@ -898,8 +898,10 @@ def train(args=None):
                      'train/train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
                      'train/critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
+                     'train/critic_grad_norm': sum(logger.data["critic_grad_norm"][-args.eval_freq:]) / args.eval_freq,
                      'train/target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
                      'train/actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
+                     'train/actor_grad_norm': sum(logger.data["actor_grad_norm"][-args.eval_freq:]) / args.eval_freq,
                      'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
@@ -1074,7 +1076,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(15000), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -1082,7 +1084,7 @@ if __name__ == "__main__":
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
-    parser.add_argument("--alpha",              default=5.0, type=float)
+    parser.add_argument("--alpha",              default=0.1, type=float)
     parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=20, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
@@ -1095,6 +1097,7 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
+    parser.add_argument("--max_grad_norm",              default=4.0, type=float)
     # her
     parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
     parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
