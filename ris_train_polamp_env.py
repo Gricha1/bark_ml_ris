@@ -567,7 +567,6 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-    angle_batch = abs(np.vectorize(normalizeAngle)(abs(np.array(next_state_batch - goal_batch)[:, 2:3])))
     if env.static_env:
         cost_batch = (np.ones_like(done_batch) * np.abs(next_state_batch[:, 3:4])) * (1.0 - clearance_is_enough_batch)
     else:
@@ -585,6 +584,7 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
             done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS) + 1.0 * (np.array(next_state_batch)[:, 3:4] > 0.01)# terminal condition
             #done_batch   = 1.0 * env.is_terminal_dist * (reward_batch < env.SOFT_EPS)# terminal condition
             if env.is_terminal_angle:
+                angle_batch = abs(np.vectorize(normalizeAngle)(abs(np.array(next_state_batch - goal_batch)[:, 2:3])))
                 done_batch += 1.0 * env.is_terminal_angle * (angle_batch < env.ANGLE_EPS)
             done_batch = 1.0 * collision_batch + (1.0 - 1.0 * collision_batch) * (done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle + 1.0))
             #done_batch = 1.0 * collision_batch + (1.0 - 1.0 * collision_batch) * (done_batch // (1.0 * env.is_terminal_dist + 1.0 * env.is_terminal_angle))
@@ -780,6 +780,7 @@ def train(args=None):
     logger.store(train_step_y = state[1])
     logger.store(train_rate = 1.0*done)
     cumulative_reward = 0
+    cumulative_cost = 0
 
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
@@ -797,6 +798,7 @@ def train(args=None):
         next_state = next_obs["observation"]
         next_agent_state = next_obs["state_observation"]
         cumulative_reward += reward
+        cumulative_cost += train_info["cost"]
 
         path_builder.add_all(
             observations=obs,
@@ -840,9 +842,11 @@ def train(args=None):
             path_builder = PathBuilder()
             logger.store(t=t, reward=reward)
             logger.store(cumulative_reward=cumulative_reward)
+            logger.store(cumulative_cost=cumulative_cost)
             logger.store(train_rate=train_success)
             logger.store(collision_rate=collision_end)
             cumulative_reward = 0
+            cumulative_cost = 0
             # Reset environment
             obs = env.reset()
             done = False
@@ -888,6 +892,7 @@ def train(args=None):
                     'train/avg_cumulative_reward': sum(logger.data["cumulative_reward"]) / len(logger.data["cumulative_reward"]),
                     'train/max_cumulative_reward': max(logger.data["cumulative_reward"]),
                     'train/min_cumulative_reward': min(logger.data["cumulative_reward"]),
+                    'train/avg_cumulative_cost': sum(logger.data["cumulative_cost"]) / len(logger.data["cumulative_cost"]),
                     'train/autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,
                      'train/v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,
                      'train/high_policy_v': sum(logger.data["high_policy_v"][-args.eval_freq:]) / args.eval_freq,    
@@ -904,6 +909,7 @@ def train(args=None):
                      'train/actor_grad_norm': sum(logger.data["actor_grad_norm"][-args.eval_freq:]) / args.eval_freq,
                      'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                     'train/critic_cost_grad_norm': sum(logger.data["critic_cost_grad_norm"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
                      'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
                      
@@ -1108,7 +1114,7 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=False, type=bool)
+    parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=0.5, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
