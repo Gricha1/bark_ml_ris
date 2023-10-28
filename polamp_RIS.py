@@ -73,8 +73,8 @@ class RIS(object):
 		if self.safety:
 			self.test_case_soft_critic = False
 			self.test_max_critic = True
-			self.critic_cost 		= EnsembleCritic(state_dim, action_dim, n_Q=2).to(device)
-			self.critic_cost_target = EnsembleCritic(state_dim, action_dim, n_Q=2).to(device)
+			self.critic_cost 		= EnsembleCritic(state_dim, action_dim, n_Q=n_critic).to(device)
+			self.critic_cost_target = EnsembleCritic(state_dim, action_dim, n_Q=n_critic).to(device)
 			self.critic_cost_target.load_state_dict(self.critic_cost.state_dict())
 			self.critic_cost_optimizer = torch.optim.Adam(self.critic_cost.parameters(), lr=q_lr)
 
@@ -497,6 +497,7 @@ class RIS(object):
 				goal = self.encoder(goal)
 		Q_cost = self.critic_cost(state, action, goal)
 		Q_cost = torch.min(Q_cost, -1, keepdim=True)[0]
+		Q_cost = torch.clamp(Q_cost, min=0.0)
 		violation = Q_cost - self.cost_limit
 		lambda_loss =  self.lambda_coefficient * violation.detach()
 		#lambda_loss = -lambda_loss.sum(dim=-1)
@@ -551,10 +552,8 @@ class RIS(object):
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
 			if self.safety:
 				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
-				if self.test_max_critic:
-					target_Q_cost = torch.max(target_Q_cost, -1, keepdim=True)[0]
-				else:
-					target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
+				target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
+				target_Q_cost = torch.clamp(target_Q_cost, min=0.0)
 				target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
 		if self.logger is not None:
 			self.logger.store(
@@ -615,14 +614,22 @@ class RIS(object):
 			# Optimize the safety critic
 			self.critic_cost_optimizer.zero_grad()
 			critic_cost_loss.backward()
+			if self.max_grad_norm > 0:
+				torch.nn.utils.clip_grad_norm_(self.critic_cost.parameters(), max_norm=self.max_grad_norm)
 			self.critic_cost_optimizer.step()
 
+			with torch.no_grad():
+				critic_cost_grad_norm = (
+				sum(p.grad.data.norm(2).item() ** 2 for p in self.critic_cost.parameters() if p.grad is not None) ** 0.5
+				)
+			
 		if self.safety:
 			if self.logger is not None:
 				self.logger.store(
 					safety_critic_value   = Q_cost.mean().item(),
 					safety_target_value   = target_Q_cost.mean().item(),
 					critic_cost_loss      = critic_cost_loss.item(),
+					critic_cost_grad_norm      = critic_cost_grad_norm,
 				)
 
 		""" High-level policy learning """
@@ -643,10 +650,7 @@ class RIS(object):
 			Q = torch.min(Q, -1, keepdim=True)[0]
 			lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 			Q_cost = self.critic_cost(state, action, goal)
-			if self.test_max_critic:
-				Q_cost = lambda_multiplier * torch.max(Q_cost, -1, keepdim=True)[0]
-			else:
-				Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
+			Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
 			if self.train_sac:
 				actor_loss = (self.sac_alpha * log_prob - Q + Q_cost).mean()
 			elif self.train_ris_with_sac:
