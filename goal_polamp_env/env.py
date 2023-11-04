@@ -14,6 +14,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     goal_env_config = config["goal_our_env_config"]
     self.abs_time_step_reward = self.reward_config["timeStep"]
     self.collision_reward = -self.reward_config["collision"]
+    self.safe_eps = self.environment.agent.dynamic_model.safe_eps
     self.goal_reward = self.reward_config["goal"]
     self.static_env = goal_env_config["static_env"]  
     self.dataset = goal_env_config["dataset"]
@@ -388,6 +389,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
       info["Collision"] = True
       isDone = True
+      clearance_is_enough = False
+    
+    # if math.fabs(agent.x - lower_x) < self.safe_eps or \
+    #   math.fabs(agent.x - upper_x) < self.safe_eps or \
+    #   math.fabs(agent.y - lower_y) < self.safe_eps or \
+    #   math.fabs(agent.y - upper_y) < self.safe_eps:
+    #   clearance_is_enough = False
 
     info["last_step_num"] = self.step_counter
 
