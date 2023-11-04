@@ -594,6 +594,9 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
     
+    # Scaling
+    # if args.scaling > 0.0:
+    #     reward_batch = reward_batch * args.scaling
     # check if (collision == 1) then (done == 1)
     if env.static_env and not env.teleport_back_on_collision:
         assert ( (1.0 - 1.0 * collision_batch) + (1.0 * collision_batch) * (1.0 * done_batch) ).all()
@@ -730,7 +733,7 @@ def train(args=None):
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  n_ensemble=args.n_ensemble,
-                 clip_v_function=args.clip_v_function, max_grad_norm=args.max_grad_norm,
+                 clip_v_function=args.clip_v_function, max_grad_norm=args.max_grad_norm, lambda_initialization=args.lambda_initialization,
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
@@ -910,12 +913,17 @@ def train(args=None):
                      'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/critic_cost_grad_norm': sum(logger.data["critic_cost_grad_norm"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                     'train/lambda_loss': sum(logger.data["lambda_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                      'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
+                     'train/subgoal_weight_max': sum(logger.data["subgoal_weight_max"][-args.eval_freq:]) / args.eval_freq,
+                     'train/subgoal_weight_min': sum(logger.data["subgoal_weight_min"][-args.eval_freq:]) / args.eval_freq,
                      'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
+                     'train/subgoal_grad_norm': sum(logger.data["subgoal_grad_norm"][-args.eval_freq:]) / args.eval_freq,
                      
                      # additional
                      'train/alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
                      'train/lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
+                     'train/lambda_multiplier': sum(logger.data["lambda_multiplier"]) / len(logger.data["lambda_multiplier"]) if policy.safety and "lambda_multiplier" in logger.data else 0,
                      'train/fraction_goals_rollout_goals': replay_buffer.fraction_goals_rollout_goals,
                      'train/fraction_resampled_goals_replay_buffer_goals': replay_buffer.fraction_resampled_goals_replay_buffer_goals,
 
@@ -1103,7 +1111,10 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
-    parser.add_argument("--max_grad_norm",              default=4.0, type=float)
+    parser.add_argument("--max_grad_norm",              default=6.0, type=float)
+    parser.add_argument("--scaling",              default=1.0, type=float)
+    parser.add_argument("--lambda_initialization",  default=0.1, type=float)
+    
     # her
     parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
     parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
@@ -1115,7 +1126,7 @@ if __name__ == "__main__":
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=True, type=bool)
-    parser.add_argument("--cost_limit",                default=0.5, type=float)
+    parser.add_argument("--cost_limit",                default=1.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
