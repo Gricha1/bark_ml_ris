@@ -32,7 +32,7 @@ class RIS(object):
 				 use_dubins_filter = False,
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
-				 clip_v_function=-100, max_grad_norm = 4.0,
+				 clip_v_function=-100, max_grad_norm = 4.0, lambda_initialization = 0.1,
 				 logger=None, device=torch.device("cuda"),
 				 env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, 
 				 curriculum_high_policy=False,
@@ -41,6 +41,7 @@ class RIS(object):
 				 env_state_bounds={},
 				 train_env=None):		
 
+		print(f"lambda_initialization: {lambda_initialization}")
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		assert not safety_add_to_high_policy or (safety_add_to_high_policy and safety)
@@ -80,7 +81,7 @@ class RIS(object):
 
 			self.cost_limit         = cost_limit
 			self.update_lambda      = update_lambda
-			self.lambda_coefficient = torch.tensor(1.0, requires_grad=True)
+			self.lambda_coefficient = torch.tensor(lambda_initialization, requires_grad=True)
 			self.lambda_optimizer = torch.optim.Adam([self.lambda_coefficient], lr=5e-4)
 			
 		# Lidar data predictor
@@ -448,6 +449,11 @@ class RIS(object):
 		self.subgoal_optimizer.zero_grad()
 		subgoal_loss.backward()
 		self.subgoal_optimizer.step()
+
+		with torch.no_grad():
+			subgoal_grad_norm = (
+            sum(p.grad.data.norm(2).item() ** 2 for p in self.subgoal_net.parameters() if p.grad is not None) ** 0.5
+        	)
 		
 		# debug subgoal
 		train_subgoal = {"x_max": new_subgoal[:, 0].max().item(),
@@ -461,7 +467,10 @@ class RIS(object):
 		# Log variables
 		if self.logger is not None:
 			self.logger.store(
+				subgoal_grad_norm = subgoal_grad_norm,
 				subgoal_weight = weight.mean().item(),
+				subgoal_weight_max = weight.max().item(),
+				subgoal_weight_min = weight.min().item(),
 				log_prob_target_subgoal = log_prob.mean().item(),
 				adv = adv.mean().item(),
 				ratio_adv = adv.ge(0.0).float().mean().item(),
@@ -509,6 +518,7 @@ class RIS(object):
 		if self.logger is not None:
 			self.logger.store(
 				lambda_coef   = self.lambda_coefficient.item(),
+				lambda_loss   = lambda_loss.item(),
 			)
 
 	def train(self, state, action, reward, cost, next_state, done, goal, subgoal):
@@ -625,11 +635,13 @@ class RIS(object):
 			
 		if self.safety:
 			if self.logger is not None:
+				lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 				self.logger.store(
 					safety_critic_value   = Q_cost.mean().item(),
 					safety_target_value   = target_Q_cost.mean().item(),
 					critic_cost_loss      = critic_cost_loss.item(),
 					critic_cost_grad_norm      = critic_cost_grad_norm,
+					lambda_multiplier = lambda_multiplier.item(),
 				)
 
 		""" High-level policy learning """
