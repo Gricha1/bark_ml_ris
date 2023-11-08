@@ -119,7 +119,7 @@ if __name__ == "__main__":
     environment_config = {
         'vehicle_config': car_config,
         'tasks': trainTask,
-        'valTasks': trainTask,
+        'valTasks': valTasks,
         'maps': maps,
         'our_env_config' : our_env_config,
         'reward_config' : reward_config,
