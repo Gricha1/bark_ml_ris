@@ -41,7 +41,8 @@ def evalPolicy(policy, env,
                eval_strategy=None,
                skip_not_video_tasks=False,
                plot_only_start_position=False,
-               dataset_validation=None):
+               dataset_validation=None,
+               full_validation=False):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
@@ -110,16 +111,22 @@ def evalPolicy(policy, env,
     episode_lengths = []
     task_statuses = []
     video_validate_tasks = []
+    lst_min_clearance_distances = []
+    lst_mean_clearance_distances = []
     if dataset_validation == "cross_dataset_simplified":
         patern_nums = 12
         task_count = 15
         validation_tasks = []
-        for i in range(12):
-            j = i * task_count
-            validation_tasks.append(("map0", j))
-            validation_tasks.append(("map0", j+1))
-            validation_tasks.append(("map0", j+2))
-            video_validate_tasks.append(("map0", j))
+        if full_validation:
+            for i in range(len(env.valTasks['map0'])):
+               validation_tasks.append(("map0", i))
+        else:
+            for i in range(patern_nums):
+                j = i * task_count
+                validation_tasks.append(("map0", j))
+                validation_tasks.append(("map0", j+1))
+                validation_tasks.append(("map0", j+2))
+                video_validate_tasks.append(("map0", j))
         # video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
         #                         validation_tasks[np.random.randint(len(validation_tasks))]]
     dataset_plot_is_already_visualized = False
@@ -150,6 +157,7 @@ def evalPolicy(policy, env,
             acc_reward = 0
             acc_cost = 0
             acc_collision = 0
+            min_clearance_distances = []
             state_distrs["start_x"].append(state[0])
 
             while not done:
@@ -478,8 +486,9 @@ def evalPolicy(policy, env,
                 mean_actions["a"].append(action[0])
                 mean_actions["v_s"].append(action[1])
 
-                next_obs, reward, done, info = env.step(action) 
-
+                next_obs, reward, done, info = env.step(action)
+                if full_validation:
+                    min_clearance_distances.append(np.min(env.beams_observation))
                 acc_reward += reward
                 acc_cost += info["cost"]
                 acc_collision += 1.0 * ("Collision" in info)
@@ -512,6 +521,9 @@ def evalPolicy(policy, env,
             acc_collisions.append(acc_collision)
             acc_costs.append(acc_cost)
             task_statuses.append((val_key, task_id, task_status))
+            if full_validation:
+                lst_min_clearance_distances.append(np.min(min_clearance_distances))
+                lst_mean_clearance_distances.append(np.mean(min_clearance_distances))
 
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
@@ -519,6 +531,11 @@ def evalPolicy(policy, env,
     eval_cost = np.mean(acc_costs)
     eval_collisions = np.mean(acc_collisions)
     eval_episode_length = np.mean(episode_lengths)
+    eval_min_clearance = 0
+    eval_mean_clearance = 0
+    if full_validation:
+        eval_min_clearance = np.mean(lst_min_clearance_distances)
+        eval_mean_clearance = np.mean(lst_mean_clearance_distances)
 
     for key in state_distrs:
         max_state_vals["max_" + str(key)] = np.max(state_distrs[key])
@@ -539,6 +556,8 @@ def evalPolicy(policy, env,
     validation_info["action_info"] = action_info
     validation_info["eval_cost"] = eval_cost
     validation_info["eval_collisions"] = eval_collisions
+    validation_info["eval_min_clearance"] = eval_min_clearance
+    validation_info["eval_mean_clearance"] = eval_mean_clearance
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
@@ -840,6 +859,8 @@ def train(args=None):
         if done: 
             train_success = 1.0 * train_info["goal_achieved"]
             collision_end = 1.0 * ("Collision" in train_info)
+            if collision_end:
+                logger.store(collision_velocity=agent_state[3])
             # Add path to replay buffer and reset path builder
             replay_buffer.add_path(path_builder.get_all_stacked())
             path_builder = PathBuilder()
@@ -892,6 +913,7 @@ def train(args=None):
                     'train_time': sum(logger.data["train_time"]) / len(logger.data["train_time"]),
                     'train/train_rate': train_success_rate, 
                     'train/collision_rate': train_collision_rate,    
+                    'train/collision_velocity': sum(logger.data["collision_velocity"]) / len(logger.data["collision_velocity"]) if "collision_velocity" in logger.data else 0,    
                     'train/avg_cumulative_reward': sum(logger.data["cumulative_reward"]) / len(logger.data["cumulative_reward"]),
                     'train/max_cumulative_reward': max(logger.data["cumulative_reward"]),
                     'train/min_cumulative_reward': min(logger.data["cumulative_reward"]),
@@ -1126,7 +1148,7 @@ if __name__ == "__main__":
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=True, type=bool)
-    parser.add_argument("--cost_limit",                default=1.0, type=float)
+    parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
