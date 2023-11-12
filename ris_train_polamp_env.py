@@ -12,7 +12,7 @@ from gym.envs.registration import register
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import copy
-from math import pi
+from math import pi, fabs
 
 from polamp_env.lib.utils_operations import normalizeAngle
 from utils.logger import Logger
@@ -110,9 +110,10 @@ def evalPolicy(policy, env,
     acc_collisions = []
     episode_lengths = []
     task_statuses = []
-    video_validate_tasks = []
+    # video_validate_tasks = []
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
+    lst_unsuccessful_tasks = []
     if dataset_validation == "cross_dataset_simplified":
         patern_nums = 12
         task_count = 15
@@ -121,6 +122,7 @@ def evalPolicy(policy, env,
             for i in range(len(env.valTasks['map0'])):
                validation_tasks.append(("map0", i))
         else:
+            video_validate_tasks = []
             for i in range(patern_nums):
                 j = i * task_count
                 validation_tasks.append(("map0", j))
@@ -510,7 +512,10 @@ def evalPolicy(policy, env,
                     videos.append((val_key, task_id, images))
             final_distances.append(info["EuclideanDistance"])
             success = 1.0 * info["goal_achieved"]
-            task_status = "success"
+            if success:
+                task_status = "success"
+            else:
+                task_status = "limit_reached"
             if env.static_env: 
                 if "Collision" in info:
                     task_status = "collision"
@@ -524,6 +529,8 @@ def evalPolicy(policy, env,
             if full_validation:
                 lst_min_clearance_distances.append(np.min(min_clearance_distances))
                 lst_mean_clearance_distances.append(np.mean(min_clearance_distances))
+                if acc_collision > 0.5 or success < 0.5:
+                    lst_unsuccessful_tasks.append((val_key, task_id, task_status))
 
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
@@ -552,6 +559,7 @@ def evalPolicy(policy, env,
     if plot_full_env or render_env:
         videos = [(map_name, task_indx, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, task_indx, video in videos]
     validation_info["task_statuses"] = task_statuses
+    validation_info["unsuccessful_tasks"] = lst_unsuccessful_tasks
     validation_info["videos"] = videos
     validation_info["action_info"] = action_info
     validation_info["eval_cost"] = eval_cost
@@ -586,10 +594,6 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     
     # Compute sparse rewards: -1 for all actions until the goal is reached
     reward_batch = np.sqrt(np.power(np.array(next_state_batch - goal_batch)[:, :2], 2).sum(-1, keepdims=True)) # distance: next_state to goal
-    if env.static_env:
-        cost_batch = (np.ones_like(done_batch) * np.abs(next_state_batch[:, 3:4])) * (1.0 - clearance_is_enough_batch)
-    else:
-        cost_batch = (- np.ones_like(done_batch) * 0)
     if env.static_env and env.add_collision_reward:
         if env.add_ppo_reward:
             assert 1 == 0, "didnt implement add ppo reward"
@@ -612,6 +616,22 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     else:
         done_batch   = 1.0 * (reward_batch < env.SOFT_EPS) # terminal condition
         reward_batch = - np.ones_like(done_batch) * env.abs_time_step_reward
+    
+    if env.static_env:
+        velocity_array = np.abs(next_state_batch[:, 3:4])
+        if args.use_lower_velocity_bound:
+            min_ris_velocity = 0.3
+            # cost_collision = fabs(env.collision_reward)
+            # adding threshold to lower velocity bound
+            velocity_limit_exceeded = velocity_array >= min_ris_velocity
+            updated_velocity_array = velocity_array * velocity_limit_exceeded
+            cost_batch = (np.ones_like(done_batch) * updated_velocity_array) * (1.0 - clearance_is_enough_batch)
+            # cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
+        else:
+            cost_batch = (np.ones_like(done_batch) * velocity_array) * (1.0 - clearance_is_enough_batch)
+
+    else:
+        cost_batch = (- np.ones_like(done_batch) * 0)
     
     # Scaling
     # if args.scaling > 0.0:
@@ -739,6 +759,8 @@ def train(args=None):
                                  env.environment.agent.dynamic_model.max_steer)}
     R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
     curvature = 1 / R
+    max_polamp_steps = our_env_config["max_polamp_steps"]
+    print(f"max_polamp_steps: {max_polamp_steps}")
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
                  use_decoder=args.use_decoder,
@@ -753,6 +775,7 @@ def train(args=None):
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  n_ensemble=args.n_ensemble,
                  clip_v_function=args.clip_v_function, max_grad_norm=args.max_grad_norm, lambda_initialization=args.lambda_initialization,
+                 max_episode_steps = max_polamp_steps,
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
                  add_obs_noise=args.add_obs_noise,
@@ -1150,6 +1173,8 @@ if __name__ == "__main__":
     parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
+    parser.add_argument("--use_lower_velocity_bound",  default=False, type=bool)
+    
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
