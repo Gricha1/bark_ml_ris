@@ -389,7 +389,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
       info["Collision"] = True
       isDone = True
-      # clearance_is_enough = False
+      clearance_is_enough = False
     
     # if math.fabs(agent.x - lower_x) < self.safe_eps or \
     #   math.fabs(agent.x - upper_x) < self.safe_eps or \
