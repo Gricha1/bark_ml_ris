@@ -33,6 +33,7 @@ class RIS(object):
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
 				 h_lr=1e-4, q_lr=1e-3, pi_lr=1e-4, enc_lr=1e-4, epsilon=1e-16, 
 				 clip_v_function=-100, max_grad_norm = 4.0, lambda_initialization = 0.1,
+				 max_episode_steps = 250,
 				 logger=None, device=torch.device("cuda"),
 				 env_obs_dim=None, add_ppo_reward=False, add_obs_noise=False, 
 				 curriculum_high_policy=False,
@@ -80,6 +81,10 @@ class RIS(object):
 			self.critic_cost_optimizer = torch.optim.Adam(self.critic_cost.parameters(), lr=q_lr)
 
 			self.cost_limit         = cost_limit
+			# we should use the timestep_cost_limit
+			self.timestep_cost_limit = cost_limit * (1 - gamma ** max_episode_steps) / (1 - gamma) / max_episode_steps
+			print(f"timestep_cost_limit: {self.timestep_cost_limit}")
+			# print(f"max_episode_steps: {max_episode_steps}")
 			self.update_lambda      = update_lambda
 			self.lambda_coefficient = torch.tensor(lambda_initialization, requires_grad=True)
 			self.lambda_optimizer = torch.optim.Adam([self.lambda_coefficient], lr=5e-4)
@@ -507,7 +512,7 @@ class RIS(object):
 		Q_cost = self.critic_cost(state, action, goal)
 		Q_cost = torch.min(Q_cost, -1, keepdim=True)[0]
 		Q_cost = torch.clamp(Q_cost, min=0.0)
-		violation = Q_cost - self.cost_limit
+		violation = Q_cost - self.timestep_cost_limit
 		lambda_loss =  self.lambda_coefficient * violation.detach()
 		#lambda_loss = -lambda_loss.sum(dim=-1)
 		lambda_loss = -lambda_loss.mean()
