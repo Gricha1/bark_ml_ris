@@ -53,6 +53,7 @@ class RIS(object):
 		self.curriculum_high_policy = curriculum_high_policy
 		self.stop_train_high_policy = False
 		self.max_grad_norm = max_grad_norm
+		self.actor_max_grad_norm = 2.0
 		# SAC
 		self.train_ris_with_sac = False
 		self.train_sac = train_sac
@@ -688,8 +689,8 @@ class RIS(object):
 		# Optimize the actor 
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
-		if self.max_grad_norm > 0:
-			torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=self.max_grad_norm)
+		if self.actor_max_grad_norm > 0:
+			torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=self.actor_max_grad_norm)
 		self.actor_optimizer.step()
 
 		with torch.no_grad():
