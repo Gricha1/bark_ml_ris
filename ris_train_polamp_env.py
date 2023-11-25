@@ -1158,7 +1158,7 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
     parser.add_argument("--max_grad_norm",              default=6.0, type=float)
     parser.add_argument("--scaling",              default=1.0, type=float)
-    parser.add_argument("--lambda_initialization",  default=0.1, type=float)
+    parser.add_argument("--lambda_initialization",  default=1.0, type=float)
     
     # her
     parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
