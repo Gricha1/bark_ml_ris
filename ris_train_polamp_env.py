@@ -619,17 +619,17 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     
     if env.static_env:
         velocity_array = np.abs(next_state_batch[:, 3:4])
-        if args.use_lower_velocity_bound:
-            min_ris_velocity = 0.3
-            # cost_collision = fabs(env.collision_reward)
-            # adding threshold to lower velocity bound
-            velocity_limit_exceeded = velocity_array >= min_ris_velocity
+        cost_collision = 100
+        if env.use_velocity_constraint_cost:
+            risk_velocity = env.risk_agent_velocity
+            velocity_limit_exceeded = velocity_array >= risk_velocity
             updated_velocity_array = velocity_array * velocity_limit_exceeded
             cost_batch = (np.ones_like(done_batch) * updated_velocity_array) * (1.0 - clearance_is_enough_batch)
-            # cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
+            cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
         else:
-            cost_batch = (np.ones_like(done_batch) * velocity_array) * (1.0 - clearance_is_enough_batch)
-
+            # every timestep in risk zone will be penalized
+            cost_batch = (np.ones_like(done_batch)) * (1.0 - clearance_is_enough_batch)
+            cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
     else:
         cost_batch = (- np.ones_like(done_batch) * 0)
     
@@ -1173,7 +1173,6 @@ if __name__ == "__main__":
     parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
-    parser.add_argument("--use_lower_velocity_bound",  default=False, type=bool)
     
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
