@@ -54,6 +54,7 @@ class RIS(object):
 		self.stop_train_high_policy = False
 		self.max_grad_norm = max_grad_norm
 		self.actor_max_grad_norm = 2.0
+		self.additional_debug = False
 		# SAC
 		self.train_ris_with_sac = False
 		self.train_sac = train_sac
@@ -462,13 +463,14 @@ class RIS(object):
         	)
 		
 		# debug subgoal
-		train_subgoal = {"x_max": new_subgoal[:, 0].max().item(),
-						 "x_mean": new_subgoal[:, 0].mean().item(), 
-						 "x_min": new_subgoal[:, 0].min().item(),
-						 "y_max": new_subgoal[:, 1].max().item(),
-						 "y_mean": new_subgoal[:, 1].mean().item(), 
-						 "y_min": new_subgoal[:, 1].min().item(),
-						 }
+		if self.additional_debug:
+			train_subgoal = {"x_max": new_subgoal[:, 0].max().item(),
+							"x_mean": new_subgoal[:, 0].mean().item(), 
+							"x_min": new_subgoal[:, 0].min().item(),
+							"y_max": new_subgoal[:, 1].max().item(),
+							"y_mean": new_subgoal[:, 1].mean().item(), 
+							"y_min": new_subgoal[:, 1].min().item(),
+							}
 
 		# Log variables
 		if self.logger is not None:
@@ -484,25 +486,30 @@ class RIS(object):
 				high_policy_v = policy_v.mean().item(),
 				high_v = v.mean().item(),
 				v1_v2_diff = policy_v_1.mean().item() - policy_v_2.mean().item(),
-				train_subgoal_x_max = train_subgoal["x_max"],
-				train_subgoal_x_mean = train_subgoal["x_mean"],
-				train_subgoal_x_min = train_subgoal["x_min"],
-				train_subgoal_y_max = train_subgoal["y_max"],
-				train_subgoal_y_mean = train_subgoal["y_mean"],
-				train_subgoal_y_min = train_subgoal["y_min"],
-				predicted_lidar_data_min = info["predicted_lidar_data_min"] if self.use_lidar_predictor else 0,
-				predicted_lidar_data_max = info["predicted_lidar_data_max"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_x_min = info["predicted_subgoal_x_min"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_x_max = info["predicted_subgoal_x_max"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_y_min = info["predicted_subgoal_y_min"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_y_max = info["predicted_subgoal_y_max"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_theta_min = info["predicted_subgoal_theta_min"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_theta_max = info["predicted_subgoal_theta_max"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_v_min = info["predicted_subgoal_v_min"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_v_max = info["predicted_subgoal_v_max"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_steer_min = info["predicted_subgoal_steer_min"] if self.use_lidar_predictor else 0,
-				predicted_subgoal_steer_max = info["predicted_subgoal_steer_max"] if self.use_lidar_predictor else 0,
 			)
+
+			if self.additional_debug:
+				self.logger.store(
+					train_subgoal_x_max = train_subgoal["x_max"],
+					train_subgoal_x_mean = train_subgoal["x_mean"],
+					train_subgoal_x_min = train_subgoal["x_min"],
+					train_subgoal_y_max = train_subgoal["y_max"],
+					train_subgoal_y_mean = train_subgoal["y_mean"],
+					train_subgoal_y_min = train_subgoal["y_min"],
+					predicted_lidar_data_min = info["predicted_lidar_data_min"] if self.use_lidar_predictor else 0,
+					predicted_lidar_data_max = info["predicted_lidar_data_max"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_x_min = info["predicted_subgoal_x_min"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_x_max = info["predicted_subgoal_x_max"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_y_min = info["predicted_subgoal_y_min"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_y_max = info["predicted_subgoal_y_max"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_theta_min = info["predicted_subgoal_theta_min"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_theta_max = info["predicted_subgoal_theta_max"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_v_min = info["predicted_subgoal_v_min"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_v_max = info["predicted_subgoal_v_max"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_steer_min = info["predicted_subgoal_steer_min"] if self.use_lidar_predictor else 0,
+					predicted_subgoal_steer_max = info["predicted_subgoal_steer_max"] if self.use_lidar_predictor else 0,
+				)
+
 
 	# if self.safety
 	def train_lagrangian(self, state, action, goal):
@@ -711,69 +718,68 @@ class RIS(object):
 
 
 		# debug
-		train_state = {"x_max": state[:, 0].max().item(),
-					   "x_mean": state[:, 0].mean().item(), 
-					   "x_min": state[:, 0].min().item(),
-					   "y_max": state[:, 1].max().item(),
-					   "y_mean": state[:, 1].mean().item(), 
-					   "y_min": state[:, 1].min().item(),
-					  }
+		if self.additional_debug:
+			train_state = {"x_max": state[:, 0].max().item(),
+						   "x_mean": state[:, 0].mean().item(), 
+						   "x_min": state[:, 0].min().item(),
+						   "y_max": state[:, 1].max().item(),
+						   "y_mean": state[:, 1].mean().item(), 
+						   "y_min": state[:, 1].min().item(),
+						  }
 
-		train_goal = {"x_max": goal[:, 0].max().item(),
-					   "x_mean": goal[:, 0].mean().item(), 
-					   "x_min": goal[:, 0].min().item(),
-					   "y_max": goal[:, 1].max().item(),
-					   "y_mean": goal[:, 1].mean().item(), 
-					   "y_min": goal[:, 1].min().item(),
-					  }
+			train_goal = {"x_max": goal[:, 0].max().item(),
+						   "x_mean": goal[:, 0].mean().item(), 
+						   "x_min": goal[:, 0].min().item(),
+						   "y_max": goal[:, 1].max().item(),
+						   "y_mean": goal[:, 1].mean().item(), 
+						   "y_min": goal[:, 1].min().item(),
+						  }
+			train_subgoal_data = {"x_max": subgoal[:, 0].max().item(),
+								  "x_mean": subgoal[:, 0].mean().item(), 
+								  "x_min": subgoal[:, 0].min().item(),
+								  "y_max": subgoal[:, 1].max().item(),
+								  "y_mean": subgoal[:, 1].mean().item(), 
+								  "y_min": subgoal[:, 1].min().item(),
+								 }
+
+			if self.logger is not None:
+				self.logger.store(
+					train_state_x_max = train_state["x_max"],
+					train_state_x_mean = train_state["x_mean"],
+					train_state_x_min = train_state["x_min"],
+					train_state_y_max = train_state["y_max"],
+					train_state_y_mean = train_state["y_mean"],
+					train_state_y_min = train_state["y_min"],
+				)
+			
+				self.logger.store(
+					train_goal_x_max = train_goal["x_max"],
+					train_goal_x_mean = train_goal["x_mean"],
+					train_goal_x_min = train_goal["x_min"],
+					train_goal_y_max = train_goal["y_max"],
+					train_goal_y_mean = train_goal["y_mean"],
+					train_goal_y_min = train_goal["y_min"],
+				)
+
+				self.logger.store(
+					train_subgoal_data_x_max = train_subgoal_data["x_max"],
+					train_subgoal_data_x_mean = train_subgoal_data["x_mean"],
+					train_subgoal_data_x_min = train_subgoal_data["x_min"],
+					train_subgoal_data_y_max = train_subgoal_data["y_max"],
+					train_subgoal_data_y_mean = train_subgoal_data["y_mean"],
+					train_subgoal_data_y_min = train_subgoal_data["y_min"],
+				)
+
 		train_reward = {"max": reward[:, 0].max().item(),
 					  "mean": reward[:, 0].mean().item(), 
 					  "min": reward[:, 0].min().item(),
 					  }
-		
-		train_subgoal_data = {"x_max": subgoal[:, 0].max().item(),
-							  "x_mean": subgoal[:, 0].mean().item(), 
-							  "x_min": subgoal[:, 0].min().item(),
-							  "y_max": subgoal[:, 1].max().item(),
-							  "y_mean": subgoal[:, 1].mean().item(), 
-							  "y_min": subgoal[:, 1].min().item(),
-							 }
-
-		if self.logger is not None:
-			self.logger.store(
-				train_state_x_max = train_state["x_max"],
-				train_state_x_mean = train_state["x_mean"],
-				train_state_x_min = train_state["x_min"],
-				train_state_y_max = train_state["y_max"],
-				train_state_y_mean = train_state["y_mean"],
-				train_state_y_min = train_state["y_min"],
-			)
-		
-		if self.logger is not None:
-			self.logger.store(
-				train_goal_x_max = train_goal["x_max"],
-				train_goal_x_mean = train_goal["x_mean"],
-				train_goal_x_min = train_goal["x_min"],
-				train_goal_y_max = train_goal["y_max"],
-				train_goal_y_mean = train_goal["y_mean"],
-				train_goal_y_min = train_goal["y_min"],
-			)
 
 		if self.logger is not None:
 			self.logger.store(
 				train_reward_max = train_reward["max"],
 				train_reward_mean = train_reward["mean"],
 				train_reward_min = train_reward["min"],
-			)
-		
-		if self.logger is not None:
-			self.logger.store(
-				train_subgoal_data_x_max = train_subgoal_data["x_max"],
-				train_subgoal_data_x_mean = train_subgoal_data["x_mean"],
-				train_subgoal_data_x_min = train_subgoal_data["x_min"],
-				train_subgoal_data_y_max = train_subgoal_data["y_max"],
-				train_subgoal_data_y_mean = train_subgoal_data["y_mean"],
-				train_subgoal_data_y_min = train_subgoal_data["y_min"],
 			)
 
 		# Log variables
