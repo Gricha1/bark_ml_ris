@@ -8,5 +8,7 @@
     "add_collision_reward": true,
     "use_lidar_data": true,
     "is_terminal_dist": true,
-    "is_terminal_angle": false
+    "is_terminal_angle": false,
+    "use_velocity_constraint_cost": false,
+    "risk_agent_velocity": 0.5
 }

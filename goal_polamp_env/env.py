@@ -29,6 +29,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.add_collision_reward = goal_env_config["add_collision_reward"]
     self.is_terminal_dist = goal_env_config["is_terminal_dist"]
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
+    self.use_velocity_constraint_cost = goal_env_config["use_velocity_constraint_cost"]
+    self.risk_agent_velocity = goal_env_config["risk_agent_velocity"]
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
@@ -390,7 +392,21 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       info["Collision"] = True
       isDone = True
       clearance_is_enough = False
-    
+
+    if self.use_velocity_constraint_cost:
+      if not clearance_is_enough:
+        if (agent.v < self.risk_agent_velocity):
+          info["cost"] = 0.0
+        else:
+          info["cost"] = agent.v
+      else:
+          info["cost"] = 0.0
+    else:
+      if not clearance_is_enough:
+        info["cost"] = 1.0
+      else:
+        info["cost"] = 0.0
+
     # if math.fabs(agent.x - lower_x) < self.safe_eps or \
     #   math.fabs(agent.x - upper_x) < self.safe_eps or \
     #   math.fabs(agent.y - lower_y) < self.safe_eps or \
@@ -436,7 +452,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         isDone = True
         reward += self.collision_reward
     
-    agent = self.environment.agent.current_state
+    # agent = self.environment.agent.current_state
     # goal = self.environment.agent.goal_state
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
     # goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
