@@ -652,7 +652,8 @@ class RIS(object):
 		""" High-level policy learning """
 		if self.use_lidar_predictor:
 			self.train_lidar_predictor(env_state, env_subgoal, env_goal)
-		self.train_highlevel_policy(state, goal, subgoal)
+		if not self.train_sac:
+			self.train_highlevel_policy(state, goal, subgoal)
 
 		""" Actor """
 		# Sample action
