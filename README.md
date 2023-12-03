@@ -49,3 +49,6 @@ python ris_validate_polamp_env.py --exp_name polamp_env_ex_1
 ## Sweeps
 python sweeps_wandb_train.py --wandb_project sweep_train_ris_sac_polamp_1
 
+# lyapunov rrt
+export PYTHONPATH=$(pwd)/MFNLC_for_polamp_env:$PYTHONPATH
+

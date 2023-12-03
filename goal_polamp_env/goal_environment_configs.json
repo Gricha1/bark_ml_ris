@@ -8,5 +8,6 @@
     "add_collision_reward": false,
     "use_lidar_data": false,
     "is_terminal_dist": true,
-    "is_terminal_angle": false
+    "is_terminal_angle": false,
+    "env_boundary_collision": true
 }

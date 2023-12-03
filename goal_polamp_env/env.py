@@ -29,6 +29,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.add_collision_reward = goal_env_config["add_collision_reward"]
     self.is_terminal_dist = goal_env_config["is_terminal_dist"]
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
+    self.env_boundary_collision = goal_env_config["env_boundary_collision"]
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
@@ -386,7 +387,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     upper_x = 36
     lower_y = -5
     upper_y = 36
-    if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
+    if self.env_boundary_collision and (agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y):
       info["Collision"] = True
       isDone = True
       clearance_is_enough = False
