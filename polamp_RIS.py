@@ -2,10 +2,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from copy import deepcopy
 
 from polamp_Models import GaussianPolicy, EnsembleCritic, LaplacePolicy, Encoder, LidarPredictor
 from utils.data_aug import random_translate
 from utils.data_aug import NormalNoise
+from MFNLC_for_polamp_env.mfnlc.learn.tclf import TwinControlLyapunovFunction
+from MFNLC_for_polamp_env.mfnlc.learn.utils import list_dict_to_dict_list
 #from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 def normalize_state(new_subgoal, env_state_bounds, validate=False):
@@ -28,6 +31,8 @@ class RIS(object):
 				 use_decoder=False, use_encoder=False,
 				 n_critic=1, 
 				 train_sac=False, sac_alpha=0.2,
+				 train_td3=False,
+				 lyapunov_rrt = False,
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
 				 use_dubins_filter = False,
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
@@ -43,6 +48,9 @@ class RIS(object):
 				 train_env=None):		
 
 		print(f"lambda_initialization: {lambda_initialization}")
+		assert train_td3 and not train_sac or not train_td3 and train_sac or\
+				not train_td3 and not train_sac
+		assert not lyapunov_rrt or (lyapunov_rrt and train_sac), "lyap_rrt related to SAC"
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		assert not safety_add_to_high_policy or (safety_add_to_high_policy and safety)
@@ -58,18 +66,42 @@ class RIS(object):
 		self.train_sac = train_sac
 		self.sac_alpha = sac_alpha
 		self.sac_use_v_entropy = False
+		self.lyapunov_rrt = lyapunov_rrt
+		if self.lyapunov_rrt:
+			assert state_dim % 2 == 0
+			state_dim = state_dim // 2
+		if self.lyapunov_rrt:
+			self.lqf_loss_cnst = 1.0
+			lf_structure = [2 * state_dim, 256, 256, 1]
+			lqf_structure = [2 * state_dim + action_dim, 256, 256, 1]
+			tclf_ub = 15
+			sink = [0.0 for i in range(2 * state_dim)]
+			tclf_input_amplifier = None
+			tclf_lie_derivative_upper = 0.2
+			default_device = "cuda"
+			self.tclf = TwinControlLyapunovFunction(lf_structure,
+											   lqf_structure,
+											   tclf_ub,
+											   sink,
+											   tclf_input_amplifier,
+											   tclf_lie_derivative_upper,
+											   default_device)
+			self.tclf_optimizer = torch.optim.Adam(lr=q_lr, params=self.tclf.parameters())
+			self.tclf_target = deepcopy(self.tclf)
 
 		# Actor
-		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
+		self.actor = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt).to(device)
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=pi_lr)
-		self.actor_target = GaussianPolicy(state_dim, action_dim).to(device)
+		self.actor_target = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt).to(device)
 		self.actor_target.load_state_dict(self.actor.state_dict())
+		print("actor:", f"state-{state_dim}", f"action-{action_dim}")
 
 		# Critic
-		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=n_critic).to(device)
-		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=n_critic).to(device)
+		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=n_critic, lyapunov_rrt=lyapunov_rrt).to(device)
+		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=n_critic, lyapunov_rrt=lyapunov_rrt).to(device)
 		self.critic_target.load_state_dict(self.critic.state_dict())
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=q_lr)
+		print("critic:", f"state-{state_dim}", f"action-{action_dim}", "n_Q-", n_critic)
 
 		# Safety Critic
 		if self.safety:
@@ -326,24 +358,32 @@ class RIS(object):
 		# Sample action, subgoals and KL-divergence
 		action_dist = self.actor(state, goal)
 		action = action_dist.rsample()
+		if not self.train_sac:
+			with torch.no_grad():
+				subgoal = self.sample_subgoal(state, goal)
+			if self.use_dubins_filter:
+				subgoal, init_dubins_distance, filtred_dubins_dinstance = self.dubins_filter_subgoals(state, subgoal, goal, 5)
+			if self.logger is not None:
+				self.logger.store(
+					init_dubins_distance = init_dubins_distance if self.use_dubins_filter else 0,
+					filtred_dubins_dinstance = filtred_dubins_dinstance if self.use_dubins_filter else 0,
+				)
+			
+			prior_action_dist = self.actor_target(state.unsqueeze(1).expand(batch_size, subgoal.size(1), self.state_dim), subgoal)
+			prior_prob = prior_action_dist.log_prob(action.unsqueeze(1).expand(batch_size, subgoal.size(1), self.action_dim)).sum(-1, keepdim=True).exp()
+			prior_log_prob = torch.log(prior_prob.mean(1) + self.epsilon)
+			D_KL = action_dist.log_prob(action).sum(-1, keepdim=True) - prior_log_prob
 
-		with torch.no_grad():
-			subgoal = self.sample_subgoal(state, goal)
-		if self.use_dubins_filter:
-			subgoal, init_dubins_distance, filtred_dubins_dinstance = self.dubins_filter_subgoals(state, subgoal, goal, 5)
-		if self.logger is not None:
-			self.logger.store(
-				init_dubins_distance = init_dubins_distance if self.use_dubins_filter else 0,
-				filtred_dubins_dinstance = filtred_dubins_dinstance if self.use_dubins_filter else 0,
-			)
-		
-		prior_action_dist = self.actor_target(state.unsqueeze(1).expand(batch_size, subgoal.size(1), self.state_dim), subgoal)
-		prior_prob = prior_action_dist.log_prob(action.unsqueeze(1).expand(batch_size, subgoal.size(1), self.action_dim)).sum(-1, keepdim=True).exp()
-		prior_log_prob = torch.log(prior_prob.mean(1) + self.epsilon)
-		D_KL = action_dist.log_prob(action).sum(-1, keepdim=True) - prior_log_prob
-
-		action = torch.tanh(action)
-		return action, D_KL
+			action = torch.tanh(action)
+			return action, D_KL
+		else:
+			if self.logger is not None:
+				self.logger.store(
+					init_dubins_distance = 0,
+					filtred_dubins_dinstance = 0,
+				)
+			action = torch.tanh(action)
+			return action
 	
 	def train_lidar_predictor(self, env_state, env_subgoal, env_goal):
 		subgoal_from_state = env_state[:, 0:self.subgoal_dim]
@@ -599,6 +639,25 @@ class RIS(object):
             sum(p.grad.data.norm(2).item() ** 2 for p in self.critic.parameters() if p.grad is not None) ** 0.5
         	)
 
+		if self.lyapunov_rrt:
+			# Compute twin Lyapunov-control function losses
+			with torch.no_grad():
+				#current_q1 = self.critic.q1_forward(goal - state,
+				#									self.actor(goal - state))
+				lyapunov_action_dist = self.actor(state, goal)
+				lyapunov_action = lyapunov_action_dist.rsample()
+				lyapunov_action = torch.tanh(lyapunov_action)
+				current_q1 = self.critic(state, lyapunov_action, goal)
+			tclf_loss = self.tclf.loss(
+				goal - state, lyapunov_action, goal - next_state,
+				current_q1)
+			tclf_losses = [{k: v.item() for k, v in tclf_loss.items()}]
+
+			# optimize twin Lyapunov-control function
+			self.tclf_optimizer.zero_grad()
+			tclf_loss["loss_sum"].backward()
+			self.tclf_optimizer.step()
+
 		# Optimize autoencoder
 		if self.use_decoder:
 			y = self.encoder.autoencoder_forward(env_state_decoder)
@@ -657,7 +716,10 @@ class RIS(object):
 
 		""" Actor """
 		# Sample action
-		action, D_KL = self.sample_action_and_KL(state, goal)
+		if self.train_sac:
+			action = self.sample_action_and_KL(state, goal)
+		else:
+			action, D_KL = self.sample_action_and_KL(state, goal)
 		if self.train_sac or self.train_ris_with_sac:
 			# Sample action and log_prob
 			action, log_prob = self.sample_action_and_log_prob(state, goal)
@@ -680,7 +742,13 @@ class RIS(object):
 			Q = self.critic(state, action, goal)
 			Q = torch.min(Q, -1, keepdim=True)[0]
 			if self.train_sac:
-				actor_loss = (self.sac_alpha * log_prob - Q).mean()
+				if self.lyapunov_rrt:
+					# minimize lqf's value
+					lqf_loss = self.tclf_target.forward_lqf(goal - state, action)
+					actor_loss = (-Q + self.lqf_loss_cnst * lqf_loss).mean()
+					#actor_loss = (self.sac_alpha * log_prob - Q).mean()
+				else:
+					actor_loss = (self.sac_alpha * log_prob - Q).mean()
 			elif self.train_ris_with_sac:
 				actor_loss = (self.alpha*D_KL + self.sac_alpha * log_prob - Q).mean()
 			else:
@@ -707,6 +775,9 @@ class RIS(object):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 			if self.safety:
 				for param, target_param in zip(self.critic_cost.parameters(), self.critic_cost_target.parameters()):
+					target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+			if self.lyapunov_rrt:
+				for param, target_param in zip(self.tclf.parameters(), self.tclf_target.parameters()):
 					target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
 
@@ -778,10 +849,15 @@ class RIS(object):
 
 		# Log variables
 		if self.logger is not None:
+			self.logger.store(loss_sum = tclf_losses[0]["loss_sum"])
+			self.logger.store(lqf_loss = tclf_losses[0]["lqf_loss"])
+			self.logger.store(lie_der_loss = tclf_losses[0]["lie_der_loss"])
+			self.logger.store(sink_loss = tclf_losses[0]["sink_loss"])
+			self.logger.store(two_sides_bound_loss = tclf_losses[0]["two_sides_bound_loss"])
 			self.logger.store(
 				actor_loss   = actor_loss.item(),
 				critic_loss  = critic_loss.item(),
-				D_KL		 = D_KL.mean().item(),
+				D_KL		 = 0 if self.train_sac else D_KL.mean().item(),
 				alpha        = self.alpha,	
 				log_entropy_sac = log_prob.mean().item() if self.train_sac or self.train_ris_with_sac else 0,
 				critic_grad_norm = critic_grad_norm,

@@ -560,7 +560,7 @@ def evalPolicy(policy, env,
         videos = [(map_name, task_indx, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, task_indx, video in videos]
     validation_info["task_statuses"] = task_statuses
     validation_info["unsuccessful_tasks"] = lst_unsuccessful_tasks
-    #validation_info["videos"] = videos
+    validation_info["videos"] = videos
     validation_info["action_info"] = action_info
     validation_info["eval_cost"] = eval_cost
     validation_info["eval_collisions"] = eval_collisions
@@ -768,6 +768,8 @@ def train(args=None):
                  safety=args.safety,
                  n_critic=args.n_critic,
                  train_sac=args.train_sac,
+                 train_td3=args.train_td3,
+                 lyapunov_rrt=args.lyapunov_rrt,
                  use_dubins_filter=args.use_dubins_filter,
                  safety_add_to_high_policy=args.safety_add_to_high_policy,
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
@@ -912,7 +914,7 @@ def train(args=None):
             val_state, val_goal, \
             mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
-                                plot_full_env=False,
+                                plot_full_env=True,
                                 plot_subgoals=False,
                                 plot_value_function=False,
                                 render_env=False,
@@ -925,7 +927,9 @@ def train(args=None):
                                               "dataset_x": logger.data["dataset_x"],
                                               "dataset_y": logger.data["dataset_y"]},
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
-                                video_validate_tasks = [],
+                                #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 3), ("map0", 4)],
+                                video_validate_tasks = [("map0", 0), ("map0", 1)],
+                                #video_validate_tasks = [],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
                                 dataset_validation=args.dataset)
@@ -964,7 +968,14 @@ def train(args=None):
                      #'train/subgoal_weight_min': sum(logger.data["subgoal_weight_min"][-args.eval_freq:]) / args.eval_freq,
                      #'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
                      #'train/subgoal_grad_norm': sum(logger.data["subgoal_grad_norm"][-args.eval_freq:]) / args.eval_freq,
-                     
+
+                     # lyapunov
+                     'train/loss_sum': sum(logger.data["loss_sum"]) / len(logger.data["loss_sum"]),
+                     'train/lqf_loss': sum(logger.data["lqf_loss"]) / len(logger.data["lqf_loss"]),
+                     'train/lie_der_loss': sum(logger.data["lie_der_loss"]) / len(logger.data["lie_der_loss"]),
+                     'train/sink_loss': sum(logger.data["sink_loss"]) / len(logger.data["sink_loss"]),
+                     'train/two_sides_bound_loss': sum(logger.data["two_sides_bound_loss"]) / len(logger.data["two_sides_bound_loss"]),
+
                      # additional
                      'train/alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
                      'train/lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
@@ -1041,10 +1052,10 @@ def train(args=None):
                 for dict_ in val_state + val_goal:
                     for key in dict_:
                         wandb_log_dict[f"{key}"] = dict_[key]
-                #for map_name, task_indx, video in validation_info["videos"]:
-                #    cur_step = logger.data["t"][-1]
-                #    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
-                #        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
+                for map_name, task_indx, video in validation_info["videos"]:
+                    cur_step = logger.data["t"][-1]
+                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
                 wandb.log(wandb_log_dict)
                 del wandb_log_dict
      
@@ -1125,12 +1136,14 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="ris_easy_dataset") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
-    parser.add_argument("--random_train_dataset",           default=False)
+    parser.add_argument("--random_train_dataset",           default=True)
     parser.add_argument("--train_sac",            default=True, type=bool)
+    parser.add_argument("--train_td3",            default=False, type=bool)
+    parser.add_argument("--lyapunov_rrt",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
@@ -1165,8 +1178,8 @@ if __name__ == "__main__":
     parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
     parser.add_argument("--fraction_resampled_goals_are_replay_buffer_goals",  default=0.5, type=float) # 20
     # encoder
-    parser.add_argument("--use_decoder",             default=True, type=bool)
-    parser.add_argument("--use_encoder",             default=True, type=bool)
+    parser.add_argument("--use_decoder",             default=False, type=bool)
+    parser.add_argument("--use_encoder",             default=False, type=bool)
     parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
