@@ -30,7 +30,9 @@ cd /home/RIS/bark_ml_ris
 ```
 # Environment
 ## create dataset
-
+```commandline
+python utilite_cross_dataset.py
+```
 
 # train PPO
 python origin_train_lagrangian_ppo.py --name_save test_PPO_2

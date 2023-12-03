@@ -1134,7 +1134,7 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=False, type=bool)
+    parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     
