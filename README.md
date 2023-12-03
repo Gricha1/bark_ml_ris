@@ -15,23 +15,25 @@ apt-get install -y xvfb
 
 
 # Docker
-
+```commandline
 docker run -it --gpus 0 -v $(pwd):/usr/home/workspace continuumio/miniconda3 gregory.RIS_PPO
+```
 
+```commandline
 docker start gregory.RIS_PPO
-
+```
+```commandline
 docker exec -it gregory.RIS_PPO bash
-
+```
+```commandline
 cd /home/RIS/bark_ml_ris
+```
+# Environment
+## create dataset
 
-# polamp env
 
 # train PPO
 python origin_train_lagrangian_ppo.py --name_save test_PPO_2
-
-# goal polamp env
-cd usr/home/workspace/
-
 
 ## Train RIS_PPO
 python train_ris_ppo_polamp.py --name_save test_RIS_PPO_polamp_ex51
@@ -42,7 +44,7 @@ python train_ris_ppo_polamp.py --name_val test_RIS_PPO_polamp_ex51
 
 python utilite_video_generator.py 
 
-## Train RIS_SAC
+# Train RIS
 python ris_train_polamp_env.py --exp_name polamp_env_ex_1
 python ris_validate_polamp_env.py --exp_name polamp_env_ex_1
 

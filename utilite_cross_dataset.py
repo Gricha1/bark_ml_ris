@@ -2,7 +2,7 @@ import numpy as np
 from polamp_env.lib.utils_operations import normalizeAngle
 
 def save_dataset(lst_starts, lst_goals, name):
-    with open("cross_dataset_simplified/" + name, 'w') as output:
+    with open("cross_dataset_balanced/" + name, 'w') as output:
         output.write(str(len(lst_starts)) + '\n')
         for i in range(len(lst_starts)):
             # print(f"i : {i}")
@@ -353,13 +353,21 @@ def task_generator(train=False):
     else:
         eval_tasks = ["r24f", "r21r", "r34f", "r31r", "f12f", "f13f", "f16f", "f15f",
                       "r42f", "r43f", "r46f", "r45f"]
+        # add tasks for balance
+        more_eval_tasks = ["r25f", "r26f", "r23f", "r36f", "r35f", "r32f", "f14f", 
+                           "r41r", "r54f", "r51r", "r52f", "r53f", "r56f", "r61r", 
+                           "r64f", "r62f", "r63f", 
+                           "r28f", "r38f", "r57f"]
+        eval_tasks.extend(more_eval_tasks)
+        assert len(eval_tasks) == 32
         for eval_task in eval_tasks:
             evaluation_task(eval_task, all_paterns, all_paterns_reverse, 
                             lst_starts, lst_goals, num_tasks=15)
     assert len(lst_starts) == len(lst_goals)
     return lst_starts, lst_goals
 
-print(" Saving dataset!!! ")
+print("Start Saving dataset!!! ")
+print("..........................")
 train_lst_starts, train_lst_goals = task_generator(train=True)
 eval_lst_starts, eval_lst_goals = task_generator(train=False)
 
@@ -367,3 +375,7 @@ train_lst_starts.extend(eval_lst_starts)
 train_lst_goals.extend(eval_lst_goals)
 save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
 save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+print("..........................")
+print("train dataset num tasks:", len(train_lst_starts))
+print("eval dataset num tasks:", len(eval_lst_starts))
+print("Success!")

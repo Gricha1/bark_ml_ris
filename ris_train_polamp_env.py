@@ -1,6 +1,8 @@
 import os
 import time
 import json
+import copy
+from math import pi, fabs
 
 import torch
 import numpy as np
@@ -11,8 +13,6 @@ import gym
 from gym.envs.registration import register
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import copy
-from math import pi, fabs
 
 from polamp_env.lib.utils_operations import normalizeAngle
 from utils.logger import Logger
@@ -110,27 +110,22 @@ def evalPolicy(policy, env,
     acc_collisions = []
     episode_lengths = []
     task_statuses = []
-    # video_validate_tasks = []
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
-    if dataset_validation == "cross_dataset_simplified":
-        patern_nums = 12
+    if dataset_validation == "cross_dataset_simplified" or dataset_validation == "cross_dataset_balanced":
+        patern_nums = 12 if dataset_validation == "cross_dataset_simplified" else 32
         task_count = 15
-        validation_tasks = []
+        tasks_per_patern = 1
+        video_validate_tasks = []
         if full_validation:
             for i in range(len(env.valTasks['map0'])):
-               validation_tasks.append(("map0", i))
+               video_validate_tasks.append(("map0", i))
         else:
-            video_validate_tasks = []
             for i in range(patern_nums):
                 j = i * task_count
-                validation_tasks.append(("map0", j))
-                validation_tasks.append(("map0", j+1))
-                validation_tasks.append(("map0", j+2))
-                video_validate_tasks.append(("map0", j))
-        # video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
-        #                         validation_tasks[np.random.randint(len(validation_tasks))]]
+                for k in range(tasks_per_patern):
+                    video_validate_tasks.append(("map0", j+k))
     dataset_plot_is_already_visualized = False
     for val_key in env.maps.keys():
         eval_tasks = len(env.valTasks[val_key])
@@ -138,8 +133,6 @@ def evalPolicy(policy, env,
             need_to_plot_task = (plot_full_env or plot_value_function or render_env) \
                                 and (val_key, task_id) in video_validate_tasks
             if skip_not_video_tasks and not need_to_plot_task:
-                continue
-            if dataset_validation == "cross_dataset_simplified" and (val_key, task_id) not in validation_tasks:
                 continue
             if need_to_plot_task:
                 images = []
@@ -653,15 +646,16 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
 
 def train(args=None):   
     # chech if hyperparams tuning
-    if  args.using_wandb:
-        if type(args) == type(argparse.Namespace()):
-            hyperparams_tune = False
+    if type(args) == type(argparse.Namespace()):
+        hyperparams_tune = False
+        if args.using_wandb:
             wandb.init(project=args.wandb_project, config=args, 
                     name="RIS," 
                             + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
                             + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
-        else:
-            hyperparams_tune = True
+    else:
+        hyperparams_tune = True
+        if args.using_wandb:
             wandb.init(config=args, name="hyperparams_tune_RIS")
             args = wandb.config
     
@@ -671,8 +665,6 @@ def train(args=None):
     print("Lambda:", args.Lambda)
     print("alpha:", args.alpha)
     print("n_ensemble:", args.n_ensemble)
-
-    assert args.dataset_curriculum == False, "didnt implement"
 
     with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
         goal_our_env_config = json.load(f)
@@ -926,8 +918,10 @@ def train(args=None):
                                               "dataset_y": logger.data["dataset_y"]},
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                                 video_validate_tasks = [],
+                                #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2), ("map1", 3)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
+                                skip_not_video_tasks=True,
                                 dataset_validation=args.dataset)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             train_collision_rate = sum(logger.data["collision_rate"]) / len(logger.data["collision_rate"])
@@ -942,28 +936,28 @@ def train(args=None):
                     'train/min_cumulative_reward': min(logger.data["cumulative_reward"]),
                     'train/avg_cumulative_cost': sum(logger.data["cumulative_cost"]) / len(logger.data["cumulative_cost"]),
                     'train/autoencoder_loss': sum(logger.data["autoencoder_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,
-                     'train/high_policy_v': sum(logger.data["high_policy_v"][-args.eval_freq:]) / args.eval_freq,    
-                     'train/high_v': sum(logger.data["high_v"][-args.eval_freq:]) / args.eval_freq,   
-                     'train/train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
-                     'train/train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
-                     'train/subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
-                     'train/critic_grad_norm': sum(logger.data["critic_grad_norm"][-args.eval_freq:]) / args.eval_freq,
-                     'train/target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
-                     'train/actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
-                     'train/actor_grad_norm': sum(logger.data["actor_grad_norm"][-args.eval_freq:]) / args.eval_freq,
-                     'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/critic_cost_grad_norm': sum(logger.data["critic_cost_grad_norm"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/lambda_loss': sum(logger.data["lambda_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                     'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
-                     'train/subgoal_weight_max': sum(logger.data["subgoal_weight_max"][-args.eval_freq:]) / args.eval_freq,
-                     'train/subgoal_weight_min': sum(logger.data["subgoal_weight_min"][-args.eval_freq:]) / args.eval_freq,
-                     'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
-                     'train/subgoal_grad_norm': sum(logger.data["subgoal_grad_norm"][-args.eval_freq:]) / args.eval_freq,
+                    'train/v1_v2_diff': sum(logger.data["v1_v2_diff"][-args.eval_freq:]) / args.eval_freq,
+                    'train/high_policy_v': sum(logger.data["high_policy_v"][-args.eval_freq:]) / args.eval_freq,    
+                    'train/high_v': sum(logger.data["high_v"][-args.eval_freq:]) / args.eval_freq,   
+                    'train/train_adv': sum(logger.data["adv"][-args.eval_freq:]) / args.eval_freq,    
+                    'train/train_D_KL': sum(logger.data["D_KL"][-args.eval_freq:]) / args.eval_freq,
+                    'train/subgoal_loss': sum(logger.data["subgoal_loss"][-args.eval_freq:]) / args.eval_freq,
+                    'train/train_critic_loss': sum(logger.data["critic_loss"][-args.eval_freq:]) / args.eval_freq,
+                    'train/critic_cost_loss': sum(logger.data["critic_cost_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                    'train/critic_value': sum(logger.data["critic_value"][-args.eval_freq:]) / args.eval_freq,
+                    'train/critic_grad_norm': sum(logger.data["critic_grad_norm"][-args.eval_freq:]) / args.eval_freq,
+                    'train/target_value': sum(logger.data["target_value"][-args.eval_freq:]) / args.eval_freq,
+                    'train/actor_loss': sum(logger.data["actor_loss"][-args.eval_freq:]) / args.eval_freq,
+                    'train/actor_grad_norm': sum(logger.data["actor_grad_norm"][-args.eval_freq:]) / args.eval_freq,
+                    'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                    'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                    'train/critic_cost_grad_norm': sum(logger.data["critic_cost_grad_norm"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                    'train/lambda_loss': sum(logger.data["lambda_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                    'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
+                    'train/subgoal_weight_max': sum(logger.data["subgoal_weight_max"][-args.eval_freq:]) / args.eval_freq,
+                    'train/subgoal_weight_min': sum(logger.data["subgoal_weight_min"][-args.eval_freq:]) / args.eval_freq,
+                    'train/log_prob_target_subgoal': sum(logger.data["log_prob_target_subgoal"][-args.eval_freq:]) / args.eval_freq,    
+                    'train/subgoal_grad_norm': sum(logger.data["subgoal_grad_norm"][-args.eval_freq:]) / args.eval_freq,
                      
                      # additional
                      'train/alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
@@ -1085,35 +1079,7 @@ def train(args=None):
                     policy.save(folder)
                 if args.using_wandb:
                     wandb.log({"save_policy_count": save_policy_count})
-
-            # change medium dataset to hard dataset
-            if args.dataset_curriculum:
-                if success_rate >= args.dataset_curriculum_treshold:
-                    # erase previous expirience
-                    replay_buffer = HERReplayBuffer(
-                        max_size=args.replay_buffer_size,
-                        env=env,
-                        fraction_goals_are_rollout_goals = 0.2,
-                        fraction_resampled_goals_are_env_goals = 0.0,
-                        fraction_resampled_goals_are_replay_buffer_goals = 0.5,
-                        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
-                        desired_goal_keys   =["desired_goal", "state_desired_goal"],
-                        observation_key     = 'observation',
-                        desired_goal_key    = 'desired_goal',
-                        achieved_goal_key   = 'achieved_goal',
-                        vectorized          = vectorized 
-                    )
-                    path_builder = PathBuilder()		
-                    # Reset environment
-                    obs = env.reset()
-                    done = False
-                    state = obs["observation"]
-                    goal = obs["desired_goal"]
-                    episode_timesteps = 0
-                    episode_num += 1 
-                    logger.store(dataset_x = state[0])
-                    logger.store(dataset_y = state[1])
-                    
+ 
             # clean log buffer
             logger.clear()
             print("eval", end=" ")
@@ -1125,9 +1091,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
-    parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
-    parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
+    parser.add_argument("--dataset",              default="cross_dataset_balanced") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
@@ -1135,7 +1099,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument("--eval_freq",          default=int(500), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -1170,7 +1134,7 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=True, type=bool)
+    parser.add_argument("--safety",                    default=False, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     
