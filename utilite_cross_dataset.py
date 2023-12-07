@@ -335,12 +335,12 @@ def task_generator(train=False):
 
         temp_starts = []
         temp_goals = []
-        patern_task(patern_temp_1, temp_starts, temp_goals, num_tasks=15)
+        patern_task(patern_temp_1, temp_starts, temp_goals, num_tasks=num_tasks)
         lst_starts.extend(temp_starts)
 
         temp_starts = []
         temp_goals = []
-        patern_task(patern_temp_2, temp_starts, temp_goals, num_tasks=15)
+        patern_task(patern_temp_2, temp_starts, temp_goals, num_tasks=num_tasks)
         lst_goals.extend(temp_goals)
 
 
@@ -354,15 +354,16 @@ def task_generator(train=False):
         eval_tasks = ["r24f", "r21r", "r34f", "r31r", "f12f", "f13f", "f16f", "f15f",
                       "r42f", "r43f", "r46f", "r45f"]
         # add tasks for balance
-        more_eval_tasks = ["r25f", "r26f", "r23f", "r36f", "r35f", "r32f", "f14f", 
-                           "r41r", "r54f", "r51r", "r52f", "r53f", "r56f", "r61r", 
-                           "r64f", "r62f", "r63f", 
-                           "r28f", "r38f", "r57f"]
+        #more_eval_tasks = ["r25f", "r26f", "r23f", "r36f", "r35f", "r32f", "f14f", 
+        #                   "r41r", "r54f", "r51r", "r52f", "r53f", "r56f", "r61r", 
+        #                   "r64f", "r62f", "r63f", 
+        #                   "r28f", "r38f", "r57f"]
+        more_eval_tasks = ["r61r", "r64f", "r51r", "r54f"]
         eval_tasks.extend(more_eval_tasks)
-        assert len(eval_tasks) == 32
+        #assert len(eval_tasks) == 32
         for eval_task in eval_tasks:
             evaluation_task(eval_task, all_paterns, all_paterns_reverse, 
-                            lst_starts, lst_goals, num_tasks=15)
+                            lst_starts, lst_goals, num_tasks=30)
     assert len(lst_starts) == len(lst_goals)
     return lst_starts, lst_goals
 
