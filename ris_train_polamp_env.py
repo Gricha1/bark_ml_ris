@@ -114,7 +114,7 @@ def evalPolicy(policy, env,
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
     if dataset_validation == "cross_dataset_simplified" or dataset_validation == "cross_dataset_balanced":
-        patern_nums = 12 if dataset_validation == "cross_dataset_simplified" else 32
+        patern_nums = 12 if dataset_validation == "cross_dataset_simplified" else 2
         task_count = 15
         tasks_per_patern = 1
         video_validate_tasks = []
@@ -921,7 +921,7 @@ def train(args=None):
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 2), ("map1", 3)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
-                                skip_not_video_tasks=True,
+                                skip_not_video_tasks=False,
                                 dataset_validation=args.dataset)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             train_collision_rate = sum(logger.data["collision_rate"]) / len(logger.data["collision_rate"])
@@ -1107,9 +1107,9 @@ if __name__ == "__main__":
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
-    parser.add_argument("--alpha",              default=0.1, type=float)
-    parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
-    parser.add_argument("--n_ensemble",         default=20, type=int) # 10
+    parser.add_argument("--alpha",              default=1.76, type=float)
+    parser.add_argument("--Lambda",             default=0.29, type=float) # 0.1
+    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
@@ -1134,7 +1134,7 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=True, type=bool)
+    parser.add_argument("--safety",                    default=False, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     
