@@ -653,7 +653,7 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
 
 def train(args=None):   
     # chech if hyperparams tuning
-    if  args.using_wandb:
+    if args.using_wandb:
         if type(args) == type(argparse.Namespace()):
             hyperparams_tune = False
             wandb.init(project=args.wandb_project, config=args, 
@@ -674,65 +674,9 @@ def train(args=None):
 
     assert args.dataset_curriculum == False, "didnt implement"
 
-    with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
-        goal_our_env_config = json.load(f)
-    with open("polamp_env/configs/train_configs.json", 'r') as f:
-        train_config = json.load(f)
-    with open("polamp_env/configs/environment_configs.json", 'r') as f:
-        our_env_config = json.load(f)
-    with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
-        reward_config = json.load(f)
-    with open("polamp_env/configs/car_configs.json", 'r') as f:
-        car_config = json.load(f)
-
-    if args.dataset == "medium_dataset":
-        total_maps = 12
-    elif args.dataset == "test_medium_dataset":
-        total_maps = 3
-    elif args.dataset == "hard_dataset_simplified_test":
-        total_maps = 2
-    else:
-        total_maps = 1
-    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
-    maps, trainTask, valTasks = dataSet["obstacles"]
-    goal_our_env_config["dataset"] = args.dataset
-    goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
-    goal_our_env_config["random_train_dataset"] = args.random_train_dataset
-    if not goal_our_env_config["static_env"]:
-        maps["map0"] = []
-
-    args.evaluation = False
-    environment_config = {
-        'vehicle_config': car_config,
-        'tasks': trainTask,
-        'valTasks': valTasks,
-        'maps': maps,
-        'our_env_config' : our_env_config,
-        'reward_config' : reward_config,
-        'evaluation': args.evaluation,
-        'goal_our_env_config' : goal_our_env_config,
-    }
-    args.other_keys = environment_config
-
+    register_goal_polamp_env(args)
     train_env_name = "polamp_env-v0"
     test_env_name = train_env_name
-
-    # Set seed
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
-    # register polamp env
-    env_dict = gym.envs.registration.registry.env_specs.copy()
-    for env in env_dict:
-        if train_env_name in env:
-            print("Remove {} from registry".format(env))
-            del gym.envs.registration.registry.env_specs[env]
-    register(
-        id=train_env_name,
-        entry_point='goal_polamp_env.env:GCPOLAMPEnvironment',
-        kwargs={'full_env_name': "polamp_env", "config": args.other_keys}
-    )
 
     env         = gym.make(train_env_name)
     test_env    = gym.make(test_env_name)
@@ -759,7 +703,8 @@ def train(args=None):
                                  env.environment.agent.dynamic_model.max_steer)}
     R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
     curvature = 1 / R
-    max_polamp_steps = our_env_config["max_polamp_steps"]
+    #max_polamp_steps = our_env_config["max_polamp_steps"]
+    max_polamp_steps = env._max_episode_steps
     print(f"max_polamp_steps: {max_polamp_steps}")
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
@@ -1138,7 +1083,7 @@ def train(args=None):
         if t % 1e4 == 0 or (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
             print()
 
-if __name__ == "__main__":	
+def get_config():
     parser = argparse.ArgumentParser()
     # environment
     parser.add_argument("--env",                  default="polamp_env")
@@ -1151,7 +1096,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_sac",            default=False, type=bool)
     parser.add_argument("--train_td3",            default=True, type=bool)
     parser.add_argument("--td3_exploration_noise", default=0.1, type=float)
-    parser.add_argument("--lyapunov_rrt",            default=False, type=bool)
+    parser.add_argument("--lyapunov_rrt",            default=True, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
@@ -1204,4 +1149,69 @@ if __name__ == "__main__":
     parser.set_defaults(log_loss=True)
     args = parser.parse_args()
 
+    return args
+
+def register_goal_polamp_env(args):
+    with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
+        goal_our_env_config = json.load(f)
+    with open("polamp_env/configs/train_configs.json", 'r') as f:
+        train_config = json.load(f)
+    with open("polamp_env/configs/environment_configs.json", 'r') as f:
+        our_env_config = json.load(f)
+    with open("polamp_env/configs/reward_weight_configs.json", 'r') as f:
+        reward_config = json.load(f)
+    with open("polamp_env/configs/car_configs.json", 'r') as f:
+        car_config = json.load(f)
+
+    if args.dataset == "medium_dataset":
+        total_maps = 12
+    elif args.dataset == "test_medium_dataset":
+        total_maps = 3
+    elif args.dataset == "hard_dataset_simplified_test":
+        total_maps = 2
+    else:
+        total_maps = 1
+    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
+    maps, trainTask, valTasks = dataSet["obstacles"]
+    goal_our_env_config["dataset"] = args.dataset
+    goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
+    goal_our_env_config["random_train_dataset"] = args.random_train_dataset
+    if not goal_our_env_config["static_env"]:
+        maps["map0"] = []
+
+    args.evaluation = False
+    environment_config = {
+        'vehicle_config': car_config,
+        'tasks': trainTask,
+        'valTasks': valTasks,
+        'maps': maps,
+        'our_env_config' : our_env_config,
+        'reward_config' : reward_config,
+        'evaluation': args.evaluation,
+        'goal_our_env_config' : goal_our_env_config,
+    }
+    args.other_keys = environment_config
+
+    train_env_name = "polamp_env-v0"
+    test_env_name = train_env_name
+
+    # Set seed
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
+    # register polamp env
+    env_dict = gym.envs.registration.registry.env_specs.copy()
+    for env in env_dict:
+        if train_env_name in env:
+            print("Remove {} from registry".format(env))
+            del gym.envs.registration.registry.env_specs[env]
+    register(
+        id=train_env_name,
+        entry_point='goal_polamp_env.env:GCPOLAMPEnvironment',
+        kwargs={'full_env_name': "polamp_env", "config": args.other_keys}
+    )
+
+if __name__ == "__main__":	
+    args = get_config()
     train(args)

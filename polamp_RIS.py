@@ -216,6 +216,9 @@ class RIS(object):
 			torch.save(self.subgoal_optimizer.state_dict(), folder + "subgoal_opti.pth")
 			if self.use_encoder:
 				torch.save(self.encoder_optimizer.state_dict(), folder + "encoder_opti")
+		if self.lyapunov_rrt:
+			torch.save(self.tclf.state_dict(), 	folder + "tclf.pth")
+			torch.save(self.tclf_optimizer.state_dict(), 	folder + "tclf_opti.pth")
 
 	def load(self, folder, old_version=False, best=True):
 		if old_version:
@@ -232,6 +235,8 @@ class RIS(object):
 			self.encoder.load_state_dict(torch.load(folder+run_name+"encoder.pth", map_location=self.device))
 		if self.use_lidar_predictor:
 			self.lidar_predictor.load_state_dict(torch.load(folder+run_name+"lidar.pth", map_location=self.device))
+		if self.lyapunov_rrt:
+			self.tclf.load_state_dict(torch.load(folder+run_name+"tclf.pth", map_location=self.device))
 
 	def select_action(self, state, goal):
 		with torch.no_grad():
