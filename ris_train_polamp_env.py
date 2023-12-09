@@ -139,8 +139,8 @@ def evalPolicy(policy, env,
                                 and (val_key, task_id) in video_validate_tasks
             if skip_not_video_tasks and not need_to_plot_task:
                 continue
-            if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset" and (val_key, task_id) not in validation_tasks:
-                continue
+            #if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset" and (val_key, task_id) not in validation_tasks:
+            #    continue
             if need_to_plot_task:
                 images = []
             print(f"map={val_key}", f"task={task_id}", end=" ")
