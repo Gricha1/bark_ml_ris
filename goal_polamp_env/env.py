@@ -43,7 +43,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            or self.dataset == "hard_dataset_simplified_expanded" \
            or self.dataset == "hard_dataset_simplified_test" \
            or self.dataset == "cross_dataset_simplified" \
+           or self.dataset == "without_obst_dataset" \
            ,"not impemented other datasets for random sampling"
+    assert not self.random_train_dataset and not self.uniform_feasible_train_dataset
     assert self.reward_config["clearance"] \
            == self.reward_config["reverse"] \
            == self.reward_config["overSpeeding"] \
@@ -101,7 +103,17 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def reset_goal_env(self, **kwargs):
     self.dataset_info = {}
-    if self.dataset == "safety_dataset" or self.dataset == "hard_dataset" or self.dataset == "hard_dataset_simplified" or self.dataset == "hard_dataset_simplified_v2" or self.dataset == "hard_dataset_simplified_turns" or self.dataset == "hard_dataset_simplified_expanded" or self.dataset == "hard_dataset_simplified_test" or self.dataset == "cross_dataset_simplified" or self.dataset == "ris_easy_dataset" or not self.static_env:
+    if self.dataset == "safety_dataset" or \
+        self.dataset == "hard_dataset" or \
+        self.dataset == "hard_dataset_simplified" or \
+        self.dataset == "hard_dataset_simplified_v2" or \
+        self.dataset == "hard_dataset_simplified_turns" or \
+        self.dataset == "hard_dataset_simplified_expanded" or \
+        self.dataset == "hard_dataset_simplified_test" or \
+        self.dataset == "cross_dataset_simplified" or \
+        self.dataset == "without_obst_dataset" or \
+        self.dataset == "ris_easy_dataset" or \
+        not self.static_env:
       self.dataset_info["min_x"] = -5
       self.dataset_info["max_x"] = 40
       self.dataset_info["min_y"] = -5
@@ -373,6 +385,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def step(self, action, **kwargs):
     # action = [-1:1, -1:1]
     assert len(action) == 2
+    assert -1 <= action[0] <= 1
+    assert -1 <= action[1] <= 1
     action = [action[0] * self.max_acc, 
               action[1] * self.max_ang_vel]
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)

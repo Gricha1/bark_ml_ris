@@ -50,7 +50,7 @@ class RIS(object):
 		print(f"lambda_initialization: {lambda_initialization}")
 		assert train_td3 and not train_sac or not train_td3 and train_sac or\
 				not train_td3 and not train_sac
-		assert not lyapunov_rrt or (lyapunov_rrt and train_sac), "lyap_rrt related to SAC"
+		assert not(train_td3 and safety)
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
 		assert add_ppo_reward == False, "didnt implement PPO reward for high level policy"
 		assert not safety_add_to_high_policy or (safety_add_to_high_policy and safety)
@@ -67,8 +67,13 @@ class RIS(object):
 		self.sac_alpha = sac_alpha
 		self.sac_use_v_entropy = False
 		self.lyapunov_rrt = lyapunov_rrt
+		self.train_td3 = train_td3
+		if self.train_td3:
+			self.policy_noise = 0.2
+			self.noise_clip = 0.5
 		if self.lyapunov_rrt:
 			assert state_dim % 2 == 0
+			assert self.train_td3
 			state_dim = state_dim // 2
 		if self.lyapunov_rrt:
 			self.lqf_loss_cnst = 1.0
@@ -90,9 +95,9 @@ class RIS(object):
 			self.tclf_target = deepcopy(self.tclf)
 
 		# Actor
-		self.actor = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt).to(device)
+		self.actor = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt, train_td3=train_td3).to(device)
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=pi_lr)
-		self.actor_target = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt).to(device)
+		self.actor_target = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt, train_td3=train_td3).to(device)
 		self.actor_target.load_state_dict(self.actor.state_dict())
 		print("actor:", f"state-{2 * state_dim}", f"action-{action_dim}")
 
@@ -598,12 +603,21 @@ class RIS(object):
 		""" Critic """
 		# Compute target Q
 		with torch.no_grad():
-			next_action, log_prob, _ = self.actor.sample(next_state, goal)
-			target_Q = self.critic_target(next_state, next_action, goal)
-			if self.sac_use_v_entropy or self.train_sac:
-				target_Q = torch.min(target_Q, -1, keepdim=True)[0] - self.sac_alpha * log_prob
-			else:
+			if self.train_td3:
+				clipped_noise = (torch.randn_like(action, device=self.device) * self.policy_noise).clamp(
+                    			-self.noise_clip, self.noise_clip
+								)
+				next_action, _, _ = self.actor_target.sample(next_state, goal)
+				next_action = (next_action + clipped_noise).clamp(-1, 1)
+				target_Q = self.critic_target(next_state, next_action, goal)
 				target_Q = torch.min(target_Q, -1, keepdim=True)[0]
+			else:
+				next_action, log_prob, _ = self.actor.sample(next_state, goal)
+				target_Q = self.critic_target(next_state, next_action, goal)
+				if self.sac_use_v_entropy or self.train_sac:
+					target_Q = torch.min(target_Q, -1, keepdim=True)[0] - self.sac_alpha * log_prob
+				else:
+					target_Q = torch.min(target_Q, -1, keepdim=True)[0]
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
 			if self.safety:
 				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
@@ -644,9 +658,7 @@ class RIS(object):
 			with torch.no_grad():
 				#current_q1 = self.critic.q1_forward(goal - state,
 				#									self.actor(goal - state))
-				lyapunov_action_dist = self.actor(state, goal)
-				lyapunov_action = lyapunov_action_dist.rsample()
-				lyapunov_action = torch.tanh(lyapunov_action)
+				lyapunov_action = self.actor(state, goal) # ????
 				current_q1 = self.critic(state, lyapunov_action, goal)
 			tclf_loss = self.tclf.loss(
 				goal - state, lyapunov_action, goal - next_state,
@@ -711,18 +723,28 @@ class RIS(object):
 		""" High-level policy learning """
 		if self.use_lidar_predictor:
 			self.train_lidar_predictor(env_state, env_subgoal, env_goal)
-		if not self.train_sac:
+		if not self.train_sac and not self.train_td3:
 			self.train_highlevel_policy(state, goal, subgoal)
 
 		""" Actor """
 		# Sample action
-		if self.train_sac:
-			action = self.sample_action_and_KL(state, goal)
-		else:
-			action, D_KL = self.sample_action_and_KL(state, goal)
 		if self.train_sac or self.train_ris_with_sac:
 			# Sample action and log_prob
 			action, log_prob = self.sample_action_and_log_prob(state, goal)
+			if self.logger is not None:
+				self.logger.store(
+					init_dubins_distance = 0,
+					filtred_dubins_dinstance = 0,
+				)
+		elif self.train_td3:
+			action = self.actor(state, goal)
+			if self.logger is not None:
+				self.logger.store(
+					init_dubins_distance = 0,
+					filtred_dubins_dinstance = 0,
+				)
+		else:
+			action, D_KL = self.sample_action_and_KL(state, goal)
 
 		if self.safety:
 			# Compute actor loss + safety
@@ -741,14 +763,15 @@ class RIS(object):
 			# Compute actor loss
 			Q = self.critic(state, action, goal)
 			Q = torch.min(Q, -1, keepdim=True)[0]
-			if self.train_sac:
-				if self.lyapunov_rrt:
-					# minimize lqf's value
-					lqf_loss = self.tclf_target.forward_lqf(goal - state, action)
-					actor_loss = (-Q + self.lqf_loss_cnst * lqf_loss).mean()
-					#actor_loss = (self.sac_alpha * log_prob - Q).mean()
-				else:
-					actor_loss = (self.sac_alpha * log_prob - Q).mean()
+			if self.lyapunov_rrt:
+				# minimize lqf's value
+				lqf_loss = self.tclf_target.forward_lqf(goal - state, action)
+				actor_loss = (-Q + self.lqf_loss_cnst * lqf_loss).mean()
+				#actor_loss = (self.sac_alpha * log_prob - Q).mean()
+			elif self.train_td3:
+				actor_loss = (-Q).mean()
+			elif self.train_sac:
+				actor_loss = (self.sac_alpha * log_prob - Q).mean()
 			elif self.train_ris_with_sac:
 				actor_loss = (self.alpha*D_KL + self.sac_alpha * log_prob - Q).mean()
 			else:
@@ -849,15 +872,15 @@ class RIS(object):
 
 		# Log variables
 		if self.logger is not None:
-			self.logger.store(loss_sum = tclf_losses[0]["loss_sum"])
-			self.logger.store(lqf_loss = tclf_losses[0]["lqf_loss"])
-			self.logger.store(lie_der_loss = tclf_losses[0]["lie_der_loss"])
-			self.logger.store(sink_loss = tclf_losses[0]["sink_loss"])
-			self.logger.store(two_sides_bound_loss = tclf_losses[0]["two_sides_bound_loss"])
+			self.logger.store(loss_sum = tclf_losses[0]["loss_sum"] if self.lyapunov_rrt else 0)
+			self.logger.store(lqf_loss = tclf_losses[0]["lqf_loss"] if self.lyapunov_rrt else 0)
+			self.logger.store(lie_der_loss = tclf_losses[0]["lie_der_loss"] if self.lyapunov_rrt else 0)
+			self.logger.store(sink_loss = tclf_losses[0]["sink_loss"] if self.lyapunov_rrt else 0)
+			self.logger.store(two_sides_bound_loss = tclf_losses[0]["two_sides_bound_loss"] if self.lyapunov_rrt else 0)
 			self.logger.store(
 				actor_loss   = actor_loss.item(),
 				critic_loss  = critic_loss.item(),
-				D_KL		 = 0 if self.train_sac else D_KL.mean().item(),
+				D_KL		 = 0 if self.train_sac or self.train_td3 else D_KL.mean().item(),
 				alpha        = self.alpha,	
 				log_entropy_sac = log_prob.mean().item() if self.train_sac or self.train_ris_with_sac else 0,
 				critic_grad_norm = critic_grad_norm,

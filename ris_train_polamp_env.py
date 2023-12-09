@@ -114,8 +114,8 @@ def evalPolicy(policy, env,
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
-    if dataset_validation == "cross_dataset_simplified":
-        patern_nums = 12
+    if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset":
+        patern_nums = 4
         task_count = 15
         validation_tasks = []
         if full_validation:
@@ -126,8 +126,8 @@ def evalPolicy(policy, env,
             for i in range(patern_nums):
                 j = i * task_count
                 validation_tasks.append(("map0", j))
-                validation_tasks.append(("map0", j+1))
-                validation_tasks.append(("map0", j+2))
+                #validation_tasks.append(("map0", j+1))
+                #validation_tasks.append(("map0", j+2))
                 video_validate_tasks.append(("map0", j))
         # video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
         #                         validation_tasks[np.random.randint(len(validation_tasks))]]
@@ -139,7 +139,7 @@ def evalPolicy(policy, env,
                                 and (val_key, task_id) in video_validate_tasks
             if skip_not_video_tasks and not need_to_plot_task:
                 continue
-            if dataset_validation == "cross_dataset_simplified" and (val_key, task_id) not in validation_tasks:
+            if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset" and (val_key, task_id) not in validation_tasks:
                 continue
             if need_to_plot_task:
                 images = []
@@ -839,6 +839,12 @@ def train(args=None):
             action = env.action_space.sample()
         else:
             action = policy.select_action(state, goal)
+            if args.train_td3:
+                action += torch.normal(0, 
+                                       torch.tensor(env.action_space.high / env.action_space.high, dtype=torch.float32) 
+                                       * args.td3_exploration_noise
+                                       ).numpy()
+                action = action.clip(-1, 1)
 
         # Perform action
         next_obs, reward, done, train_info = env.step(action) 
@@ -932,6 +938,7 @@ def train(args=None):
                                 #video_validate_tasks = [],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
+                                skip_not_video_tasks=False,
                                 dataset_validation=args.dataset)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             train_collision_rate = sum(logger.data["collision_rate"]) / len(logger.data["collision_rate"])
@@ -1136,14 +1143,15 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="ris_easy_dataset") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="without_obst_dataset") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
-    parser.add_argument("--random_train_dataset",           default=True)
-    parser.add_argument("--train_sac",            default=True, type=bool)
-    parser.add_argument("--train_td3",            default=False, type=bool)
-    parser.add_argument("--lyapunov_rrt",            default=True, type=bool)
+    parser.add_argument("--random_train_dataset",           default=False)
+    parser.add_argument("--train_sac",            default=False, type=bool)
+    parser.add_argument("--train_td3",            default=True, type=bool)
+    parser.add_argument("--td3_exploration_noise", default=0.1, type=float)
+    parser.add_argument("--lyapunov_rrt",            default=False, type=bool)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1

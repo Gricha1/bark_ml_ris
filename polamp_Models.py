@@ -4,39 +4,49 @@ import numpy as np
 
 """ Actor """
 class GaussianPolicy(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], lyapunov_rrt=False):
+	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], lyapunov_rrt=False, train_td3=False):
 		super(GaussianPolicy, self).__init__()
+		self.lyapunov_rrt = lyapunov_rrt
+		self.train_td3 = train_td3
 		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
 		for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
 			fc += [nn.Linear(hidden_dim_in, hidden_dim_out), nn.ReLU()]
 		self.fc = nn.Sequential(*fc)
-
 		self.mean_linear = nn.Linear(hidden_dims[-1], action_dim)
-		self.logstd_linear = nn.Linear(hidden_dims[-1], action_dim)
+		if not self.train_td3:
+			self.logstd_linear = nn.Linear(hidden_dims[-1], action_dim)
 
-		self.LOG_SIG_MIN, self.LOG_SIG_MAX = -20, 2
-		self.lyapunov_rrt = lyapunov_rrt
+			self.LOG_SIG_MIN, self.LOG_SIG_MAX = -20, 2
 
 	def forward(self, state, goal):
 		if self.lyapunov_rrt:
 			x = self.fc(goal - state)
 		else:
 			x = self.fc(torch.cat([state, goal], -1))
-		mean = self.mean_linear(x)
-		log_std = self.logstd_linear(x)
-		std = torch.clamp(log_std, min=self.LOG_SIG_MIN, max=self.LOG_SIG_MAX).exp()
-		normal = torch.distributions.Normal(mean, std)
-		return normal
+		if self.train_td3:
+			mean = self.mean_linear(x)
+			mean = torch.tanh(mean)
+			return mean
+		else:
+			mean = self.mean_linear(x)
+			log_std = self.logstd_linear(x)
+			std = torch.clamp(log_std, min=self.LOG_SIG_MIN, max=self.LOG_SIG_MAX).exp()
+			normal = torch.distributions.Normal(mean, std)
+			return normal
 
 	def sample(self, state, goal):
-		normal = self.forward(state, goal)
-		x_t = normal.rsample()
-		action = torch.tanh(x_t)
-		log_prob = normal.log_prob(x_t)
-		log_prob -= torch.log((1 - action.pow(2)) + 1e-6)
-		log_prob = log_prob.sum(-1, keepdim=True)
-		mean = torch.tanh(normal.mean)
-		return action, log_prob, mean
+		if self.train_td3:
+			mean = self.forward(state, goal)
+			return mean, None, mean
+		else:
+			normal = self.forward(state, goal)
+			x_t = normal.rsample()
+			action = torch.tanh(x_t)
+			log_prob = normal.log_prob(x_t)
+			log_prob -= torch.log((1 - action.pow(2)) + 1e-6)
+			log_prob = log_prob.sum(-1, keepdim=True)
+			mean = torch.tanh(normal.mean)
+			return action, log_prob, mean
 
 """ Critic """
 class Critic(nn.Module):
