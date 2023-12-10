@@ -69,20 +69,22 @@ class RIS(object):
 		self.lyapunov_rrt = lyapunov_rrt
 		self.train_td3 = train_td3
 		if self.train_td3:
+			# TD3
 			self.policy_noise = 0.2
 			self.noise_clip = 0.5
 		if self.lyapunov_rrt:
 			assert state_dim % 2 == 0
 			assert self.train_td3
 			state_dim = state_dim // 2
-		if self.lyapunov_rrt:
-			self.lqf_loss_cnst = 1.0
+			# Lyapunov Neural Function
+			self.q_sigma = None # point = 0, doggo = -4, car = 0
+			self.lqf_loss_cnst = 1.0 # default = 1.0, point = 0.2, doggo = 1.0, car = 1.0
 			lf_structure = [2 * state_dim, 256, 256, 1]
 			lqf_structure = [2 * state_dim + action_dim, 256, 256, 1]
-			tclf_ub = 15
-			sink = [0.0 for i in range(2 * state_dim)]
-			tclf_input_amplifier = None
-			tclf_lie_derivative_upper = 0.2
+			tclf_ub = 15 # default = 5, point = 15, car = 15, doggo = 15
+			sink = [0.0 for i in range(2 * state_dim)] # default = [0, 0, ..., 0]
+			tclf_input_amplifier = None # default = None(all env) 
+			tclf_lie_derivative_upper = 0.2 # default = 0.2(all env)
 			default_device = "cuda"
 			self.tclf = TwinControlLyapunovFunction(lf_structure,
 											   lqf_structure,
@@ -666,7 +668,7 @@ class RIS(object):
 				lyapunov_action = self.actor(state, goal) # ????
 				current_q1 = self.critic(state, lyapunov_action, goal)
 			tclf_loss = self.tclf.loss(
-				goal - state, lyapunov_action, goal - next_state,
+				goal - state, action, goal - next_state,
 				current_q1)
 			tclf_losses = [{k: v.item() for k, v in tclf_loss.items()}]
 
@@ -770,9 +772,10 @@ class RIS(object):
 			Q = torch.min(Q, -1, keepdim=True)[0]
 			if self.lyapunov_rrt:
 				# minimize lqf's value
-				lqf_loss = self.tclf_target.forward_lqf(goal - state, action)
-				actor_loss = (-Q + self.lqf_loss_cnst * lqf_loss).mean()
-				#actor_loss = (self.sac_alpha * log_prob - Q).mean()
+				lqf_loss = self.tclf_target.forward_lqf(goal - state, action).mean()
+				actor_loss = (-Q).mean()
+				if self.q_sigma is None or actor_loss < self.q_sigma:
+					actor_loss += self.lqf_loss_cnst * lqf_loss
 			elif self.train_td3:
 				actor_loss = (-Q).mean()
 			elif self.train_sac:
