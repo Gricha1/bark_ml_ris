@@ -99,6 +99,23 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
   def compute_rewards(self, new_actions, new_next_obs_dict):    
     return -1.0 * self.abs_time_step_reward * np.ones((new_actions.shape[0], 1))
+  
+  def get_constained_agent_bounds(self):
+    assert not self.use_lidar_data, "for lyapunov implementation"
+    lb = self.observation_space["observation"].low
+    ub = self.observation_space["observation"].high
+    lb[0] = 0
+    ub[0] = 36
+    lb[1] = 0
+    ub[1] = 36
+    lb[2] = -np.pi
+    ub[2] = np.pi
+    lb[3] = self.environment.agent.dynamic_model.min_vel
+    ub[3] = self.environment.agent.dynamic_model.max_vel
+    lb[4] = -self.environment.agent.dynamic_model.max_steer
+    ub[4] = self.environment.agent.dynamic_model.max_steer
+    
+    return lb[:5], ub[:5]
 
 
   def reset_goal_env(self, **kwargs):
@@ -401,6 +418,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     upper_x = 36
     lower_y = -5
     upper_y = 36
+    isDone = False
     if self.env_boundary_collision and (agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y):
       info["Collision"] = True
       isDone = True
@@ -414,7 +432,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     info["last_step_num"] = self.step_counter
 
-    isDone = False
+    #isDone = False
     distance_to_goal = info["EuclideanDistance"]
     angle_to_goal = abs(normalizeAngle(abs(agent.theta - self.goal.theta)))
     goal_achieved = 1.0 * self.is_terminal_dist * (distance_to_goal < self.SOFT_EPS) \
@@ -422,7 +440,12 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     goal_achieved = bool(goal_achieved // (1.0 * self.is_terminal_dist + 1.0 * self.is_terminal_angle))
     info["goal_achieved"] = goal_achieved
 
-    if info["goal_achieved"] or self._max_episode_steps == self.step_counter:
+    info["max_step_recieved"] = False
+    if self._max_episode_steps == self.step_counter:
+      isDone = True
+      info["max_step_recieved"] = True
+
+    if info["goal_achieved"]:
       isDone = True
     
     polamp_reward = reward

@@ -32,7 +32,8 @@ class RIS(object):
 				 n_critic=1, 
 				 train_sac=False, sac_alpha=0.2,
 				 train_td3=False,
-				 lyapunov_rrt = False,
+				 lyapunov_rrt = False, tclf_ub=15, lqf_loss_cnst=1.0, 
+				 tclf_lie_derivative_upper=1.0, q_sigma=None, tclf_input_amplifier=None,
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
 				 use_dubins_filter = False,
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
@@ -77,14 +78,14 @@ class RIS(object):
 			assert self.train_td3
 			state_dim = state_dim // 2
 			# Lyapunov Neural Function
-			self.q_sigma = None # point = 0, doggo = -4, car = 0
-			self.lqf_loss_cnst = 1.0 # default = 1.0, point = 0.2, doggo = 1.0, car = 1.0
+			self.q_sigma = q_sigma # point = 0, doggo = -4, car = 0
+			self.lqf_loss_cnst = lqf_loss_cnst # default = 1.0, point = 0.2, doggo = 1.0, car = 1.0
 			lf_structure = [2 * state_dim, 256, 256, 1]
 			lqf_structure = [2 * state_dim + action_dim, 256, 256, 1]
-			tclf_ub = 15 # default = 5, point = 15, car = 15, doggo = 15
+			self.tclf_ub = tclf_ub # default = 5, point = 15, car = 15, doggo = 15
 			sink = [0.0 for i in range(2 * state_dim)] # default = [0, 0, ..., 0]
-			tclf_input_amplifier = None # default = None(all env) 
-			tclf_lie_derivative_upper = 0.2 # default = 0.2(all env)
+			self.tclf_input_amplifier = tclf_input_amplifier # default = None(all env) 
+			self.tclf_lie_derivative_upper = tclf_lie_derivative_upper # default = 0.2(all env)
 			default_device = "cuda"
 			self.tclf = TwinControlLyapunovFunction(lf_structure,
 											   lqf_structure,

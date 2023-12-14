@@ -27,10 +27,23 @@ def validate(args):
     if args.using_wandb:
         if type(args) == type(argparse.Namespace()):
             hyperparams_tune = False
+            alg = ""
+            safety = ""
+            hierarch  = ""
+            if args.train_td3:
+               alg = "TD3"
+            elif args.train_sac:
+                alg = "SAC"
+            else:
+                alg = "RIS"
+            if args.safety:
+                safety = "SAC_L"
+            elif args.lyapunov_rrt:
+                safety = "lyapunov"
+            if args.rrt:
+                hierarch = "RRT"
             wandb.init(project=args.wandb_project, config=args, 
-                    name="RIS," 
-                            + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
-                            + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
+                    name=alg + ", " + safety + ", " + hierarch)
         else:
             hyperparams_tune = True
             wandb.init(config=args, name="hyperparams_tune_RIS")
@@ -125,15 +138,25 @@ def validate(args):
                                     n_radius_est_sample=n_radius_est_sample,
                                     bound_cnst=bound_cnst)
         print("!!!!!!! building lyapunov table")
-        lv_table.build()
+        #lv_table.build()
         print("!!!!!!! building is complited")
         # lyapunov monitor initialization
         monitor_max_step_size = float(0.2)
         monitor_search_step_size = float(0.01)
-        monitor = Monitor(lv_table, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
+        #monitor = Monitor(lv_table, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
         # planner initizlization
+    rrt_data = {}
+    if args.rrt or args.lyapunov_rrt:
+        planner_max_iter = 9000
         planning_algo = "rrt*"
-        planner = Planner(env, planning_algo)
+        planning_algo_kwargs = {}
+        #planner = Planner(env, planning_algo)
+
+        #env.reset(id=0, val_key="map0")
+        #path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+        rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
+        rrt_data["planner_max_iter"] = planner_max_iter
+        rrt_data["planning_algo"] = planning_algo
 
 
     if load_results and not hyperparams_tune:
@@ -164,8 +187,13 @@ def validate(args):
                         value_function_angles=["theta_agent", 0, -np.pi/2],
                         dataset_plot=True,
                         skip_not_video_tasks=True,
-                        dataset_validation=args.dataset)
+                        dataset_validation=args.dataset,
+                        rrt=args.rrt,
+                        rrt_data=rrt_data,
+                        lyapunov_network_validation=args.lyapunov_rrt)
     wandb_log_dict = {}
+    for val_key in validation_info:
+        wandb_log_dict["validation/"+val_key] = validation_info[val_key]
     if args.using_wandb:
         for dict_ in val_state + val_goal:
             for key in dict_:
@@ -180,8 +208,13 @@ def validate(args):
 
 if __name__ == "__main__":	
     args = get_config()
-    args.wandb_project = "validate_ris_sac_polamp"
+    #args.wandb_project = "validate_ris_sac_polamp"
+    args.wandb_project = "validate_ris_polamp"
+    #args.dataset = "cross_dataset_simplified"
+    args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
+    #args.rrt = True
+    args.rrt = False
     validate(args)
 
 

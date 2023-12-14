@@ -21,6 +21,7 @@ from polamp_RIS import normalize_state
 from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 from polamp_env.lib.structures import State
+from MFNLC_for_polamp_env.mfnlc.plan import Planner
 #from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 
@@ -42,7 +43,10 @@ def evalPolicy(policy, env,
                skip_not_video_tasks=False,
                plot_only_start_position=False,
                dataset_validation=None,
-               full_validation=False):
+               full_validation=False,
+               rrt=False,
+               rrt_data={},
+               lyapunov_network_validation=False):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
@@ -52,10 +56,21 @@ def evalPolicy(policy, env,
     assert not plot_subgoals or (plot_subgoals and policy.use_encoder and policy.use_decoder) or (plot_subgoals and not policy.use_encoder)
     assert (plot_decoder_agent_states and policy.use_decoder) or not plot_decoder_agent_states
     assert not plot_lidar_predictor or (plot_lidar_predictor and policy.use_lidar_predictor)
+    assert not rrt or \
+           (rrt and len(rrt_data) != 0)
+    assert (not lyapunov_network_validation and not plot_value_function) or \
+            lyapunov_network_validation != plot_value_function, "can't plot lyapunov value and policy value"
     print()
 
+    if rrt:
+        planning_algo_kwargs = rrt_data["planning_algo_kwargs"]
+        planner_max_iter = rrt_data["planner_max_iter"]
+        planning_algo = rrt_data["planning_algo"]
     plot_obstacles = env.static_env
     validation_info = {}
+    if lyapunov_network_validation:
+        lyapunov_network_values = {}
+        lyapunov_network_values_in_sinks = []
     if render_env:
         videos = []   
     if plot_full_env:
@@ -92,6 +107,10 @@ def evalPolicy(policy, env,
                     ax_values_s = [ax_values_agent, 
                                 ax_values_left, ax_values_right, 
                                 ax_values_down, ax_values_up]
+        elif lyapunov_network_validation:
+            fig = plt.figure(figsize=[6.4 * 2, 4.8])
+            ax_states = fig.add_subplot(121)
+            ax_lyapunov = fig.add_subplot(122)
         else:
             fig = plt.figure(figsize=[6.4, 4.8])
             ax_states = fig.add_subplot(111)
@@ -115,8 +134,8 @@ def evalPolicy(policy, env,
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
     if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset":
-        patern_nums = 4
-        task_count = 15
+        patern_nums = 5
+        task_count = 15 * 5
         validation_tasks = []
         if full_validation:
             for i in range(len(env.valTasks['map0'])):
@@ -146,7 +165,14 @@ def evalPolicy(policy, env,
             print(f"map={val_key}", f"task={task_id}", end=" ")
             if need_to_plot_task:
                 print("DO VIDEO", end=" ")
+            if lyapunov_network_validation:
+                lyapunov_network_values[(val_key, task_id)] = []
             obs = env.reset(id=task_id, val_key=val_key)
+            if rrt:
+                planner = Planner(env, planning_algo)
+                path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+                subgoal_index = 0
+                env.set_new_goal(path[subgoal_index])
             info = {}
             agent = env.environment.agent.current_state
             goal = env.environment.agent.goal_state
@@ -183,6 +209,14 @@ def evalPolicy(policy, env,
                         else:
                             encoded_state = to_torch_state
                             encoded_goal = to_torch_goal
+                        if lyapunov_network_validation:
+                            if t == 0:
+                                lyap_v_sink = policy.tclf_target.forward_lf(encoded_goal - encoded_goal).cpu().item()
+                                lyapunov_network_values_in_sinks.append(lyap_v_sink)
+                            lyap_v = policy.tclf_target.forward_lf(encoded_goal - encoded_state).cpu().item()
+                            lyapunov_network_values[(val_key, task_id)].append(lyap_v)
+                            ax_lyapunov.plot(range(t + 1), 
+                                             lyapunov_network_values[(val_key, task_id)])
                         if plot_subgoals:
                             def generate_subgoals(encoded_state, encoded_goal, subgoals, stds, K=2, add_to_end=True):
                                 if K == 0:
@@ -447,6 +481,14 @@ def evalPolicy(policy, env,
                         if plot_value_function:
                             cbs = [plot_values(ax, theta=theta_agent) if theta=="theta_agent" else plot_values(ax, theta=theta) 
                                     for ax, theta in zip(ax_values_s, value_function_angles)]
+                        
+                        if rrt:
+                            for ind, path_subgoal in enumerate(path):
+                                x_subgoal = path_subgoal[0]
+                                y_subgoal = path_subgoal[1]
+                                theta_subgoal = path_subgoal[2]
+                                ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=20)
+
                         fig.canvas.draw()
                         data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                         data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
@@ -457,6 +499,8 @@ def evalPolicy(policy, env,
                             for ax_values in ax_values_s:
                                 ax_values.clear()
                         ax_states.clear()
+                        if lyapunov_network_validation:
+                            ax_lyapunov.clear()
 
                 state_distrs["x"].append(state[0])
                 state_distrs["y"].append(state[1])
@@ -489,6 +533,12 @@ def evalPolicy(policy, env,
                 mean_actions["v_s"].append(action[1])
 
                 next_obs, reward, done, info = env.step(action)
+                if rrt:
+                    if done and not info["max_step_recieved"]:
+                        subgoal_index += 1
+                        if subgoal_index <= len(path) - 1:
+                            env.set_new_goal(path[subgoal_index])
+                            done = False
                 if full_validation:
                     min_clearance_distances.append(np.min(env.beams_observation))
                 acc_reward += reward
@@ -540,6 +590,17 @@ def evalPolicy(policy, env,
     eval_episode_length = np.mean(episode_lengths)
     eval_min_clearance = 0
     eval_mean_clearance = 0
+    if lyapunov_network_validation:
+        eval_lyapunov_sink = np.mean(lyapunov_network_values_in_sinks)
+        eval_lyapunov_decreases = []
+        eval_lyapunov_network_values = []
+        for val_task in lyapunov_network_values:
+            eval_lyapunov_network_values.extend(lyapunov_network_values[val_task])
+            for i in range(len(lyapunov_network_values[val_task]) - 1):
+                eval_lyapunov_decreases.append(float(lyapunov_network_values[val_task][i] > \
+                                                     lyapunov_network_values[val_task][i + 1]))
+        eval_lyapunov_network_value = np.mean(eval_lyapunov_network_values)
+        eval_lyapunov_decrease = np.mean(eval_lyapunov_decreases)
     if full_validation:
         eval_min_clearance = np.mean(lst_min_clearance_distances)
         eval_mean_clearance = np.mean(lst_mean_clearance_distances)
@@ -566,6 +627,9 @@ def evalPolicy(policy, env,
     validation_info["eval_collisions"] = eval_collisions
     validation_info["eval_min_clearance"] = eval_min_clearance
     validation_info["eval_mean_clearance"] = eval_mean_clearance
+    validation_info["lyapunov_sink"] = eval_lyapunov_sink
+    validation_info["lyapunov_network_value"] = eval_lyapunov_network_value
+    validation_info["eval_lyapunov_decrease"] = eval_lyapunov_decrease
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
@@ -656,10 +720,20 @@ def train(args=None):
     if args.using_wandb:
         if type(args) == type(argparse.Namespace()):
             hyperparams_tune = False
+            alg = ""
+            safety = ""
+            if args.train_td3:
+               alg = "TD3"
+            elif args.train_sac:
+                alg = "SAC"
+            else:
+                alg = "RIS"
+            if args.safety:
+                safety = "SAC_L"
+            elif args.lyapunov_rrt:
+                safety = "lyapunov"
             wandb.init(project=args.wandb_project, config=args, 
-                    name="RIS," 
-                            + " Lambda: " + str(args.Lambda) + " alpha: " + str(args.alpha) 
-                            + " enc_s: " + str(args.state_dim) + " n_ens: " + str(args.n_ensemble))
+                    name=alg + ", " + safety)
         else:
             hyperparams_tune = True
             wandb.init(config=args, name="hyperparams_tune_RIS")
@@ -715,6 +789,9 @@ def train(args=None):
                  train_sac=args.train_sac,
                  train_td3=args.train_td3,
                  lyapunov_rrt=args.lyapunov_rrt,
+                 tclf_ub=args.tclf_ub, lqf_loss_cnst=args.lqf_loss_cnst, 
+				 tclf_lie_derivative_upper=args.tclf_lie_derivative_upper, 
+                 q_sigma=args.q_sigma, tclf_input_amplifier=args.tclf_input_amplifier,
                  use_dubins_filter=args.use_dubins_filter,
                  safety_add_to_high_policy=args.safety_add_to_high_policy,
                  cost_limit=args.cost_limit, update_lambda=args.update_lambda,
@@ -884,7 +961,8 @@ def train(args=None):
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
                                 skip_not_video_tasks=False,
-                                dataset_validation=args.dataset)
+                                dataset_validation=args.dataset,
+                                lyapunov_network_validation=args.lyapunov_rrt)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             train_collision_rate = sum(logger.data["collision_rate"]) / len(logger.data["collision_rate"])
             wandb_log_dict = {
@@ -967,6 +1045,9 @@ def train(args=None):
                      f'validation/val_rate({args.n_eval} episodes)': success_rate,
                      f'validation/eval_collisions({args.n_eval} episodes)': validation_info["eval_collisions"],
                      "validation/val_episode_length": eval_episode_length, 
+                     "validation/lyapunov_sink": validation_info["lyapunov_sink"],
+                     "validation/lyapunov_network_value": validation_info["lyapunov_network_value"],
+                     "validation/eval_lyapunov_decrease": validation_info["eval_lyapunov_decrease"],
 
                      # batch state
                      'extra/train_state_x_max': sum(logger.data["train_state_x_max"][-args.eval_freq:]) / args.eval_freq,
@@ -1097,6 +1178,11 @@ def get_config():
     parser.add_argument("--train_td3",            default=True, type=bool)
     parser.add_argument("--td3_exploration_noise", default=0.1, type=float)
     parser.add_argument("--lyapunov_rrt",            default=True, type=bool)
+    parser.add_argument("--tclf_ub", default=15.0, type=float)
+    parser.add_argument("--lqf_loss_cnst", default=1.0, type=float)
+    parser.add_argument("--tclf_lie_derivative_upper", default=1.0, type=float)
+    parser.add_argument("--q_sigma", default=None)
+    parser.add_argument("--tclf_input_amplifier", default=None)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
