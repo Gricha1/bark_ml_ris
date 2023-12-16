@@ -40,7 +40,8 @@ class RIS(object):
 				 vehicle_curvature=0.1,
 				 lidar_max_dist=None,
 				 env_state_bounds={},
-				 train_env=None):		
+				 train_env=None,
+				 use_risk_version=True, risk_bound=0.5, r_loss_coeff=1.0):		
 
 		print(f"lambda_initialization: {lambda_initialization}")
 		assert not (use_decoder and not use_encoder), 'cant use decoder without encoder'
@@ -60,6 +61,10 @@ class RIS(object):
 		self.train_sac = train_sac
 		self.sac_alpha = sac_alpha
 		self.sac_use_v_entropy = False
+		self.use_risk_version = use_risk_version
+		self.risk_bound = risk_bound
+		self.r_loss_coeff = r_loss_coeff
+		
 
 		# Actor
 		self.actor = GaussianPolicy(state_dim, action_dim).to(device)
@@ -574,10 +579,13 @@ class RIS(object):
 				target_Q = torch.min(target_Q, -1, keepdim=True)[0]
 			target_Q = reward + (1.0-done) * self.gamma*target_Q
 			if self.safety:
-				target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
-				target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
-				target_Q_cost = torch.clamp(target_Q_cost, min=0.0)
-				target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
+				if self.use_risk_version:
+					target_Q_cost = torch.tensor(cost)
+				else:
+					target_Q_cost = self.critic_cost_target(next_state, next_action, goal)
+					target_Q_cost = torch.min(target_Q_cost, -1, keepdim=True)[0]
+					target_Q_cost = torch.clamp(target_Q_cost, min=0.0)
+					target_Q_cost = cost + (1.0-done) * self.gamma*target_Q_cost
 		if self.logger is not None:
 			self.logger.store(
 				log_entropy_critic = log_prob.mean().item() if self.sac_use_v_entropy or self.train_sac else 0,
@@ -648,7 +656,10 @@ class RIS(object):
 			
 		if self.safety:
 			if self.logger is not None:
-				lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
+				if self.use_risk_version:
+					lambda_multiplier = torch.tensor(self.r_loss_coeff)
+				else:
+					lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 				self.logger.store(
 					safety_critic_value   = Q_cost.mean().item(),
 					safety_target_value   = target_Q_cost.mean().item(),
@@ -673,15 +684,23 @@ class RIS(object):
 			# Compute actor loss + safety
 			Q = self.critic(state, action, goal)
 			Q = torch.min(Q, -1, keepdim=True)[0]
-			lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
 			Q_cost = self.critic_cost(state, action, goal)
-			Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
-			if self.train_sac:
-				actor_loss = (self.sac_alpha * log_prob - Q + Q_cost).mean()
-			elif self.train_ris_with_sac:
-				actor_loss = (self.alpha*D_KL + self.sac_alpha * log_prob - Q + Q_cost).mean()
+			if self.use_risk_version:
+				Q_cost = torch.min(Q_cost, -1, keepdim=True)[0]
+				overused_risk = Q_cost - self.risk_bound
+				r_policy_loss = (
+					torch.nn.functional.relu(overused_risk) * self.r_loss_coeff
+				)  # > 0 if violate risk, = 0 otherwise
+				actor_loss = (self.alpha*D_KL - Q + r_policy_loss).mean()
 			else:
-				actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
+				lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)
+				Q_cost = lambda_multiplier * torch.min(Q_cost, -1, keepdim=True)[0]
+				if self.train_sac:
+					actor_loss = (self.sac_alpha * log_prob - Q + Q_cost).mean()
+				elif self.train_ris_with_sac:
+					actor_loss = (self.alpha*D_KL + self.sac_alpha * log_prob - Q + Q_cost).mean()
+				else:
+					actor_loss = (self.alpha*D_KL - Q + Q_cost).mean()
 		else:
 			# Compute actor loss
 			Q = self.critic(state, action, goal)
@@ -713,8 +732,9 @@ class RIS(object):
 			for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 			if self.safety:
-				for param, target_param in zip(self.critic_cost.parameters(), self.critic_cost_target.parameters()):
-					target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+				if not self.use_risk_version:
+					for param, target_param in zip(self.critic_cost.parameters(), self.critic_cost_target.parameters()):
+						target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
 
 		# debug

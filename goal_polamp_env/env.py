@@ -31,6 +31,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.is_terminal_angle = goal_env_config["is_terminal_angle"]
     self.use_velocity_constraint_cost = goal_env_config["use_velocity_constraint_cost"]
     self.risk_agent_velocity = goal_env_config["risk_agent_velocity"]
+    self.use_risk_version = goal_env_config["use_risk_version"]
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
@@ -62,6 +63,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.goal_observation = None
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
     observation_size = 5
+    if self.use_risk_version:
+       observation_size += 2
     if self.add_frame_stack:
       observation = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
       desired_goal = Box(-np.inf, np.inf, (observation_size * self.frame_stack if not self.use_lidar_data else self.frame_stack * (observation_size + self.n_beams),), np.float32) 
@@ -323,6 +326,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def reset(self, **kwargs):
 
     self.reset_goal_env(**kwargs)
+    self._risk_bound = 0.5
+    self._allocated_risk = 0.0
     agent = self.environment.agent.current_state
     self.goal = self.environment.agent.goal_state
     assert -np.pi <= self.goal.theta <= np.pi, "incorrect dataset"
@@ -331,8 +336,12 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if self.use_lidar_data:
         beams_observation = self.environment.get_observation(agent)
         agent_state.extend(beams_observation.tolist())
+        if self.use_risk_version:
+          agent_state.extend([self._allocated_risk, self._risk_bound])
         beams_observation = self.environment.get_observation(self.goal)
         goal_state.extend(beams_observation.tolist())
+        if self.use_risk_version:
+          goal_state.extend([0.0, self._risk_bound])
     if self.add_frame_stack:
       observation = []
       desired_goal = []
@@ -366,6 +375,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision" : collision,
                 "clearance_is_enough": clearance_is_enough,
                 "collision_happend_on_trajectory": self.collision_happend_on_trajectory,
+                "risk": [0.0],
               } 
     
     self.previous_agent_state = self.environment.agent.current_state
@@ -391,6 +401,24 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     clearance_is_enough = self.environment.clearance_is_enough
 
     agent = self.environment.agent.current_state
+    self.total_samples = 10
+    if info["Collision"]:
+      noises = np.random.normal(0.0, 0.2, (self.total_samples, 2))
+      count_blocked_samples = 0
+      for noise in noises:
+        current_robot_state = agent
+        current_robot_state.x = agent.x + noise[0]
+        current_robot_state.y = agent.y + noise[1]
+        collision = self.environment.is_state_in_collision(current_robot_state)
+        if (collision):
+          count_blocked_samples += 1
+      stepwise_risk = count_blocked_samples * 1.0 / self.total_samples
+    else:
+      stepwise_risk = 1.0
+    # Compute accumulated risk.
+    self._allocated_risk = (
+        self._allocated_risk + (1.0 - self._allocated_risk) * stepwise_risk
+    )
     # goal = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
     # Checking the bounds of map0
@@ -469,6 +497,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     if self.use_lidar_data:
         # beams_observation = self.environment.get_observation(agent)
         agent_state.extend(self.beams_observation.tolist())
+        if self.use_risk_version:
+          agent_state.extend([self._allocated_risk, self._risk_bound])
         # beams_observation = self.environment.get_observation(goal)
         # goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
@@ -504,6 +534,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision" : collision,
                 "clearance_is_enough": clearance_is_enough,
                 "collision_happend_on_trajectory": 1.0 * self.collision_happend_on_trajectory,
+                "risk": [stepwise_risk],
               } 
     info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
     info["goal_state"] = [self.goal.x, self.goal.y, self.goal.theta, self.goal.v, self.goal.steer]

@@ -574,8 +574,9 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     goal_batch          = batch["resampled_goals"]
     reward_batch        = batch["rewards"]
     done_batch          = batch["terminals"]
-    agent_state_batch   = batch["state_observation"]
-    goal_state_batch    = batch["state_desired_goal"]
+    # agent_state_batch   = batch["state_observation"]
+    # goal_state_batch    = batch["state_desired_goal"]
+    risk_batch          = batch["risk"]
     if env.static_env:
         clearance_is_enough_batch     = batch["clearance_is_enough"]
     if env.static_env and env.add_collision_reward: 
@@ -613,16 +614,19 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
     if env.static_env:
         velocity_array = np.abs(next_state_batch[:, 3:4])
         cost_collision = 100
-        if env.use_velocity_constraint_cost:
-            risk_velocity = env.risk_agent_velocity
-            velocity_limit_exceeded = velocity_array >= risk_velocity
-            updated_velocity_array = velocity_array * velocity_limit_exceeded
-            cost_batch = (np.ones_like(done_batch) * updated_velocity_array) * (1.0 - clearance_is_enough_batch)
-            cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
+        if env.use_risk_version:
+            cost_batch = risk_batch
         else:
-            # every timestep in risk zone will be penalized
-            cost_batch = (np.ones_like(done_batch)) * (1.0 - clearance_is_enough_batch)
-            cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
+            if env.use_velocity_constraint_cost:
+                risk_velocity = env.risk_agent_velocity
+                velocity_limit_exceeded = velocity_array >= risk_velocity
+                updated_velocity_array = velocity_array * velocity_limit_exceeded
+                cost_batch = (np.ones_like(done_batch) * updated_velocity_array) * (1.0 - clearance_is_enough_batch)
+                cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
+            else:
+                # every timestep in risk zone will be penalized
+                cost_batch = (np.ones_like(done_batch)) * (1.0 - clearance_is_enough_batch)
+                cost_batch = (1.0 - collision_batch) * cost_batch + cost_collision * collision_batch
     else:
         cost_batch = (- np.ones_like(done_batch) * 0)
     
@@ -865,7 +869,7 @@ def train(args=None):
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             if t % 1e4 == 0:
                 print("train", args.exp_name, end=" ")
-            if args.safety and t % policy.update_lambda == 0:
+            if args.safety and not policy.use_risk_version and t % policy.update_lambda == 0:
                 policy.train_lagrangian(state_batch, action_batch, goal_batch)
             end_train = time.time()
             logger.store(train_time = end_train - start_train)
