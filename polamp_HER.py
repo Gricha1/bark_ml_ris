@@ -346,6 +346,7 @@ class HERReplayBuffer():
             'clearance_is_enough': new_next_obs_dict["clearance_is_enough"],
             "state_observation": new_next_obs_dict["state_observation"],
             "state_desired_goal": new_next_obs_dict["state_desired_goal"],
+            "risk": new_next_obs_dict["risk"],
         }
         return batch
 

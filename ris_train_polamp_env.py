@@ -616,6 +616,7 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
         cost_collision = 100
         if env.use_risk_version:
             cost_batch = risk_batch
+            # print(f"cost_batch: {cost_batch}")
         else:
             if env.use_velocity_constraint_cost:
                 risk_velocity = env.risk_agent_velocity
@@ -789,7 +790,7 @@ def train(args=None):
         fraction_goals_are_rollout_goals = args.fraction_goals_are_rollout_goals,
         fraction_resampled_goals_are_env_goals = args.fraction_resampled_goals_are_env_goals,
         fraction_resampled_goals_are_replay_buffer_goals = args.fraction_resampled_goals_are_replay_buffer_goals,
-        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough"],
+        ob_keys_to_save     =["state_observation", "state_achieved_goal", "state_desired_goal", "current_step", "collision", "clearance_is_enough", "risk"],
         desired_goal_keys   =["desired_goal", "state_desired_goal"],
         observation_key     = 'observation',
         desired_goal_key    = 'desired_goal',

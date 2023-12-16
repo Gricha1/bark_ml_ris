@@ -81,6 +81,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     state_observation = observation 
     state_desired_goal = desired_goal 
     state_achieved_goal = state_observation
+    risk = Box(0.0, 1.0, (1,), np.float32)
 
     obs_dict = {"observation" : observation,
                 "desired_goal" : desired_goal,
@@ -92,6 +93,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision" : collision,
                 "clearance_is_enough": clearance_is_enough,
                 "collision_happend_on_trajectory": collision_happend_on_trajectory,
+                "risk": risk,
               } 
     self.observation_space = gym.spaces.dict.Dict(obs_dict)
 
@@ -401,8 +403,18 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     clearance_is_enough = self.environment.clearance_is_enough
 
     agent = self.environment.agent.current_state
+    # Checking the bounds of map0
+    lower_x = 0
+    upper_x = 36
+    lower_y = -5
+    upper_y = 36
+    if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
+      info["Collision"] = True
+      isDone = True
+      clearance_is_enough = False
+
     self.total_samples = 10
-    if info["Collision"]:
+    if not "Collision" in info:
       noises = np.random.normal(0.0, 0.2, (self.total_samples, 2))
       count_blocked_samples = 0
       for noise in noises:
@@ -415,21 +427,13 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       stepwise_risk = count_blocked_samples * 1.0 / self.total_samples
     else:
       stepwise_risk = 1.0
+    # print(f"stepwise_risk: {stepwise_risk}")
     # Compute accumulated risk.
     self._allocated_risk = (
         self._allocated_risk + (1.0 - self._allocated_risk) * stepwise_risk
     )
     # goal = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
-    # Checking the bounds of map0
-    lower_x = 0
-    upper_x = 36
-    lower_y = -5
-    upper_y = 36
-    if agent.x < lower_x or agent.x > upper_x or agent.y < lower_y or agent.y > upper_y:
-      info["Collision"] = True
-      isDone = True
-      clearance_is_enough = False
 
     if self.use_velocity_constraint_cost:
       if not clearance_is_enough:
