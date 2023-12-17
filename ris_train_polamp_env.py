@@ -695,6 +695,7 @@ def train(args=None):
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
+    goal_our_env_config["risk_bound"] = args.risk_bound
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []
 
@@ -781,6 +782,7 @@ def train(args=None):
                  env_state_bounds=env_state_bounds,
                  lidar_max_dist=env.environment.MAX_DIST_LIDAR,
                  train_env=env,
+                 risk_bound=args.risk_bound,
     )
 
     # Initialize replay buffer and path_builder
@@ -957,7 +959,7 @@ def train(args=None):
                     'train/safety_critic_value': sum(logger.data["safety_critic_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                     'train/safety_target_value': sum(logger.data["safety_target_value"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
                     'train/critic_cost_grad_norm': sum(logger.data["critic_cost_grad_norm"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
-                    'train/lambda_loss': sum(logger.data["lambda_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety else 0,
+                    'train/lambda_loss': sum(logger.data["lambda_loss"][-args.eval_freq:]) / args.eval_freq if policy.safety and not policy.use_risk_version else 0,
                     'train/subgoal_weight': sum(logger.data["subgoal_weight"][-args.eval_freq:]) / args.eval_freq,
                     'train/subgoal_weight_max': sum(logger.data["subgoal_weight_max"][-args.eval_freq:]) / args.eval_freq,
                     'train/subgoal_weight_min': sum(logger.data["subgoal_weight_min"][-args.eval_freq:]) / args.eval_freq,
@@ -966,7 +968,7 @@ def train(args=None):
                      
                      # additional
                      'train/alpha': sum(logger.data["alpha"][-args.eval_freq:]) / args.eval_freq,
-                     'train/lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and "lambda_coef" in logger.data else 0,
+                     'train/lambda_coef': sum(logger.data["lambda_coef"]) / len(logger.data["lambda_coef"]) if policy.safety and not policy.use_risk_version and "lambda_coef" in logger.data else 0,
                      'train/lambda_multiplier': sum(logger.data["lambda_multiplier"]) / len(logger.data["lambda_multiplier"]) if policy.safety and "lambda_multiplier" in logger.data else 0,
                      'train/fraction_goals_rollout_goals': replay_buffer.fraction_goals_rollout_goals,
                      'train/fraction_resampled_goals_replay_buffer_goals': replay_buffer.fraction_resampled_goals_replay_buffer_goals,
@@ -1096,7 +1098,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_balanced") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
@@ -1112,9 +1114,9 @@ if __name__ == "__main__":
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
-    parser.add_argument("--alpha",              default=1.76, type=float)
-    parser.add_argument("--Lambda",             default=0.29, type=float) # 0.1
-    parser.add_argument("--n_ensemble",         default=10, type=int) # 10
+    parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
+    parser.add_argument("--n_ensemble",         default=20, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
     parser.add_argument("--q_lr",               default=1e-3, type=float)
@@ -1142,6 +1144,7 @@ if __name__ == "__main__":
     parser.add_argument("--safety",                    default=True, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
+    parser.add_argument("--risk_bound",                default=0.2, type=float)
     
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)

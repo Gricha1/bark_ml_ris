@@ -63,6 +63,7 @@ class RIS(object):
 		self.sac_use_v_entropy = False
 		self.use_risk_version = use_risk_version
 		self.risk_bound = risk_bound
+		print(f"self.risk_bound: {self.risk_bound}")
 		self.r_loss_coeff = r_loss_coeff
 		
 
@@ -691,6 +692,8 @@ class RIS(object):
 				r_policy_loss = (
 					torch.nn.functional.relu(overused_risk) * self.r_loss_coeff
 				)  # > 0 if violate risk, = 0 otherwise
+				# print(f"Q_cost: {Q_cost}")
+				# print(f"self.risk_bound: {self.risk_bound}")
 				actor_loss = (self.alpha*D_KL - Q + r_policy_loss).mean()
 			else:
 				lambda_multiplier = torch.nn.functional.softplus(self.lambda_coefficient)

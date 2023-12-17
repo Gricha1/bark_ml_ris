@@ -32,6 +32,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.use_velocity_constraint_cost = goal_env_config["use_velocity_constraint_cost"]
     self.risk_agent_velocity = goal_env_config["risk_agent_velocity"]
     self.use_risk_version = goal_env_config["use_risk_version"]
+    self._risk_bound = goal_env_config["risk_bound"]
+    print(f"self._risk_bound: {self._risk_bound}")
     assert self.UPDATE_SPARSE == 1, "need for correct cost count"
     assert self.add_ppo_reward == 0, "didnt implement"
     assert self.dataset == "medium_dataset" \
@@ -328,7 +330,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
   def reset(self, **kwargs):
 
     self.reset_goal_env(**kwargs)
-    self._risk_bound = 0.5
+    # self._risk_bound = 0.5
     self._allocated_risk = 0.0
     agent = self.environment.agent.current_state
     self.goal = self.environment.agent.goal_state
@@ -403,6 +405,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     clearance_is_enough = self.environment.clearance_is_enough
 
     agent = self.environment.agent.current_state
+    agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
     # Checking the bounds of map0
     lower_x = 0
     upper_x = 36
@@ -412,42 +415,44 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       info["Collision"] = True
       isDone = True
       clearance_is_enough = False
-
-    self.total_samples = 10
-    if not "Collision" in info:
-      noises = np.random.normal(0.0, 0.2, (self.total_samples, 2))
-      count_blocked_samples = 0
-      for noise in noises:
-        current_robot_state = agent
-        current_robot_state.x = agent.x + noise[0]
-        current_robot_state.y = agent.y + noise[1]
-        collision = self.environment.is_state_in_collision(current_robot_state)
-        if (collision):
-          count_blocked_samples += 1
-      stepwise_risk = count_blocked_samples * 1.0 / self.total_samples
-    else:
-      stepwise_risk = 1.0
-    # print(f"stepwise_risk: {stepwise_risk}")
-    # Compute accumulated risk.
-    self._allocated_risk = (
-        self._allocated_risk + (1.0 - self._allocated_risk) * stepwise_risk
-    )
+    if self.use_risk_version:
+      self.total_samples = 10
+      if not "Collision" in info:
+        noises = np.random.normal(0.0, 0.2, (self.total_samples, 2))
+        count_blocked_samples = 0
+        for noise in noises:
+          current_robot_state = State(agent_state)
+          current_robot_state.x = agent.x + noise[0]
+          current_robot_state.y = agent.y + noise[1]
+          collision = self.environment.is_state_in_collision(current_robot_state)
+          if (collision):
+            count_blocked_samples += 1
+        stepwise_risk = count_blocked_samples * 1.0 / self.total_samples
+      else:
+        stepwise_risk = 1.0
+      # print(f"stepwise_risk: {stepwise_risk}")
+      # Compute accumulated risk.
+      self._allocated_risk = (
+          self._allocated_risk + (1.0 - self._allocated_risk) * stepwise_risk
+      )
     # goal = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
-
-    if self.use_velocity_constraint_cost:
-      if not clearance_is_enough:
-        if (agent.v < self.risk_agent_velocity):
-          info["cost"] = 0.0
+    if not self.use_risk_version:
+      if self.use_velocity_constraint_cost:
+        if not clearance_is_enough:
+          if (agent.v < self.risk_agent_velocity):
+            info["cost"] = 0.0
+          else:
+            info["cost"] = agent.v
         else:
-          info["cost"] = agent.v
+            info["cost"] = 0.0
       else:
+        if not clearance_is_enough:
+          info["cost"] = 1.0
+        else:
           info["cost"] = 0.0
     else:
-      if not clearance_is_enough:
-        info["cost"] = 1.0
-      else:
-        info["cost"] = 0.0
+      info["cost"] = stepwise_risk
 
     # if math.fabs(agent.x - lower_x) < self.safe_eps or \
     #   math.fabs(agent.x - upper_x) < self.safe_eps or \
@@ -496,7 +501,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     
     # agent = self.environment.agent.current_state
     # goal = self.environment.agent.goal_state
-    agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
+    # agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
     # goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
         # beams_observation = self.environment.get_observation(agent)
