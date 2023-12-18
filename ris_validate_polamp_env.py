@@ -117,6 +117,7 @@ def validate(args):
     )
 
     if args.lyapunov_rrt:
+        add_monitor = False
         # lyapunov table initialization
         obs_lb = -np.ones(shape=env_obs_dim)
         obs_ub = np.ones(shape=env_obs_dim)
@@ -137,18 +138,20 @@ def validate(args):
                                     n_range_est_sample=n_range_est_sample,
                                     n_radius_est_sample=n_radius_est_sample,
                                     bound_cnst=bound_cnst)
-        print("!!!!!!! building lyapunov table")
-        #lv_table.build()
-        print("!!!!!!! building is complited")
         # lyapunov monitor initialization
         monitor_max_step_size = float(0.2)
         monitor_search_step_size = float(0.01)
-        #monitor = Monitor(lv_table, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
+        if add_monitor:
+            print("!!!!!!! building lyapunov table")
+            lv_table.build()
+            print("!!!!!!! building is complited")
+            monitor = Monitor(lv_table, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
         # planner initizlization
     rrt_data = {}
     if args.rrt or args.lyapunov_rrt:
-        planner_max_iter = 9000
+        planner_max_iter = 18000
         planning_algo = "rrt*"
+        #planning_algo = "rrt"
         planning_algo_kwargs = {}
         #planner = Planner(env, planning_algo)
 
@@ -157,7 +160,10 @@ def validate(args):
         rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
         rrt_data["planner_max_iter"] = planner_max_iter
         rrt_data["planning_algo"] = planning_algo
-
+        rrt_data["add_monitor"] = False
+        if add_monitor:
+            rrt_data["add_monitor"] = True
+            rrt_data["monitor"] = monitor
 
     if load_results and not hyperparams_tune:
         policy.load(folder)
@@ -182,7 +188,10 @@ def validate(args):
                         data_to_plot={},
                         #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                         #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 3), ("map0", 4)],
-                        video_validate_tasks = [("map0", 0), ("map0", 1)],
+                        #video_validate_tasks = [("map0", 10), ("map0", 50), ("map0", 80), ("map0", 150), ("map0", 200)],
+                        #video_validate_tasks = [("map0", 10), ("map0", 20), ("map0", 40), ("map0", 50), ("map0", 80), ("map0", 120), ("map0", 150), ("map0", 190), ("map0", 200), ("map0", 250), ("map0", 300)],
+                        video_validate_tasks = [("map0", 190)],
+                        full_validation = True,
                         #video_validate_tasks = [],
                         value_function_angles=["theta_agent", 0, -np.pi/2],
                         dataset_plot=True,
@@ -214,7 +223,7 @@ if __name__ == "__main__":
     args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
     #args.rrt = True
-    args.rrt = False
+    args.rrt = True
     validate(args)
 
 

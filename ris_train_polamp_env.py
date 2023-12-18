@@ -66,6 +66,8 @@ def evalPolicy(policy, env,
         planning_algo_kwargs = rrt_data["planning_algo_kwargs"]
         planner_max_iter = rrt_data["planner_max_iter"]
         planning_algo = rrt_data["planning_algo"]
+        if rrt_data["add_monitor"]:
+            monitor = rrt_data["monitor"]
     plot_obstacles = env.static_env
     validation_info = {}
     if lyapunov_network_validation:
@@ -133,18 +135,18 @@ def evalPolicy(policy, env,
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
-    if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset":
+    if len(video_validate_tasks) == 0 and (dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset"):
         patern_nums = 5
         task_count = 15 * 5
-        validation_tasks = []
+        video_validate_tasks = []
         if full_validation:
             for i in range(len(env.valTasks['map0'])):
-               validation_tasks.append(("map0", i))
+               video_validate_tasks.append(("map0", i))
         else:
             video_validate_tasks = []
             for i in range(patern_nums):
                 j = i * task_count
-                validation_tasks.append(("map0", j))
+                #validation_tasks.append(("map0", j))
                 #validation_tasks.append(("map0", j+1))
                 #validation_tasks.append(("map0", j+2))
                 video_validate_tasks.append(("map0", j))
@@ -171,7 +173,20 @@ def evalPolicy(policy, env,
             if rrt:
                 planner = Planner(env, planning_algo)
                 path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+                # change plan
+                import math
+                for i in range(len(path) - 1):
+                    dx = path[i + 1][0] - path[i][0]
+                    dy = path[i + 1][1] - path[i][1]
+                    path[i][2] = math.atan2(dy, dx)
+                path[len(path) - 1][2] = path[len(path) - 2][2]
                 subgoal_index = 0
+                env.subgoal_tracking = True
+                if env.is_terminal_dist:
+                    init_env_eps = env.SOFT_EPS
+                    env.subgoal_safe_eps = 3.0
+                if env.is_terminal_angle:
+                    assert 1 == 0, "should assign the angle for subgoals"
                 env.set_new_goal(path[subgoal_index])
             info = {}
             agent = env.environment.agent.current_state
@@ -211,9 +226,9 @@ def evalPolicy(policy, env,
                             encoded_goal = to_torch_goal
                         if lyapunov_network_validation:
                             if t == 0:
-                                lyap_v_sink = policy.tclf_target.forward_lf(encoded_goal - encoded_goal).cpu().item()
+                                lyap_v_sink = policy.tclf.forward_lf(encoded_goal - encoded_goal).cpu().item()
                                 lyapunov_network_values_in_sinks.append(lyap_v_sink)
-                            lyap_v = policy.tclf_target.forward_lf(encoded_goal - encoded_state).cpu().item()
+                            lyap_v = policy.tclf.forward_lf(encoded_goal - encoded_state).cpu().item()
                             lyapunov_network_values[(val_key, task_id)].append(lyap_v)
                             ax_lyapunov.plot(range(t + 1), 
                                              lyapunov_network_values[(val_key, task_id)])
@@ -533,20 +548,30 @@ def evalPolicy(policy, env,
                 mean_actions["v_s"].append(action[1])
 
                 next_obs, reward, done, info = env.step(action)
+                next_state = next_obs["observation"]
+                state = next_state
                 if rrt:
                     if done and not info["max_step_recieved"]:
                         subgoal_index += 1
-                        if subgoal_index <= len(path) - 1:
-                            env.set_new_goal(path[subgoal_index])
+                        subgoal = path[subgoal_index]
+                        if rrt_data["add_monitor"]:
+                            env_info = {}
+                            env_info["agent_state"] = state
+                            env_info["agent_state"][3:] = 0
+                            subgoal, lyapunov_r = monitor.select_subgoal(env_info, subgoal)
+                        if subgoal_index < len(path) - 1:
+                            env.set_new_goal(subgoal)
                             done = False
+                        if subgoal_index == len(path) - 1:
+                            env.subgoal_safe_eps = init_env_eps
                 if full_validation:
                     min_clearance_distances.append(np.min(env.beams_observation))
                 acc_reward += reward
                 acc_cost += info["cost"]
                 acc_collision += 1.0 * ("Collision" in info)
                 
-                next_state = next_obs["observation"]
-                state = next_state
+                next_goal = next_obs["desired_goal"]
+                goal = next_goal
 
                 if render_env and need_to_plot_task:
                     images.append(env.render())
@@ -627,9 +652,9 @@ def evalPolicy(policy, env,
     validation_info["eval_collisions"] = eval_collisions
     validation_info["eval_min_clearance"] = eval_min_clearance
     validation_info["eval_mean_clearance"] = eval_mean_clearance
-    validation_info["lyapunov_sink"] = eval_lyapunov_sink
-    validation_info["lyapunov_network_value"] = eval_lyapunov_network_value
-    validation_info["eval_lyapunov_decrease"] = eval_lyapunov_decrease
+    validation_info["lyapunov_sink"] = eval_lyapunov_sink if lyapunov_network_validation else 0
+    validation_info["lyapunov_network_value"] = eval_lyapunov_network_value if lyapunov_network_validation else 0
+    validation_info["eval_lyapunov_decrease"] = eval_lyapunov_decrease if lyapunov_network_validation else 0
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
@@ -789,6 +814,7 @@ def train(args=None):
                  train_sac=args.train_sac,
                  train_td3=args.train_td3,
                  lyapunov_rrt=args.lyapunov_rrt,
+                 lyapunov_add_steps=args.lyapunov_add_steps,
                  tclf_ub=args.tclf_ub, lqf_loss_cnst=args.lqf_loss_cnst, 
 				 tclf_lie_derivative_upper=args.tclf_lie_derivative_upper, 
                  q_sigma=args.q_sigma, tclf_input_amplifier=args.tclf_input_amplifier,
@@ -900,6 +926,10 @@ def train(args=None):
             )
             # Sample subgoal candidates uniformly in the replay buffer
             subgoal_batch = torch.FloatTensor(replay_buffer.random_state_batch(args.batch_size)).to(args.device)
+            if args.lyapunov_add_steps and t >= args.lyapunov_actor_loss_steps:
+                assert args.lyapunov_rrt
+                assert args.q_sigma is None
+                policy.add_lyapunov_to_actor_loss = True
             policy.train(state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch, subgoal_batch)
             if t % 1e4 == 0:
                 print("train", args.exp_name, end=" ")
@@ -956,8 +986,8 @@ def train(args=None):
                                               "dataset_y": logger.data["dataset_y"]},
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 3), ("map0", 4)],
-                                video_validate_tasks = [("map0", 0), ("map0", 1)],
-                                #video_validate_tasks = [],
+                                #video_validate_tasks = [("map0", 0), ("map0", 1)],
+                                video_validate_tasks = [],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
                                 skip_not_video_tasks=False,
@@ -1180,8 +1210,10 @@ def get_config():
     parser.add_argument("--lyapunov_rrt",            default=True, type=bool)
     parser.add_argument("--tclf_ub", default=15.0, type=float)
     parser.add_argument("--lqf_loss_cnst", default=1.0, type=float)
-    parser.add_argument("--tclf_lie_derivative_upper", default=1.0, type=float)
-    parser.add_argument("--q_sigma", default=None)
+    parser.add_argument("--tclf_lie_derivative_upper", default=0.001, type=float) # 0.001
+    parser.add_argument("--q_sigma", default=None) # 50
+    parser.add_argument("--lyapunov_actor_loss_steps", default=800_000) # 800_000
+    parser.add_argument("--lyapunov_add_steps", default=True) # False
     parser.add_argument("--tclf_input_amplifier", default=None)
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)

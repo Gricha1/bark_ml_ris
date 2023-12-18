@@ -34,6 +34,7 @@ class RIS(object):
 				 train_td3=False,
 				 lyapunov_rrt = False, tclf_ub=15, lqf_loss_cnst=1.0, 
 				 tclf_lie_derivative_upper=1.0, q_sigma=None, tclf_input_amplifier=None,
+				 lyapunov_add_steps=False,
 				 safety=False, safety_add_to_high_policy=False, cost_limit=0.5, update_lambda=1000, 
 				 use_dubins_filter = False,
 				 n_ensemble=10, gamma=0.99, tau=0.005, target_update_interval=1, 
@@ -69,14 +70,21 @@ class RIS(object):
 		self.sac_use_v_entropy = False
 		self.lyapunov_rrt = lyapunov_rrt
 		self.train_td3 = train_td3
+		self.goal_state_diff_obs = self.lyapunov_rrt or self.train_td3
 		if self.train_td3:
 			# TD3
 			self.policy_noise = 0.2
 			self.noise_clip = 0.5
-		if self.lyapunov_rrt:
+		if self.goal_state_diff_obs:
 			assert state_dim % 2 == 0
-			assert self.train_td3
 			state_dim = state_dim // 2
+		if self.lyapunov_rrt:
+			assert self.goal_state_diff_obs
+			assert self.train_td3
+			assert not lyapunov_add_steps or lyapunov_add_steps and q_sigma is None 
+			self.lyapunov_add_steps = lyapunov_add_steps
+			if self.lyapunov_add_steps:
+				self.add_lyapunov_to_actor_loss = False
 			# Lyapunov Neural Function
 			self.q_sigma = q_sigma # point = 0, doggo = -4, car = 0
 			self.lqf_loss_cnst = lqf_loss_cnst # default = 1.0, point = 0.2, doggo = 1.0, car = 1.0
@@ -98,15 +106,15 @@ class RIS(object):
 			self.tclf_target = deepcopy(self.tclf)
 
 		# Actor
-		self.actor = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt, train_td3=train_td3).to(device)
+		self.actor = GaussianPolicy(state_dim, action_dim, goal_state_diff_obs=self.goal_state_diff_obs, train_td3=train_td3).to(device)
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=pi_lr)
-		self.actor_target = GaussianPolicy(state_dim, action_dim, lyapunov_rrt=lyapunov_rrt, train_td3=train_td3).to(device)
+		self.actor_target = GaussianPolicy(state_dim, action_dim, goal_state_diff_obs=self.goal_state_diff_obs, train_td3=train_td3).to(device)
 		self.actor_target.load_state_dict(self.actor.state_dict())
 		print("actor:", f"state-{2 * state_dim}", f"action-{action_dim}")
 
 		# Critic
-		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=n_critic, lyapunov_rrt=lyapunov_rrt).to(device)
-		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=n_critic, lyapunov_rrt=lyapunov_rrt).to(device)
+		self.critic 		= EnsembleCritic(state_dim, action_dim, n_Q=n_critic, goal_state_diff_obs=self.goal_state_diff_obs).to(device)
+		self.critic_target 	= EnsembleCritic(state_dim, action_dim, n_Q=n_critic, goal_state_diff_obs=self.goal_state_diff_obs).to(device)
 		self.critic_target.load_state_dict(self.critic.state_dict())
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=q_lr)
 		print("critic:", f"state-{2 * state_dim}", f"action-{action_dim}", "n_Q-", n_critic)
@@ -775,8 +783,11 @@ class RIS(object):
 				# minimize lqf's value
 				lqf_loss = self.tclf_target.forward_lqf(goal - state, action).mean()
 				actor_loss = (-Q).mean()
-				if self.q_sigma is None or actor_loss < self.q_sigma:
-					actor_loss += self.lqf_loss_cnst * lqf_loss
+				if self.q_sigma is None or actor_loss > self.q_sigma:
+					if not self.lyapunov_add_steps:
+						actor_loss += self.lqf_loss_cnst * lqf_loss
+					elif self.add_lyapunov_to_actor_loss:
+						actor_loss += self.lqf_loss_cnst * lqf_loss
 			elif self.train_td3:
 				actor_loss = (-Q).mean()
 			elif self.train_sac:

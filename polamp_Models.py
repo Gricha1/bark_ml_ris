@@ -4,9 +4,9 @@ import numpy as np
 
 """ Actor """
 class GaussianPolicy(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], lyapunov_rrt=False, train_td3=False):
+	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], goal_state_diff_obs=False, train_td3=False):
 		super(GaussianPolicy, self).__init__()
-		self.lyapunov_rrt = lyapunov_rrt
+		self.goal_state_diff_obs = goal_state_diff_obs
 		self.train_td3 = train_td3
 		fc = [nn.Linear(2*state_dim, hidden_dims[0]), nn.ReLU()]
 		for hidden_dim_in, hidden_dim_out in zip(hidden_dims[:-1], hidden_dims[1:]):
@@ -19,7 +19,7 @@ class GaussianPolicy(nn.Module):
 			self.LOG_SIG_MIN, self.LOG_SIG_MAX = -20, 2
 
 	def forward(self, state, goal):
-		if self.lyapunov_rrt:
+		if self.goal_state_diff_obs:
 			x = self.fc(goal - state)
 		else:
 			x = self.fc(torch.cat([state, goal], -1))
@@ -50,17 +50,17 @@ class GaussianPolicy(nn.Module):
 
 """ Critic """
 class Critic(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], lyapunov_rrt=False):
+	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], goal_state_diff_obs=False):
 		super(Critic, self).__init__()
 		fc = [nn.Linear(2*state_dim + action_dim, hidden_dims[0]), nn.ReLU()]
 		for hidden_dim1, hidden_dim2 in zip(hidden_dims[:-1], hidden_dims[1:]):
 			fc += [nn.Linear(hidden_dim1, hidden_dim2), nn.ReLU()]
 		fc += [nn.Linear(hidden_dims[-1], 1)]
 		self.fc = nn.Sequential(*fc)
-		self.lyapunov_rrt = lyapunov_rrt
+		self.goal_state_diff_obs = goal_state_diff_obs
 
 	def forward(self, state, action, goal):
-		if self.lyapunov_rrt:
+		if self.goal_state_diff_obs:
 			x = torch.cat([goal - state, action], -1)
 		else:
 			x = torch.cat([state, action, goal], -1)
@@ -68,9 +68,9 @@ class Critic(nn.Module):
 
 
 class EnsembleCritic(nn.Module):
-	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2, lyapunov_rrt=False):
+	def __init__(self, state_dim, action_dim, hidden_dims=[256, 256], n_Q=2, goal_state_diff_obs=False):
 		super(EnsembleCritic, self).__init__()
-		ensemble_Q = [Critic(state_dim=state_dim, action_dim=action_dim, hidden_dims=hidden_dims, lyapunov_rrt=lyapunov_rrt) for _ in range(n_Q)]			
+		ensemble_Q = [Critic(state_dim=state_dim, action_dim=action_dim, hidden_dims=hidden_dims, goal_state_diff_obs=goal_state_diff_obs) for _ in range(n_Q)]			
 		self.ensemble_Q = nn.ModuleList(ensemble_Q)
 		self.n_Q = n_Q
 

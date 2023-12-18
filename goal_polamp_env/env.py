@@ -59,6 +59,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
               (self.inside_obstacles_movement != self.teleport_back_on_collision) or
               (not self.inside_obstacles_movement and not self.teleport_back_on_collision)
           )
+    self.subgoal_tracking = False
     self.goal_observation = None
     self.polamp_features_size = 10 # dx, dy, dtheta, dv, dsteer, theta, v, steer, action[0], action[1]
     observation_size = 5
@@ -110,10 +111,14 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     ub[1] = 36
     lb[2] = -np.pi
     ub[2] = np.pi
-    lb[3] = self.environment.agent.dynamic_model.min_vel
-    ub[3] = self.environment.agent.dynamic_model.max_vel
-    lb[4] = -self.environment.agent.dynamic_model.max_steer
-    ub[4] = self.environment.agent.dynamic_model.max_steer
+    #lb[3] = self.environment.agent.dynamic_model.min_vel
+    #ub[3] = self.environment.agent.dynamic_model.max_vel
+    #lb[4] = -self.environment.agent.dynamic_model.max_steer
+    #ub[4] = self.environment.agent.dynamic_model.max_steer
+    lb[3] = 0
+    ub[3] = 0
+    lb[4] = 0
+    ub[4] = 0
     
     return lb[:5], ub[:5]
 
@@ -342,14 +347,14 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     self.reset_goal_env(**kwargs)
     agent = self.environment.agent.current_state
-    self.goal = self.environment.agent.goal_state
-    assert -np.pi <= self.goal.theta <= np.pi, "incorrect dataset"
+    goal = self.environment.agent.goal_state
+    assert -np.pi <= goal.theta <= np.pi, "incorrect dataset"
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    goal_state = [self.goal.x, self.goal.y, self.goal.theta, self.goal.v, self.goal.steer]
+    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
         beams_observation = self.environment.get_observation(agent)
         agent_state.extend(beams_observation.tolist())
-        beams_observation = self.environment.get_observation(self.goal)
+        beams_observation = self.environment.get_observation(goal)
         goal_state.extend(beams_observation.tolist())
     if self.add_frame_stack:
       observation = []
@@ -406,12 +411,16 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     assert -1 <= action[1] <= 1
     action = [action[0] * self.max_acc, 
               action[1] * self.max_ang_vel]
+    if self.subgoal_tracking:
+      assert not self.subgoal_safe_eps is None
+      self.SOFT_EPS = self.subgoal_safe_eps
     observed_state, reward, isDone, info = POLAMPEnvironment.step(self, action, **kwargs)
     # CMDP get clearance for HER buffer (dont change!!!)
     clearance_is_enough = self.environment.clearance_is_enough
 
     agent = self.environment.agent.current_state
-    # goal = self.environment.agent.goal_state
+    goal = self.environment.agent.goal_state
+    #self.goal_observation = self.environment.agent.goal_state
     assert 1 == self.environment.agent.resolution, "not sure if this more than 1"
     # Checking the bounds of map0
     lower_x = 0
@@ -434,7 +443,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
 
     #isDone = False
     distance_to_goal = info["EuclideanDistance"]
-    angle_to_goal = abs(normalizeAngle(abs(agent.theta - self.goal.theta)))
+    angle_to_goal = abs(normalizeAngle(abs(agent.theta - goal.theta)))
     goal_achieved = 1.0 * self.is_terminal_dist * (distance_to_goal < self.SOFT_EPS) \
                   + 1.0 * self.is_terminal_angle * (angle_to_goal < self.ANGLE_EPS)
     goal_achieved = bool(goal_achieved // (1.0 * self.is_terminal_dist + 1.0 * self.is_terminal_angle))
@@ -475,35 +484,35 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         reward += self.collision_reward
     
     agent = self.environment.agent.current_state
-    # goal = self.environment.agent.goal_state
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    # goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
+    goal_state = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     if self.use_lidar_data:
         # beams_observation = self.environment.get_observation(agent)
         agent_state.extend(self.beams_observation.tolist())
         # beams_observation = self.environment.get_observation(goal)
-        # goal_state.extend(beams_observation.tolist())
+        #goal_state.extend(beams_observation.tolist())
+        assert 1 == 0, "goal observation"
     if self.add_frame_stack:
       observation = agent_state.copy()
       # goal_state = goal_state.copy()
-      # desired_goal = []
+      desired_goal = []
       current_step = [1.0 * self.step_counter for _ in range(self.frame_stack)] # for last state
       for i in range(1, self.frame_stack):
         observation.extend(self.previous_agent_observations[-i])
-      # for _ in range(self.frame_stack):
-      #   desired_goal.extend(goal_state)
+      for _ in range(self.frame_stack):
+         desired_goal.extend(goal_state)
       observation = np.array(observation)
       # desired_goal = np.array(desired_goal)
       achieved_goal = observation
       current_step = np.array([current_step])
     else:
       observation = np.array(agent_state)
-      # desired_goal = np.array(goal_state)
+      desired_goal = np.array(goal_state)
       achieved_goal = observation
       current_step = np.array([1.0 * self.step_counter])
     collision = np.array([1.0 * ("Collision" in info)])
     state_observation = observation 
-    desired_goal = self.goal_observation 
+    #desired_goal = self.goal_observation 
     state_desired_goal = desired_goal
     state_achieved_goal = state_observation
     obs_dict = {"observation" : observation,
@@ -518,7 +527,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
                 "collision_happend_on_trajectory": 1.0 * self.collision_happend_on_trajectory,
               } 
     info["agent_state"] = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
-    info["goal_state"] = [self.goal.x, self.goal.y, self.goal.theta, self.goal.v, self.goal.steer]
+    info["goal_state"] = [goal.x, goal.y, goal.theta, goal.v, goal.steer]
     self.previous_agent_state = agent
     if self.teleport_back_on_collision:
       self.previous_agent_states.append(self.previous_agent_state)
