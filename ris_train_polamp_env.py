@@ -46,7 +46,8 @@ def evalPolicy(policy, env,
                full_validation=False,
                rrt=False,
                rrt_data={},
-               lyapunov_network_validation=False):
+               lyapunov_network_validation=False,
+               validate_train_dataset=False):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
@@ -68,6 +69,11 @@ def evalPolicy(policy, env,
         planning_algo = rrt_data["planning_algo"]
         if rrt_data["add_monitor"]:
             monitor = rrt_data["monitor"]
+        debug_rrt_path = True
+        debug_rrt_tree = False
+        debug_rrt_obsts = False
+        debug_rrt_init_path = False
+        debug_rrt_box_init_path = False
     plot_obstacles = env.static_env
     validation_info = {}
     if lyapunov_network_validation:
@@ -135,12 +141,17 @@ def evalPolicy(policy, env,
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
+    if validate_train_dataset:
+        val_tasks = env.trainTasks
+        env.valTasks = env.trainTasks
+    else:
+        val_tasks = env.valTasks
     if len(video_validate_tasks) == 0 and (dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset"):
         patern_nums = 5
         task_count = 15 * 5
         video_validate_tasks = []
         if full_validation:
-            for i in range(len(env.valTasks['map0'])):
+            for i in range(len(val_tasks['map0'])):
                video_validate_tasks.append(("map0", i))
         else:
             video_validate_tasks = []
@@ -154,7 +165,7 @@ def evalPolicy(policy, env,
         #                         validation_tasks[np.random.randint(len(validation_tasks))]]
     dataset_plot_is_already_visualized = False
     for val_key in env.maps.keys():
-        eval_tasks = len(env.valTasks[val_key])
+        eval_tasks = len(val_tasks[val_key])
         for task_id in range(eval_tasks):  
             need_to_plot_task = (plot_full_env or plot_value_function or render_env) \
                                 and (val_key, task_id) in video_validate_tasks
@@ -173,21 +184,24 @@ def evalPolicy(policy, env,
             if rrt:
                 planner = Planner(env, planning_algo)
                 path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+                if debug_rrt_init_path:
+                    init_path = copy.deepcopy(path)
                 # change plan
-                import math
-                for i in range(len(path) - 1):
-                    dx = path[i + 1][0] - path[i][0]
-                    dy = path[i + 1][1] - path[i][1]
-                    path[i][2] = math.atan2(dy, dx)
-                path[len(path) - 1][2] = path[len(path) - 2][2]
-                subgoal_index = 0
-                env.subgoal_tracking = True
-                if env.is_terminal_dist:
-                    init_env_eps = env.SOFT_EPS
-                    env.subgoal_safe_eps = 3.0
-                if env.is_terminal_angle:
-                    assert 1 == 0, "should assign the angle for subgoals"
-                env.set_new_goal(path[subgoal_index])
+                if len(path) != 0:
+                    import math
+                    for i in range(len(path) - 1):
+                        dx = path[i + 1][0] - path[i][0]
+                        dy = path[i + 1][1] - path[i][1]
+                        path[i][2] = math.atan2(dy, dx)
+                    path[len(path) - 1][2] = path[len(path) - 2][2]
+                    subgoal_index = 0
+                    env.subgoal_tracking = True
+                    if env.is_terminal_dist:
+                        init_env_eps = env.SOFT_EPS
+                        env.subgoal_safe_eps = rrt_data["rrt_subgoal_safe_eps"]
+                    if env.is_terminal_angle:
+                        assert 1 == 0, "should assign the angle for subgoals"
+                    env.set_new_goal(path[subgoal_index])
             info = {}
             agent = env.environment.agent.current_state
             goal = env.environment.agent.goal_state
@@ -498,11 +512,59 @@ def evalPolicy(policy, env,
                                     for ax, theta in zip(ax_values_s, value_function_angles)]
                         
                         if rrt:
-                            for ind, path_subgoal in enumerate(path):
-                                x_subgoal = path_subgoal[0]
-                                y_subgoal = path_subgoal[1]
-                                theta_subgoal = path_subgoal[2]
-                                ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=20)
+                            if debug_rrt_path and len(path) != 0:
+                                ax_states.plot([subgoal_[0] for subgoal_ in path], [subgoal_[1] for subgoal_ in path], color="orange")
+                                for ind, path_subgoal in enumerate(path):
+                                    x_subgoal = path_subgoal[0]
+                                    y_subgoal = path_subgoal[1]
+                                    theta_subgoal = path_subgoal[2]
+                                    ax_states.scatter([x_subgoal], [y_subgoal], color="orange", s=20)
+                            elif debug_rrt_path:
+                                ax_states.text(x_agent + 0.05, y_agent + 0.05, "NO PATH")
+                            if debug_rrt_tree:
+                                for vertex in planner.algo.tree.all_vertices_state:
+                                    vertex_x = vertex[0]
+                                    vertex_y = vertex[1]
+                                    ax_states.scatter([vertex_x], [vertex_y], color="red", s=5)
+                            if debug_rrt_obsts:
+                                from MFNLC_for_polamp_env.mfnlc.plan.common.collision import getBB
+                                for obstacle in planner.algo.search_space.obstacles:
+                                    bbObs = obstacle
+                                    bbObs = getBB([bbObs.x, bbObs.y, bbObs.theta, bbObs.w, bbObs.l], ego=False)
+                                    ax_states.scatter([bbObs[0][0]], [bbObs[0][1]], color="green", s=30)
+                                    ax_states.scatter([bbObs[2][0]], [bbObs[2][1]], color="yellow", s=30)
+                            if debug_rrt_init_path and len(init_path) != 0:
+                                ax_states.plot([subgoal_[0] for subgoal_ in init_path], [subgoal_[1] for subgoal_ in init_path], color="black")
+                                for ind, path_subgoal in enumerate(init_path):
+                                    x_subgoal = path_subgoal[0]
+                                    y_subgoal = path_subgoal[1]
+                                    theta_subgoal = path_subgoal[2]
+                                    ax_states.scatter([x_subgoal], [y_subgoal], color="black", s=20)
+                                    ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
+                                                      [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
+                                                      color="black", s=5)
+                                    if debug_rrt_box_init_path:
+                                        subgoal_state = copy.deepcopy(env.environment.agent.current_state)
+                                        subgoal_state.x = x_subgoal
+                                        subgoal_state.y = y_subgoal
+                                        subgoal_state.theta = theta_subgoal
+                                        subgoal_state = env.environment.agent.dynamic_model.shift_state(subgoal_state)
+                                        subgoalBB = env.environment.getBB(subgoal_state, ego=True)
+                                        ax_states.scatter(np.linspace(subgoalBB[0][0].x, subgoalBB[0][1].x, 500), 
+                                                        np.linspace(subgoalBB[0][0].y, subgoalBB[0][1].y, 500), 
+                                                        color="black", s=1)
+                                        ax_states.scatter(np.linspace(subgoalBB[1][0].x, subgoalBB[1][1].x, 500), 
+                                                        np.linspace(subgoalBB[1][0].y, subgoalBB[1][1].y, 500), 
+                                                        color="black", s=1)
+                                        ax_states.scatter(np.linspace(subgoalBB[2][0].x, subgoalBB[2][1].x, 500), 
+                                                        np.linspace(subgoalBB[2][0].y, subgoalBB[2][1].y, 500), 
+                                                        color="black", s=1)
+                                        ax_states.scatter(np.linspace(subgoalBB[3][0].x, subgoalBB[3][1].x, 500), 
+                                                        np.linspace(subgoalBB[3][0].y, subgoalBB[3][1].y, 500), 
+                                                        color="black", s=1)
+                            elif debug_rrt_init_path:
+                                ax_states.text(x_agent + 0.1, y_agent + 0.1, "NO INIT PATH")
+                                        
 
                         fig.canvas.draw()
                         data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
@@ -550,14 +612,19 @@ def evalPolicy(policy, env,
                 next_obs, reward, done, info = env.step(action)
                 next_state = next_obs["observation"]
                 state = next_state
-                if rrt:
-                    if done and not info["max_step_recieved"]:
+                if rrt and len(path) != 0:
+                    if done and not info["max_step_recieved"] and not "Collision" in info:
                         subgoal_index += 1
                         subgoal = path[subgoal_index]
                         if rrt_data["add_monitor"]:
                             env_info = {}
-                            env_info["agent_state"] = state
-                            env_info["agent_state"][3:] = 0
+                            env_info["agent_obs"] = goal - state
+                            env_info["agent_pose"] = state
+                            env_info["agent_pose"][3:] = 0
+                            obstacle_radius = 5
+                            env_info["hazards_pos"] = [np.array(obst[:2] + [obstacle_radius]) for obst in env.maps[env.map_key]]
+                            env_info["obstacle_radius"] = obstacle_radius
+                            env_info["robot_radius"] = env.environment.agent.dynamic_model.width / 2
                             subgoal, lyapunov_r = monitor.select_subgoal(env_info, subgoal)
                         if subgoal_index < len(path) - 1:
                             env.set_new_goal(subgoal)

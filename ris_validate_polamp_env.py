@@ -115,52 +115,50 @@ def validate(args):
                  lidar_max_dist=env.environment.MAX_DIST_LIDAR,
                  train_env=env,
     )
-
-    if args.lyapunov_rrt:
+    
+    # planner initizlization
+    rrt_data = {}
+    if args.rrt:
         add_monitor = False
-        # lyapunov table initialization
-        obs_lb = -np.ones(shape=env_obs_dim)
-        obs_ub = np.ones(shape=env_obs_dim)
-        #obs_lb = np.array([-1, -1, -1, -1, 9.8, -1, -1, -1, -1, -1, -1, -1, -1, -1])
-        #obs_ub = np.array([1, 1, 1, 1, 9.81, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-        n_levels = 10 # default
-        pgd_max_iter = 500
-        pgd_lr = float(1e-3) # default
-        n_range_est_sample = 10 # default
-        n_radius_est_sample = 40 
-        bound_cnst = float(100) # default
-        lv_table = LyapunovValueTable(policy.tclf,
-                                    obs_lb,
-                                    obs_ub,
-                                    n_levels=n_levels,
-                                    pgd_max_iter=pgd_max_iter,
-                                    pgd_lr=pgd_lr,
-                                    n_range_est_sample=n_range_est_sample,
-                                    n_radius_est_sample=n_radius_est_sample,
-                                    bound_cnst=bound_cnst)
-        # lyapunov monitor initialization
-        monitor_max_step_size = float(0.2)
-        monitor_search_step_size = float(0.01)
+        monitor_max_step_size = 0.2
+        monitor_search_step_size = 0.01
+        assert not add_monitor or add_monitor and args.lyapunov_rrt
         if add_monitor:
+            # lyapunov table initialization
+            obs_lb = -np.ones(shape=env_obs_dim)
+            obs_ub = np.ones(shape=env_obs_dim)
+            n_levels = 10 # default
+            pgd_max_iter = 500
+            pgd_lr = float(1e-3) # default
+            n_range_est_sample = 10 # default
+            n_radius_est_sample = 40 
+            bound_cnst = float(100) # default
+            lv_table = LyapunovValueTable(policy.tclf,
+                                        obs_lb,
+                                        obs_ub,
+                                        n_levels=n_levels,
+                                        pgd_max_iter=pgd_max_iter,
+                                        pgd_lr=pgd_lr,
+                                        n_range_est_sample=n_range_est_sample,
+                                        n_radius_est_sample=n_radius_est_sample,
+                                        bound_cnst=bound_cnst)
             print("!!!!!!! building lyapunov table")
             lv_table.build()
             print("!!!!!!! building is complited")
             monitor = Monitor(lv_table, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
-        # planner initizlization
-    rrt_data = {}
-    if args.rrt or args.lyapunov_rrt:
-        planner_max_iter = 18000
+
+        #planner_max_iter = 18000
+        planner_max_iter = 9000
+        #planner_max_iter = 2000
         planning_algo = "rrt*"
         #planning_algo = "rrt"
+        rrt_subgoal_safe_eps = 1.5 # init=1.5, 3.0
         planning_algo_kwargs = {}
-        #planner = Planner(env, planning_algo)
-
-        #env.reset(id=0, val_key="map0")
-        #path = planner.plan(planner_max_iter, **planning_algo_kwargs)
         rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
         rrt_data["planner_max_iter"] = planner_max_iter
         rrt_data["planning_algo"] = planning_algo
-        rrt_data["add_monitor"] = False
+        rrt_data["rrt_subgoal_safe_eps"] = rrt_subgoal_safe_eps
+        rrt_data["add_monitor"] = add_monitor
         if add_monitor:
             rrt_data["add_monitor"] = True
             rrt_data["monitor"] = monitor
@@ -190,7 +188,12 @@ def validate(args):
                         #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 3), ("map0", 4)],
                         #video_validate_tasks = [("map0", 10), ("map0", 50), ("map0", 80), ("map0", 150), ("map0", 200)],
                         #video_validate_tasks = [("map0", 10), ("map0", 20), ("map0", 40), ("map0", 50), ("map0", 80), ("map0", 120), ("map0", 150), ("map0", 190), ("map0", 200), ("map0", 250), ("map0", 300)],
-                        video_validate_tasks = [("map0", 190)],
+                        #video_validate_tasks = [("map0", 190)],
+                        #video_validate_tasks = [("map0", 100)],
+                        #video_validate_tasks = [("map0", 75)],
+                        #video_validate_tasks = [("map0", i * 15) for i in range(15)],
+                        video_validate_tasks = [("map0", 13), ("map0", 50), ("map0", 80), ("map0", 100), ("map0", 150)],
+                        #video_validate_tasks = [("map0", 13)],
                         full_validation = True,
                         #video_validate_tasks = [],
                         value_function_angles=["theta_agent", 0, -np.pi/2],
@@ -199,7 +202,8 @@ def validate(args):
                         dataset_validation=args.dataset,
                         rrt=args.rrt,
                         rrt_data=rrt_data,
-                        lyapunov_network_validation=args.lyapunov_rrt)
+                        lyapunov_network_validation=args.lyapunov_rrt,
+                        validate_train_dataset=False)
     wandb_log_dict = {}
     for val_key in validation_info:
         wandb_log_dict["validation/"+val_key] = validation_info[val_key]
@@ -219,10 +223,9 @@ if __name__ == "__main__":
     args = get_config()
     #args.wandb_project = "validate_ris_sac_polamp"
     args.wandb_project = "validate_ris_polamp"
-    #args.dataset = "cross_dataset_simplified"
-    args.dataset = "without_obst_dataset"
+    args.dataset = "cross_dataset_simplified"
+    #args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
-    #args.rrt = True
     args.rrt = True
     validate(args)
 

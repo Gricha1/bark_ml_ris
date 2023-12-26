@@ -3,7 +3,7 @@
     "teleport_back_steps": 4,
     "inside_obstacles_movement": false,
     "add_frame_stack": true,
-    "static_env": false,
+    "static_env": true,
     "add_ppo_reward": false,
     "add_collision_reward": false,
     "use_lidar_data": false,
