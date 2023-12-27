@@ -442,6 +442,10 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     #   clearance_is_enough = False
 
     info["last_step_num"] = self.step_counter
+    if not clearance_is_enough:
+      info["cost"] = 1.0
+    else:
+      info["cost"] = 0.0
 
     #isDone = False
     distance_to_goal = info["EuclideanDistance"]
@@ -468,7 +472,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
       assert 1 == 0, "incorrect count with collision"
       reward = polamp_reward
 
-    if self.static_env and "Collision" in info:
+    assert not(not (self.static_env or self.env_boundary_collision) and "Collision" in info)
+    if (self.static_env or self.env_boundary_collision) and "Collision" in info:
       self.collision_happend_on_trajectory = True
       if self.teleport_back_on_collision:
         reward += self.collision_reward
@@ -483,7 +488,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
           reward += self.collision_reward
       else:
         isDone = True
-        reward += self.collision_reward
+        if self.add_collision_reward:
+          reward += self.collision_reward
     
     agent = self.environment.agent.current_state
     agent_state = [agent.x, agent.y, agent.theta, agent.v, agent.steer]
@@ -538,6 +544,17 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
     self.previous_agent_observations = self.previous_agent_observations[1:]
     
     return obs_dict, reward, isDone, info
+  
+  def check_finish_goal(self, goal: np.ndarray):
+    agent = self.environment.agent.current_state
+    goal = State(goal)
+    distance_to_goal = math.hypot(agent.x - goal.x, agent.y - goal.y)
+    angle_to_goal = abs(normalizeAngle(abs(agent.theta - goal.theta)))
+    goal_achieved = 1.0 * self.is_terminal_dist * (distance_to_goal < self.SOFT_EPS) \
+                  + 1.0 * self.is_terminal_angle * (angle_to_goal < self.ANGLE_EPS)
+    goal_achieved = bool(goal_achieved // (1.0 * self.is_terminal_dist + 1.0 * self.is_terminal_angle))
+
+    return goal_achieved
 
   def HER_reward(self, state, action, next_state, goal, collision, goal_was_reached, step_counter):
     

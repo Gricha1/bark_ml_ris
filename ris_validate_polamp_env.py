@@ -119,18 +119,16 @@ def validate(args):
     # planner initizlization
     rrt_data = {}
     if args.rrt:
-        add_monitor = False
-        monitor_max_step_size = 0.2
-        monitor_search_step_size = 0.01
+        add_monitor = True
         assert not add_monitor or add_monitor and args.lyapunov_rrt
         if add_monitor:
             # lyapunov table initialization
-            obs_lb = -np.ones(shape=env_obs_dim)
-            obs_ub = np.ones(shape=env_obs_dim)
-            n_levels = 10 # default
-            pgd_max_iter = 500
-            pgd_lr = float(1e-3) # default
-            n_range_est_sample = 10 # default
+            obs_lb = -args.obs_lb_ub_koef * np.ones(shape=env_obs_dim)
+            obs_ub = args.obs_lb_ub_koef * np.ones(shape=env_obs_dim)
+            n_levels = args.n_levels # 10 default
+            pgd_max_iter = 500 # default
+            pgd_lr = args.pgd_lr # float(1e-3)
+            n_range_est_sample = args.n_range_est_sample # 10
             n_radius_est_sample = 40 
             bound_cnst = float(100) # default
             lv_table = LyapunovValueTable(policy.tclf,
@@ -145,14 +143,20 @@ def validate(args):
             print("!!!!!!! building lyapunov table")
             lv_table.build()
             print("!!!!!!! building is complited")
-            monitor = Monitor(lv_table, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
+            # monitor initialization
+            monitor_max_step_size = args.monitor_max_step_size # 0.2
+            monitor_search_step_size = args.monitor_search_step_size # 0.01
+            goal_dim = 5
+            frame_stack = 4
+            monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
 
         #planner_max_iter = 18000
         planner_max_iter = 9000
         #planner_max_iter = 2000
+        #planner_max_iter = 2000
         planning_algo = "rrt*"
         #planning_algo = "rrt"
-        rrt_subgoal_safe_eps = 1.5 # init=1.5, 3.0
+        rrt_subgoal_safe_eps = 2.5 # init=1.5, 3.0
         planning_algo_kwargs = {}
         rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
         rrt_data["planner_max_iter"] = planner_max_iter
@@ -192,8 +196,8 @@ def validate(args):
                         #video_validate_tasks = [("map0", 100)],
                         #video_validate_tasks = [("map0", 75)],
                         #video_validate_tasks = [("map0", i * 15) for i in range(15)],
-                        video_validate_tasks = [("map0", 13), ("map0", 50), ("map0", 80), ("map0", 100), ("map0", 150)],
-                        #video_validate_tasks = [("map0", 13)],
+                        #video_validate_tasks = [("map0", 13), ("map0", 50), ("map0", 80), ("map0", 100), ("map0", 150)],
+                        video_validate_tasks = [("map0", 13)],
                         full_validation = True,
                         #video_validate_tasks = [],
                         value_function_angles=["theta_agent", 0, -np.pi/2],
@@ -226,6 +230,14 @@ if __name__ == "__main__":
     args.dataset = "cross_dataset_simplified"
     #args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
+    # lyapunov table
+    args.obs_lb_ub_koef = 20
+    args.n_levels = 40
+    args.pgd_lr = float(1e-3)
+    args.n_range_est_sample = 10
+    # monitor
+    args.monitor_max_step_size = 10 # 1
+    args.monitor_search_step_size = 2.5 # 0.1
     args.rrt = True
     validate(args)
 
