@@ -184,19 +184,21 @@ def evalPolicy(policy, env,
             obs = env.reset(id=task_id, val_key=val_key)
             if rrt:
                 planner = Planner(env, planning_algo)
+                start_plan = time.time()
                 path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+                end_plan = time.time()
+                print("plan time:", end_plan - start_plan)
                 if debug_rrt_init_path:
                     init_path = copy.deepcopy(path)
+                import math
                 for ind, _subgoal in enumerate(path):
                     if ind != len(path) - 1:
-                        import math
                         print("dist:", math.hypot(path[ind + 1][0] - path[ind][0], 
                                                   path[ind + 1][1] - path[ind][1]))
                 if rrt_data["add_monitor"]:
                     monitor.reset()
                 # change plan
                 if len(path) != 0:
-                    import math
                     for i in range(len(path) - 1):
                         dx = path[i + 1][0] - path[i][0]
                         dy = path[i + 1][1] - path[i][1]
@@ -306,10 +308,10 @@ def evalPolicy(policy, env,
                         ax_states.scatter([np.linspace(x_agent, x_agent + car_length*np.cos(theta_agent), 100)], 
                                         [np.linspace(y_agent, y_agent + car_length*np.sin(theta_agent), 100)], 
                                         color="green", s=5)
-                        ax_states.scatter([x_goal], [y_goal], color="yellow", s=50)
+                        ax_states.scatter([x_goal], [y_goal], color="orange", s=50)
                         ax_states.scatter([np.linspace(x_goal, x_goal + car_length*np.cos(theta_goal), 100)], 
                                         [np.linspace(y_goal, y_goal + car_length*np.sin(theta_goal), 100)], 
-                                        color="yellow", s=5)
+                                        color="orange", s=5)
                         if plot_lidar_predictor:
                             lidar_data = policy.lidar_predictor(to_torch_state[:, 0:policy.subgoal_dim], to_torch_state, to_torch_goal).cpu().squeeze()
                             for angle, d in zip(env.environment.angle_space, lidar_data):
@@ -529,7 +531,7 @@ def evalPolicy(policy, env,
                                     ax_states.scatter([x_subgoal], [y_subgoal], color="red", s=5)
                                     #ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
                                     #                  [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
-                                    #                  color="red", s=2)
+                                    #                  color="red", s=5)
                             elif debug_rrt_path:
                                 ax_states.text(x_agent + 0.05, y_agent + 0.05, "NO PATH")
                             if debug_rrt_tree:
@@ -625,7 +627,6 @@ def evalPolicy(policy, env,
                 state = next_state
                 if rrt and len(path) != 0:
                     done = False
-                    #if done and not info["max_step_recieved"] and not "Collision" in info:
                     if env.check_finish_goal(path[subgoal_index]) and not info["max_step_recieved"] and not "Collision" in info:
                         subgoal_index += 1
                         if subgoal_index < len(path) - 1:
@@ -648,21 +649,16 @@ def evalPolicy(policy, env,
                         env_info["agent_obs"] = np.array(copy.deepcopy(goal - state))
                         env_info["agent_pose"] = np.array(copy.deepcopy(state))[:5]
                         env_info["subgoal"] = np.array(copy.deepcopy(rrt_subgoal))
+                        env_info["hazards_pos"] = planner.algo.search_space.obstacles
+                        env_info["robot"] = copy.deepcopy(planner.algo.robot)
+                        env_info["robot"].shifted_state = State(copy.deepcopy(env_info["agent_pose"]))
+                        robot_center_state = env.environment.agent.dynamic_model.shift_state(env_info["robot"].shifted_state)
+                        env_info["robot"].center_state = robot_center_state
                         env_info["agent_pose"][2:] = 0
                         env_info["subgoal"][2:] = 0
-                        env_info["hazards_pos"] = planner.algo.search_space.obstacles
-                        lyapunov_subgoal, lyapunov_r = monitor.select_subgoal(env_info, env_info["subgoal"])
-                        #print("********")
-                        #print("rrt_subgoal:", rrt_subgoal)
-                        #print("lyapunov_subgoal:", lyapunov_subgoal)
-                        #print("********")
+                        lyapunov_subgoal, lyapunov_r, lyapunov_r_plus_robot_r, collision_happend = monitor.select_subgoal(env_info, env_info["subgoal"])
                         rrt_subgoal = lyapunov_subgoal
                     env.set_new_goal(rrt_subgoal)
-                    #print("**********")
-                    #print("prev_goal:", monitor.prev_goal)
-                    #print("lyapunov subgoal:", lyapunov_subgoal)
-                    #print("next_goal:", monitor.current_goal)
-                    #print("**********")
 
                 if rrt and rrt_data["add_monitor"]:
                     print("step:", t)
@@ -670,8 +666,13 @@ def evalPolicy(policy, env,
                                    path[subgoal_index][1] + 0.1, f"{subgoal_index}")
 
                 if rrt and rrt_data["add_monitor"] and debug_moninor_radius_subgoal:
-                    circle1 = plt.Circle((rrt_subgoal[0], rrt_subgoal[1]), lyapunov_r, color='yellow')
+                    color = "yellow"
+                    if collision_happend:
+                        color = "red"
+                    circle1 = plt.Circle((rrt_subgoal[0], rrt_subgoal[1]), lyapunov_r, color=color)
                     ax_states.add_patch(circle1)    
+                    circle2 = plt.Circle((rrt_subgoal[0], rrt_subgoal[1]), lyapunov_r_plus_robot_r, color="black", fill=False)
+                    ax_states.add_patch(circle2)    
                 if full_validation:
                     min_clearance_distances.append(np.min(env.beams_observation))
                 acc_reward += reward
@@ -1303,8 +1304,14 @@ def train(args=None):
         if t % 1e4 == 0 or (t + 1) % args.eval_freq == 0 and t >= args.start_timesteps:
             print()
 
-def get_config():
+def get_config(config=None):
     parser = argparse.ArgumentParser()
+    if not (config is None):
+        for arg in config:
+            if arg == "n_range_est_sample" or arg == "planner_max_iter" or arg == "n_levels":
+                parser.add_argument(f"--{arg}", default=config[arg], type=int)        
+            else:
+                parser.add_argument(f"--{arg}", default=config[arg], type=float)        
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
