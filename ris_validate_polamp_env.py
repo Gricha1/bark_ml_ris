@@ -196,6 +196,8 @@ def validate(args):
                         #video_validate_tasks = [("map0", 13), ("map0", 50), ("map0", 80), ("map0", 100), ("map0", 150)],
                         #video_validate_tasks = [("map0", 13)],
                         video_validate_tasks = [("map0", 50)],
+                        #video_validate_tasks = [("map0", 80)],
+                        #video_validate_tasks = [],
                         full_validation = True,
                         #video_validate_tasks = [],
                         value_function_angles=["theta_agent", 0, -np.pi/2],
@@ -231,8 +233,9 @@ if __name__ == "__main__":
     # monitor
     config["monitor_max_step_size"] = float(5) # 1
     config["monitor_search_step_size"] = float(0.01) # 0.1
+    # rrt*
     config["rrt"] = True
-    config["planner_max_iter"] = int(9000) # 2000
+    config["planner_max_iter"] = int(200000) # 9000
     config["rrt_subgoal_safe_eps"] = float(1.5) # init=1.5, 3.0
 
     args = get_config(config)

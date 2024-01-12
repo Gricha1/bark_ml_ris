@@ -72,6 +72,8 @@ def evalPolicy(policy, env,
             debug_moninor_radius_subgoal = True
         debug_rrt_path = True
         debug_rrt_tree = False
+        debug_rrt_tree_dubins = False
+        assert not debug_rrt_tree_dubins or (debug_rrt_tree_dubins and debug_rrt_tree)
         debug_rrt_obsts = False
         debug_rrt_init_path = False
         debug_rrt_box_init_path = False
@@ -191,19 +193,20 @@ def evalPolicy(policy, env,
                 if debug_rrt_init_path:
                     init_path = copy.deepcopy(path)
                 import math
-                for ind, _subgoal in enumerate(path):
-                    if ind != len(path) - 1:
-                        print("dist:", math.hypot(path[ind + 1][0] - path[ind][0], 
-                                                  path[ind + 1][1] - path[ind][1]))
+                #for ind, _subgoal in enumerate(path):
+                #    if ind != len(path) - 1:
+                #        print("dist:", math.hypot(path[ind + 1][0] - path[ind][0], 
+                #                                  path[ind + 1][1] - path[ind][1]))
                 if rrt_data["add_monitor"]:
                     monitor.reset()
                 # change plan
                 if len(path) != 0:
-                    for i in range(len(path) - 1):
-                        dx = path[i + 1][0] - path[i][0]
-                        dy = path[i + 1][1] - path[i][1]
-                        path[i][2] = math.atan2(dy, dx)
-                    path[len(path) - 1][2] = path[len(path) - 2][2]
+                    if not planner.algo.with_dubins_curve:
+                        for i in range(len(path) - 1):
+                            dx = path[i + 1][0] - path[i][0]
+                            dy = path[i + 1][1] - path[i][1]
+                            path[i][2] = math.atan2(dy, dx)
+                        path[len(path) - 1][2] = path[len(path) - 2][2]
                     subgoal_index = 0
                     env.subgoal_tracking = True
                     if env.is_terminal_dist:
@@ -535,10 +538,17 @@ def evalPolicy(policy, env,
                             elif debug_rrt_path:
                                 ax_states.text(x_agent + 0.05, y_agent + 0.05, "NO PATH")
                             if debug_rrt_tree:
-                                for vertex in planner.algo.tree.all_vertices_state:
-                                    vertex_x = vertex[0]
-                                    vertex_y = vertex[1]
+                                for vertex in planner.algo.tree.all_vertices:
+                                    vertex_x = vertex.state[0]
+                                    vertex_y = vertex.state[1]
                                     ax_states.scatter([vertex_x], [vertex_y], color="red", s=5)
+                                    if debug_rrt_tree_dubins:
+                                        if not(vertex.kinodynamically_feasible_path is None):
+                                            for temp_state in vertex.kinodynamically_feasible_path:
+                                                vertex_x = temp_state[0]
+                                                vertex_y = temp_state[1]
+                                                ax_states.scatter([vertex_x], [vertex_y], color="black", s=1)
+                                    
                             if debug_rrt_obsts:
                                 from MFNLC_for_polamp_env.mfnlc.plan.common.collision import getBB
                                 for obstacle in planner.algo.search_space.obstacles:
@@ -660,12 +670,12 @@ def evalPolicy(policy, env,
                         rrt_subgoal = lyapunov_subgoal
                     env.set_new_goal(rrt_subgoal)
 
-                if rrt and rrt_data["add_monitor"]:
+                if rrt and rrt_data["add_monitor"] and len(path) != 0:
                     print("step:", t)
                     ax_states.text(path[subgoal_index][0] + 0.1, 
-                                   path[subgoal_index][1] + 0.1, f"{subgoal_index}")
+                                path[subgoal_index][1] + 0.1, f"{subgoal_index}")
 
-                if rrt and rrt_data["add_monitor"] and debug_moninor_radius_subgoal:
+                if rrt and rrt_data["add_monitor"] and debug_moninor_radius_subgoal and len(path) != 0:
                     color = "yellow"
                     if collision_happend:
                         color = "red"
