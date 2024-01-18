@@ -1,9 +1,12 @@
 import numpy as np
 from polamp_env.lib.utils_operations import normalizeAngle
 
-def save_dataset(lst_starts, lst_goals, name):
-    with open("cross_dataset_simplified/" + name, 'w') as output:
-        output.write(str(len(lst_starts)) + '\n')
+def save_dataset(lst_starts, lst_goals, name, file_key='w'):
+    with open("cross_dataset_for_test/" + name, file_key) as output:
+        if file_key == "a":
+            pass
+        else:
+            output.write(str(len(lst_starts)) + '\n')
         for i in range(len(lst_starts)):
             # print(f"i : {i}")
             start = lst_starts[i]
@@ -15,7 +18,7 @@ def save_dataset(lst_starts, lst_goals, name):
             output.write("\n")
 
 def save_map(obstacle, name):
-    with open("hard_dataset_simplified_test/" + name, 'w') as output:
+    with open("without_obst_rrt_dataset/" + name, 'w') as output:
     # for obstacle in obstacles:
         output.write(str(len(obstacle)) + '\n')
         for polygon in obstacle:
@@ -24,7 +27,7 @@ def save_map(obstacle, name):
             output.write("\n")
 
 # number_of_tasks = 10
-def task_generator(train=False):
+def task_generator(train=False, tasks_per_patern=15):
     lst_starts = []
     lst_goals = []
 
@@ -335,12 +338,12 @@ def task_generator(train=False):
 
         temp_starts = []
         temp_goals = []
-        patern_task(patern_temp_1, temp_starts, temp_goals, num_tasks=15)
+        patern_task(patern_temp_1, temp_starts, temp_goals, num_tasks=num_tasks)
         lst_starts.extend(temp_starts)
 
         temp_starts = []
         temp_goals = []
-        patern_task(patern_temp_2, temp_starts, temp_goals, num_tasks=15)
+        patern_task(patern_temp_2, temp_starts, temp_goals, num_tasks=num_tasks)
         lst_goals.extend(temp_goals)
 
 
@@ -349,21 +352,56 @@ def task_generator(train=False):
         train_paterns.extend(all_paterns_reverse)
         assert len(train_paterns) == 32
         for patern in train_paterns:
-            patern_task(patern, lst_starts, lst_goals, num_tasks=15)
+            patern_task(patern, lst_starts, lst_goals, num_tasks=tasks_per_patern)
     else:
-        eval_tasks = ["r24f", "r21r", "r34f", "r31r", "f12f", "f13f", "f16f", "f15f",
-                      "r42f", "r43f", "r46f", "r45f"]
+        eval_tasks = ["r23f", "r24f", "r25f", "r26f", "r21r", 
+                      "r34f", "r35f", "r36f", "r31r", "r32f",
+                      "r45f", "r46f", "r41r", "r42f", "r43f",
+                      "r56f", "r51r", "r52f", "r53f", "r54f",
+                      "r61r", "r62f", "r63f", "r64f", "r65f",
+                      "f12f", "f13f", "f14f", "f15f", "f16f",
+                      ]
         for eval_task in eval_tasks:
             evaluation_task(eval_task, all_paterns, all_paterns_reverse, 
-                            lst_starts, lst_goals, num_tasks=15)
+                            lst_starts, lst_goals, num_tasks=tasks_per_patern)
     assert len(lst_starts) == len(lst_goals)
     return lst_starts, lst_goals
 
-print(" Saving dataset!!! ")
-train_lst_starts, train_lst_goals = task_generator(train=True)
-eval_lst_starts, eval_lst_goals = task_generator(train=False)
+if __name__ == "__main__":
+    print(" Saving dataset!!! ")
 
-train_lst_starts.extend(eval_lst_starts)
-train_lst_goals.extend(eval_lst_goals)
-save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
-save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+    rrt_train = False
+    form_last_dataset = True
+    eval_task_per_patern = 1
+    get_test_dataset = True
+    if get_test_dataset:
+        eval_lst_starts, eval_lst_goals = task_generator(train=False, tasks_per_patern=2)        
+        save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+    else:
+        if not form_last_dataset:
+            if rrt_train:
+                train_lst_starts, train_lst_goals = task_generator(train=True, tasks_per_patern=5)
+                eval_lst_starts, eval_lst_goals = task_generator(train=False, tasks_per_patern=eval_task_per_patern)
+
+                save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
+                save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+            else:
+                train_lst_starts, train_lst_goals = task_generator(train=True, tasks_per_patern=5)
+                task_generator(train=False, tasks_per_patern=5)
+                eval_lst_starts, eval_lst_goals = task_generator(train=False, tasks_per_patern=eval_task_per_patern)
+
+                save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
+                save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+        else:
+            task_generator(train=False, tasks_per_patern=5)
+            task_generator(train=False, tasks_per_patern=5)
+            task_generator(train=False, tasks_per_patern=5)
+            train_lst_starts, train_lst_goals = task_generator(train=True, tasks_per_patern=5)
+
+            save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
+
+            train_lst_starts, train_lst_goals = task_generator(train=True, tasks_per_patern=3)
+            save_dataset(train_lst_starts, train_lst_goals, "val_map0.txt")
+
+
+

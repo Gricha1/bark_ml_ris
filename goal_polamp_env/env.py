@@ -43,6 +43,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            or self.dataset == "hard_dataset_simplified_expanded" \
            or self.dataset == "hard_dataset_simplified_test" \
            or self.dataset == "cross_dataset_simplified" \
+           or self.dataset == "cross_dataset_balanced" \
+           or self.dataset == "cross_dataset_for_test" \
            or self.dataset == "without_obst_dataset" \
            ,"not impemented other datasets for random sampling"
     assert not self.random_train_dataset and not self.uniform_feasible_train_dataset
@@ -135,6 +137,8 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         self.dataset == "hard_dataset_simplified_expanded" or \
         self.dataset == "hard_dataset_simplified_test" or \
         self.dataset == "cross_dataset_simplified" or \
+        self.dataset == "cross_dataset_balanced" or \
+        self.dataset == "cross_dataset_for_test" or \
         self.dataset == "without_obst_dataset" or \
         self.dataset == "ris_easy_dataset" or \
         not self.static_env:

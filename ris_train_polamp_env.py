@@ -47,7 +47,9 @@ def evalPolicy(policy, env,
                rrt=False,
                rrt_data={},
                lyapunov_network_validation=False,
-               validate_train_dataset=False):
+               validate_train_dataset=False,
+               results_dir=None,
+               validate_one_task_id=None):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
@@ -64,12 +66,20 @@ def evalPolicy(policy, env,
     print()
 
     if rrt:
+        assert env.static_env
         planning_algo_kwargs = rrt_data["planning_algo_kwargs"]
         planner_max_iter = rrt_data["planner_max_iter"]
+        rrt_dubins_curve = rrt_data["rrt_dubins_curve"]
         planning_algo = rrt_data["planning_algo"]
         if rrt_data["add_monitor"]:
             monitor = rrt_data["monitor"]
             debug_moninor_radius_subgoal = True
+        get_dataset_from_rrt_trajectory = False
+        assert (not get_dataset_from_rrt_trajectory) or (get_dataset_from_rrt_trajectory and env.static_env)
+        assert not get_dataset_from_rrt_trajectory or (get_dataset_from_rrt_trajectory and rrt_dubins_curve)
+        if get_dataset_from_rrt_trajectory:
+            map_without_plans = []
+            map_plans = {}
         debug_rrt_path = True
         debug_rrt_tree = False
         debug_rrt_tree_dubins = False
@@ -140,7 +150,7 @@ def evalPolicy(policy, env,
     acc_collisions = []
     episode_lengths = []
     task_statuses = []
-    # video_validate_tasks = []
+    solved_tasks = []
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
@@ -174,6 +184,9 @@ def evalPolicy(policy, env,
                                 and (val_key, task_id) in video_validate_tasks
             if skip_not_video_tasks and not need_to_plot_task:
                 continue
+            if not (validate_one_task_id is None):
+                if validate_one_task_id != (val_key, task_id):
+                    continue
             #if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset" and (val_key, task_id) not in validation_tasks:
             #    continue
             if need_to_plot_task:
@@ -187,16 +200,57 @@ def evalPolicy(policy, env,
             if rrt:
                 planner = Planner(env, planning_algo)
                 start_plan = time.time()
-                path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+                if get_dataset_from_rrt_trajectory:
+                    for i_planner_max_iter in [50_000, 100_000, 150_000]:
+                        path = planner.plan(i_planner_max_iter, **planning_algo_kwargs, with_dubins_curve=rrt_dubins_curve)
+                        if len(path) == 0:
+                            print("didnt found path for:", (val_key, task_id), "max_iter:", i_planner_max_iter)
+                        else:
+                            break
+                else:
+                    path = planner.plan(planner_max_iter, **planning_algo_kwargs, with_dubins_curve=rrt_dubins_curve)
+                if get_dataset_from_rrt_trajectory and len(path) == 0:
+                    print("didnt found path overall, FIND GEOMETRIC PATH")
+                    path = planner.plan(9000, **planning_algo_kwargs, with_dubins_curve=False)
+                    if len(path) == 0:
+                        print("didnt found geometric path")
+                        map_without_plans.append((val_key, task_id))
+                    else:
+                        map_plans[(val_key, task_id)] = copy.deepcopy(path)
+                elif get_dataset_from_rrt_trajectory:
+                    map_plans[(val_key, task_id)] = copy.deepcopy(path)
                 end_plan = time.time()
                 print("plan time:", end_plan - start_plan)
+                if get_dataset_from_rrt_trajectory:
+                    if debug_rrt_path and len(path) != 0:
+                        ax_states.plot([subgoal_[0] for subgoal_ in path], [subgoal_[1] for subgoal_ in path], color="orange", linewidth=1)
+                        for ind, path_subgoal in enumerate(path):
+                            x_subgoal = path_subgoal[0]
+                            y_subgoal = path_subgoal[1]
+                            theta_subgoal = path_subgoal[2]
+                            ax_states.scatter([x_subgoal], [y_subgoal], color="red", s=5)
+                        fig.canvas.draw()
+                        data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                        images.append(data)
+                        ax_states.clear()
+                        if lyapunov_network_validation:
+                            ax_lyapunov.clear()
+                        if need_to_plot_task:
+                            if plot_full_env and render_env:
+                                images_full_env = [image for ind, image in enumerate(images) if (ind+1) % 2 != 0]
+                                images_render = [image for ind, image in enumerate(images) if (ind+1) % 2 == 0]
+                                videos.append((val_key+"_full_env", task_id, images_full_env))
+                                videos.append((val_key+"_render", task_id, images_render))
+                            else:
+                                videos.append((val_key, task_id, images))
+
+                if get_dataset_from_rrt_trajectory:
+                    print("maps without plan:", map_without_plans)
+                    continue
                 if debug_rrt_init_path:
                     init_path = copy.deepcopy(path)
                 import math
-                #for ind, _subgoal in enumerate(path):
-                #    if ind != len(path) - 1:
-                #        print("dist:", math.hypot(path[ind + 1][0] - path[ind][0], 
-                #                                  path[ind + 1][1] - path[ind][1]))
                 if rrt_data["add_monitor"]:
                     monitor.reset()
                 # change plan
@@ -670,7 +724,7 @@ def evalPolicy(policy, env,
                         rrt_subgoal = lyapunov_subgoal
                     env.set_new_goal(rrt_subgoal)
 
-                if rrt and rrt_data["add_monitor"] and len(path) != 0:
+                if rrt and rrt_data["add_monitor"] and len(path) != 0 and subgoal_index <= len(path) - 1:
                     print("step:", t)
                     ax_states.text(path[subgoal_index][0] + 0.1, 
                                 path[subgoal_index][1] + 0.1, f"{subgoal_index}")
@@ -714,6 +768,8 @@ def evalPolicy(policy, env,
                 if "Collision" in info:
                     task_status = "collision"
                     success = 0.0
+            if success:
+                solved_tasks.append((task_id))
             successes.append(success)
             episode_lengths.append(info["last_step_num"])
             acc_rewards.append(acc_reward)
@@ -725,6 +781,16 @@ def evalPolicy(policy, env,
                 lst_mean_clearance_distances.append(np.mean(min_clearance_distances))
                 if acc_collision > 0.5 or success < 0.5:
                     lst_unsuccessful_tasks.append((val_key, task_id, task_status))
+
+    if rrt and get_dataset_from_rrt_trajectory:
+        if plot_full_env:
+            plt.close()
+        videos = {}
+        if (plot_full_env or render_env) and debug_rrt_path:
+            videos = [(map_name, task_indx, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, task_indx, video in videos]
+        return None, None, None, \
+               None, None, \
+               videos, map_without_plans, map_plans
 
     eval_distance = np.mean(final_distances) 
     success_rate = np.mean(successes)
@@ -775,6 +841,14 @@ def evalPolicy(policy, env,
     validation_info["lyapunov_sink"] = eval_lyapunov_sink if lyapunov_network_validation else 0
     validation_info["lyapunov_network_value"] = eval_lyapunov_network_value if lyapunov_network_validation else 0
     validation_info["eval_lyapunov_decrease"] = eval_lyapunov_decrease if lyapunov_network_validation else 0
+    validation_info["solved_tasks"] = solved_tasks
+    if not(results_dir is None):
+        if not os.path.exists(results_dir):
+                os.makedirs(results_dir)
+        with open(results_dir + "/solved_tasks.txt", "w") as f:
+            for line in solved_tasks:
+                f.write(f"{line}\n")
+    print("solved_tasks:", solved_tasks)
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
@@ -1107,7 +1181,8 @@ def train(args=None):
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 3), ("map0", 4)],
                                 #video_validate_tasks = [("map0", 0), ("map0", 1)],
-                                video_validate_tasks = [],
+                                #video_validate_tasks = [],
+                                video_validate_tasks = [("map0", 0), ("map0", 20), ("map0", 80), ("map0", 150), ("map0", 190),],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=True,
                                 skip_not_video_tasks=False,
@@ -1318,17 +1393,22 @@ def get_config(config=None):
     parser = argparse.ArgumentParser()
     if not (config is None):
         for arg in config:
-            if arg == "n_range_est_sample" or arg == "planner_max_iter" or arg == "n_levels":
+            if arg == "n_range_est_sample" or arg == "planner_max_iter" or arg == "n_levels" or arg == "validate_task_id":
                 parser.add_argument(f"--{arg}", default=config[arg], type=int)        
+            elif arg == "rrt_dubins_curve" or arg == "save_results_to_file" or arg == "validate_certain_task" or arg == "get_video_validation_task":
+                parser.add_argument(f"--{arg}", default=config[arg], type=bool)        
+            elif arg == "results_dir" or arg == "validate_map":
+                parser.add_argument(f"--{arg}", default=config[arg], type=str)        
             else:
                 parser.add_argument(f"--{arg}", default=config[arg], type=float)        
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="without_obst_dataset") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_balanced") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
+    parser.add_argument("--validate_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
     parser.add_argument("--train_td3",            default=True, type=bool)
@@ -1417,6 +1497,8 @@ def register_goal_polamp_env(args):
         total_maps = 1
     dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
+    if args.validate_train_dataset:
+        valTasks = trainTask
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset

@@ -55,6 +55,8 @@ def validate(args):
     print("Lambda:", args.Lambda)
     print("alpha:", args.alpha)
     print("n_ensemble:", args.n_ensemble)
+    print("seed:", args.seed)
+    print("rrt_subgoal_safe_eps", args.rrt_subgoal_safe_eps)
 
     assert args.dataset_curriculum == False, "didnt implement"
 
@@ -150,18 +152,15 @@ def validate(args):
             frame_stack = 4
             monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
 
-        planner_max_iter = args.planner_max_iter
         planning_algo = "rrt*"
-        #planning_algo = "rrt"
-        rrt_subgoal_safe_eps = args.rrt_subgoal_safe_eps
         planning_algo_kwargs = {}
         rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
-        rrt_data["planner_max_iter"] = planner_max_iter
+        rrt_data["planner_max_iter"] = args.planner_max_iter
         rrt_data["planning_algo"] = planning_algo
-        rrt_data["rrt_subgoal_safe_eps"] = rrt_subgoal_safe_eps
+        rrt_data["rrt_subgoal_safe_eps"] = args.rrt_subgoal_safe_eps
+        rrt_data["rrt_dubins_curve"] = args.rrt_dubins_curve
         rrt_data["add_monitor"] = add_monitor
         if add_monitor:
-            rrt_data["add_monitor"] = True
             rrt_data["monitor"] = monitor
 
     if load_results and not hyperparams_tune:
@@ -193,34 +192,70 @@ def validate(args):
                         #video_validate_tasks = [("map0", 100)],
                         #video_validate_tasks = [("map0", 75)],
                         #video_validate_tasks = [("map0", i * 15) for i in range(15)],
+                        #video_validate_tasks = [("map0", i * 15) for i in range(60)],
                         #video_validate_tasks = [("map0", 13), ("map0", 50), ("map0", 80), ("map0", 100), ("map0", 150)],
                         #video_validate_tasks = [("map0", 13)],
-                        video_validate_tasks = [("map0", 50)],
-                        #video_validate_tasks = [("map0", 80)],
+                        #video_validate_tasks = [("map0", 50)],
+                        #video_validate_tasks = [("map0", 13)],
+                        #video_validate_tasks = [("map0", 100)],
+                        #video_validate_tasks = [("map0", 150)],
                         #video_validate_tasks = [],
+                        #video_validate_tasks = [("map0", i) for i in range(150)],
+                        #video_validate_tasks = [("map0", i) for i in range(30)],
+                        video_validate_tasks = [(args.validate_map, args.validate_task_id)] if args.get_video_validation_task else [],
                         full_validation = True,
-                        #video_validate_tasks = [],
                         value_function_angles=["theta_agent", 0, -np.pi/2],
                         dataset_plot=True,
-                        skip_not_video_tasks=True,
+                        skip_not_video_tasks=args.validate_certain_task,
                         dataset_validation=args.dataset,
                         rrt=args.rrt,
                         rrt_data=rrt_data,
                         lyapunov_network_validation=args.lyapunov_rrt,
-                        validate_train_dataset=False)
-    wandb_log_dict = {}
-    for val_key in validation_info:
-        wandb_log_dict["validation/"+val_key] = validation_info[val_key]
-    if args.using_wandb:
-        for dict_ in val_state + val_goal:
-            for key in dict_:
-                wandb_log_dict[f"{key}"] = dict_[key]
-        for map_name, task_indx, video in validation_info["videos"]:
-            cur_step = 0
-            wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
-                wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
-        wandb.log(wandb_log_dict)
-        del wandb_log_dict
+                        validate_train_dataset=False,
+                        #results_dir=args.results_dir,
+                        validate_one_task_id=(args.validate_map, args.validate_task_id) if (args.validate_certain_task and not args.get_video_validation_task) else None,
+                        )
+    if eval_distance is None:
+        print("maps without plan:", eval_episode_length)
+        print("maps with plan:", validation_info)
+        print("save data")
+        from utilite_cross_dataset import save_dataset
+        lst_starts = []
+        lst_goals = []
+        for task in validation_info:
+            path = validation_info[task]
+            for ind in range(len(path) - 1):
+                lst_starts.append(path[ind])
+                lst_goals.append(path[ind + 1])
+            map_to_save = "rrt_map_train.txt"
+            #map_to_save = "rrt_map_val.txt"
+            save_dataset(lst_starts, lst_goals, "rrt_map_train.txt", file_key="w")
+            wandb_log_dict = {}
+            for map_name, task_indx, video in mean_actions:
+                cur_step = 0
+                wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                    wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
+            wandb.log(wandb_log_dict)
+            del wandb_log_dict
+    else:
+        wandb_log_dict = {f'validation/val_rate({args.n_eval} episodes)': success_rate}
+        for val_key in validation_info:
+            wandb_log_dict["validation/"+val_key] = validation_info[val_key]
+        if args.using_wandb:
+            for dict_ in val_state + val_goal:
+                for key in dict_:
+                    wandb_log_dict[f"{key}"] = dict_[key]
+            for map_name, task_indx, video in validation_info["videos"]:
+                cur_step = 0
+                wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                    wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
+            wandb.log(wandb_log_dict)
+            del wandb_log_dict
+    if args.save_results_to_file:
+        if not os.path.exists(args.results_dir):
+            os.makedirs(args.results_dir)
+            with open(args.results_dir + "/results.txt", "w") as output:
+                output.write("seed" + " " + str(args.seed) + " " + "success_rate" + " " + str(success_rate) + " " + "eval_cost" + " " + str(validation_info["eval_cost"]) + " " + "eval_episode_length" + " " + str(eval_episode_length))
 
 
 if __name__ == "__main__":	
@@ -235,15 +270,27 @@ if __name__ == "__main__":
     config["monitor_search_step_size"] = float(0.01) # 0.1
     # rrt*
     config["rrt"] = True
-    config["planner_max_iter"] = int(200000) # 9000
+    config["planner_max_iter"] = int(9000) # 9000
     config["rrt_subgoal_safe_eps"] = float(1.5) # init=1.5, 3.0
+    config["rrt_dubins_curve"] = False
+    config["results_dir"] = "lyapunov_rrt_results_30"
+    config["save_results_to_file"] = True
+    # validate task
+    config["get_video_validation_task"] = True
+    config["validate_certain_task"] = True
+    config["validate_map"] = "map0"
+    config["validate_task_id"] = 13
 
     args = get_config(config)
     #args.wandb_project = "validate_ris_sac_polamp"
     args.wandb_project = "validate_ris_polamp"
-    args.dataset = "cross_dataset_simplified"
+    #args.dataset = "cross_dataset_balanced"
+    #args.dataset = "cross_dataset_simplified"
+    args.dataset = "cross_dataset_for_test"
     #args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
+    args.validate_train_dataset = False
+    #args.seed = 42 # 90
     
     validate(args)
 

@@ -1,8 +1,9 @@
 import numpy as np
 from polamp_env.lib.utils_operations import normalizeAngle
+from MFNLC_for_polamp_env.mfnlc.plan import Planner
 
 def save_dataset(lst_starts, lst_goals, name):
-    with open("without_obst_dataset/" + name, 'w') as output:
+    with open("without_obst_rrt_dataset/" + name, 'w') as output:
         output.write(str(len(lst_starts)) + '\n')
         for i in range(len(lst_starts)):
             # print(f"i : {i}")
@@ -24,7 +25,7 @@ def save_map(obstacle, name):
             output.write("\n")
 
 # number_of_tasks = 10
-def task_generator(train=False):
+def task_generator(train=False, use_rrt=False):
     lst_starts = []
     lst_goals = []
 
@@ -209,7 +210,7 @@ def task_generator(train=False):
     patern_24 = shift_patern(patern_8, right=True, dist=14)
     patern_24_reverse = reverse_patern(patern_24)
 
-    def patern_task(patern, lst_starts, lst_goals, num_tasks=1):
+    def patern_task(patern, lst_starts, lst_goals, num_tasks=1, use_rrt=False):
         for i in range(num_tasks):
             patern_type = patern[1]
             if patern_type == "left_right" or patern_type == "right_left" \
@@ -349,8 +350,19 @@ def task_generator(train=False):
                     normalizeAngle(np.random.uniform(goal_theta_min, goal_theta_max)),
                     0,
                     0]
-            lst_starts.append(state)
-            lst_goals.append(goal)
+            if use_rrt:
+                env = 
+                env.set_agent_state = 
+                planner = Planner(env, planning_algo)
+                start_plan = time.time()
+                path = planner.plan(planner_max_iter, **planning_algo_kwargs)
+                end_plan = time.time()
+                print("plan time:", end_plan - start_plan)
+                lst_starts.append(state)
+                lst_goals.append(goal)
+            else:
+                lst_starts.append(state)
+                lst_goals.append(goal)
     
     all_paterns = [patern_1, patern_2, patern_3, patern_4, patern_5, patern_6, patern_7,
                    patern_8, patern_9, patern_10, patern_11, patern_12, patern_13, patern_14,
@@ -410,58 +422,66 @@ def task_generator(train=False):
         #train_paterns = all_paterns
         #train_paterns.extend(all_paterns_reverse)
         #assert len(train_paterns) == 32
-        train_paterns = [patern_1, patern_2, patern_3, patern_4, 
-                         patern_5, patern_6, patern_8, 
-                         patern_17, patern_18, patern_19, patern_20, 
-                         patern_21, patern_22, patern_23, patern_24]
-        train_paterns.extend([patern_1_reverse, patern_2_reverse, 
-                              patern_3_reverse, patern_4_reverse, 
-                              patern_5_reverse, patern_6_reverse, patern_8_reverse, 
-                              patern_17_reverse, patern_18_reverse, 
-                              patern_19_reverse, patern_20_reverse, 
-                              patern_21_reverse, patern_22_reverse, 
-                              patern_23_reverse, patern_24_reverse])
-        for patern in train_paterns:
-            patern_task(patern, lst_starts, lst_goals, num_tasks=15)
+        if use_rrt:
+            train_paterns = [patern_1]
+            for patern in train_paterns:
+                patern_task(patern, lst_starts, lst_goals, num_tasks=1, use_rrt=use_rrt)
+        else:
+            train_paterns = [patern_1, patern_2, patern_3, patern_4, 
+                            patern_5, patern_6, patern_8, 
+                            patern_17, patern_18, patern_19, patern_20, 
+                            patern_21, patern_22, patern_23, patern_24]
+            train_paterns.extend([patern_1_reverse, patern_2_reverse, 
+                                patern_3_reverse, patern_4_reverse, 
+                                patern_5_reverse, patern_6_reverse, patern_8_reverse, 
+                                patern_17_reverse, patern_18_reverse, 
+                                patern_19_reverse, patern_20_reverse, 
+                                patern_21_reverse, patern_22_reverse, 
+                                patern_23_reverse, patern_24_reverse])
+            for patern in train_paterns:
+                patern_task(patern, lst_starts, lst_goals, num_tasks=15)
     else:
-        eval_tasks = ["r23f", "r24f", "r25f", "f13f", "f14f", "f15f", "r63f", "r64f", "r65f", 
-                      "r32f", "r31r", "r36f", "r42f", "r41r", "r46f", "r52f", "r51r", "r56f", 
-                      ("f2221f", "all"), ("f228f", "first"), ("f2224f", "all"), 
-                      ("r721f", "second"), "r78f", ("r724f", "second"), 
-                      ("f2321f", "all"), ("f238f", "first"), ("f2324f", "all"),
-                      ("r2122r", "all"), ("r217f", "first"), ("r2123r", "all"),
-                      ("r822r", "second"), "r87f", ("r823r", "second"),
-                      ("r2422r", "all"), ("r247f", "first"), ("r2423r", "all"),
-                      ]
-        for eval_task in eval_tasks:
-            if type(eval_task) == type(tuple()):
-                if eval_task[1] == "first":
-                    evaluation_task(eval_task[0], all_paterns, all_paterns_reverse, 
-                                lst_starts, lst_goals, num_tasks=15, 
-                                first_two_digit=True)
-                elif eval_task[1] == "second":
-                    evaluation_task(eval_task[0], all_paterns, all_paterns_reverse, 
+        if use_rrt:
+            pass
+        else:
+            eval_tasks = ["r23f", "r24f", "r25f", "f13f", "f14f", "f15f", "r63f", "r64f", "r65f", 
+                        "r32f", "r31r", "r36f", "r42f", "r41r", "r46f", "r52f", "r51r", "r56f", 
+                        ("f2221f", "all"), ("f228f", "first"), ("f2224f", "all"), 
+                        ("r721f", "second"), "r78f", ("r724f", "second"), 
+                        ("f2321f", "all"), ("f238f", "first"), ("f2324f", "all"),
+                        ("r2122r", "all"), ("r217f", "first"), ("r2123r", "all"),
+                        ("r822r", "second"), "r87f", ("r823r", "second"),
+                        ("r2422r", "all"), ("r247f", "first"), ("r2423r", "all"),
+                        ]
+            for eval_task in eval_tasks:
+                if type(eval_task) == type(tuple()):
+                    if eval_task[1] == "first":
+                        evaluation_task(eval_task[0], all_paterns, all_paterns_reverse, 
                                     lst_starts, lst_goals, num_tasks=15, 
-                                    second_two_digit=True)
+                                    first_two_digit=True)
+                    elif eval_task[1] == "second":
+                        evaluation_task(eval_task[0], all_paterns, all_paterns_reverse, 
+                                        lst_starts, lst_goals, num_tasks=15, 
+                                        second_two_digit=True)
+                    else:
+                        evaluation_task(eval_task[0], all_paterns, all_paterns_reverse, 
+                                        lst_starts, lst_goals, num_tasks=15, 
+                                        first_two_digit=True, second_two_digit=True)
                 else:
-                    evaluation_task(eval_task[0], all_paterns, all_paterns_reverse, 
-                                    lst_starts, lst_goals, num_tasks=15, 
-                                    first_two_digit=True, second_two_digit=True)
-            else:
-                evaluation_task(eval_task, all_paterns, all_paterns_reverse, 
-                                lst_starts, lst_goals, num_tasks=15)
-        # test
-        #train_paterns = [patern_22]
-        #for patern in train_paterns:
-        #    patern_task(patern, lst_starts, lst_goals, num_tasks=15)
+                    evaluation_task(eval_task, all_paterns, all_paterns_reverse, 
+                                    lst_starts, lst_goals, num_tasks=15)
+            # test
+            #train_paterns = [patern_22]
+            #for patern in train_paterns:
+            #    patern_task(patern, lst_starts, lst_goals, num_tasks=15)
     assert len(lst_starts) == len(lst_goals)
     return lst_starts, lst_goals
 
 print(" Saving dataset!!! ")
-train_lst_starts, train_lst_goals = task_generator(train=True)
-eval_lst_starts, eval_lst_goals = task_generator(train=False)
-
+train_lst_starts, train_lst_goals = task_generator(train=True, use_rrt=True)
+eval_lst_starts, eval_lst_goals = task_generator(train=False, use_rrt=True)
 train_lst_starts.extend(eval_lst_starts)
 train_lst_goals.extend(eval_lst_goals)
+
 save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
 save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
