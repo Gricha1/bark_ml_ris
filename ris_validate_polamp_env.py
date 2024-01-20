@@ -24,7 +24,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_test_level_1") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_test_level_2")
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -228,12 +228,12 @@ if __name__ == "__main__":
                                 plot_decoder_agent_states=False,
                                 plot_subgoal_dispertion=True,
                                 plot_lidar_predictor=False,
-                                #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
                                 #video_validate_tasks = [("map0", i) for i in range(15)],
                                 #video_validate_tasks = [("map0", i) for i in range(15, 30)],
                                 #video_validate_tasks = [("map0", i) for i in range(30, 45)],
                                 #video_validate_tasks = [("map0", i) for i in range(45, 60)],
-                                video_validate_tasks = [("map0", 0), ("map0", 30), ("map0", 67), ("map0", 84)],
+                                #video_validate_tasks = [("map0", 0), ("map0", 30), ("map0", 67), ("map0", 84)],
+                                video_validate_tasks = [("map0", 0)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=False,
                                 dataset_validation=args.dataset,
