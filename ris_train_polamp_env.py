@@ -759,6 +759,7 @@ def evalPolicy(policy, env,
                 else:
                     videos.append((val_key, task_id, images))
             final_distances.append(info["EuclideanDistance"])
+            #success = 1.0 * info["goal_achieved"] * (1.0 * (not info["max_step_recieved"]))
             success = 1.0 * info["goal_achieved"]
             if success:
                 task_status = "success"
@@ -1467,6 +1468,7 @@ def get_config(config=None):
     
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
+    parser.add_argument("--add_to_run_wandb_name",      default="", type=str)
     parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')

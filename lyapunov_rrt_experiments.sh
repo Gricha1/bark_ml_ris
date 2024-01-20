@@ -28,8 +28,10 @@ seeds=(90 42 50 8 30)
 #done
 
 validate_task_ids=($(seq 0 59))
+add_to_run_wandb_name=test_lyapunov_rrt_
 echo ${validate_task_ids[@]}
 #seeds=(30 50 90 42 8)
+#seeds=(30 50 90)
 seeds=(30)
 rrt_subgoal_safe_eps=3.0
 get_video_validation_task="True"
@@ -41,7 +43,7 @@ do
         result_dir_name="lyapunov_rrt_results_"$run
         echo "result_dir_name: $result_dir_name"
         if [ $run -ge $start_run ]; then
-            python ris_validate_polamp_env.py --exp_name lyapunov_ex_90 --seed $seed --validate_task_id $validate_task_id --get_video_validation_task $get_video_validation_task --rrt_subgoal_safe_eps $rrt_subgoal_safe_eps
+            python ris_validate_polamp_env.py --exp_name lyapunov_ex_90 --seed $seed --validate_task_id $validate_task_id --get_video_validation_task $get_video_validation_task --rrt_subgoal_safe_eps $rrt_subgoal_safe_eps --add_to_run_wandb_name $add_to_run_wandb_name"_"($seed)"_"
         fi
     done
 done

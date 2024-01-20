@@ -43,7 +43,7 @@ def validate(args):
             if args.rrt:
                 hierarch = "RRT"
             wandb.init(project=args.wandb_project, config=args, 
-                    name=alg + ", " + safety + ", " + hierarch)
+                    name=args.add_to_run_wandb_name + alg + ", " + safety + ", " + hierarch)
         else:
             hyperparams_tune = True
             wandb.init(config=args, name="hyperparams_tune_RIS")
@@ -286,7 +286,8 @@ if __name__ == "__main__":
     args.wandb_project = "validate_ris_polamp"
     #args.dataset = "cross_dataset_balanced"
     #args.dataset = "cross_dataset_simplified"
-    args.dataset = "cross_dataset_for_test"
+    #args.dataset = "cross_dataset_for_test"
+    args.dataset = "cross_dataset_test_level_1"
     #args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
     args.validate_train_dataset = False
