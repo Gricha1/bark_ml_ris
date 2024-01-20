@@ -2,7 +2,7 @@ import numpy as np
 from polamp_env.lib.utils_operations import normalizeAngle
 
 def save_dataset(lst_starts, lst_goals, name):
-    with open("cross_dataset_balanced/" + name, 'w') as output:
+    with open("cross_dataset_test_level_1/" + name, 'w') as output:
         output.write(str(len(lst_starts)) + '\n')
         for i in range(len(lst_starts)):
             # print(f"i : {i}")
@@ -24,7 +24,7 @@ def save_map(obstacle, name):
             output.write("\n")
 
 # number_of_tasks = 10
-def task_generator(train=False):
+def task_generator(train=False, num_tasks=15):
     lst_starts = []
     lst_goals = []
 
@@ -349,7 +349,7 @@ def task_generator(train=False):
         train_paterns.extend(all_paterns_reverse)
         assert len(train_paterns) == 32
         for patern in train_paterns:
-            patern_task(patern, lst_starts, lst_goals, num_tasks=15)
+            patern_task(patern, lst_starts, lst_goals, num_tasks=num_tasks)
     else:
         eval_tasks = ["r24f", "r21r", "r34f", "r31r", "f12f", "f13f", "f16f", "f15f",
                       "r42f", "r43f", "r46f", "r45f"]
@@ -358,25 +358,40 @@ def task_generator(train=False):
         #                   "r41r", "r54f", "r51r", "r52f", "r53f", "r56f", "r61r", 
         #                   "r64f", "r62f", "r63f", 
         #                   "r28f", "r38f", "r57f"]
-        more_eval_tasks = ["r61r", "r64f", "r51r", "r54f"]
-        eval_tasks.extend(more_eval_tasks)
+        #more_eval_tasks = ["r61r", "r64f", "r51r", "r54f"]
+        #eval_tasks.extend(more_eval_tasks)
         #assert len(eval_tasks) == 32
         for eval_task in eval_tasks:
             evaluation_task(eval_task, all_paterns, all_paterns_reverse, 
-                            lst_starts, lst_goals, num_tasks=30)
+                            lst_starts, lst_goals, num_tasks=num_tasks)
     assert len(lst_starts) == len(lst_goals)
     return lst_starts, lst_goals
 
 print("Start Saving dataset!!! ")
 print("..........................")
-train_lst_starts, train_lst_goals = task_generator(train=True)
-eval_lst_starts, eval_lst_goals = task_generator(train=False)
 
-train_lst_starts.extend(eval_lst_starts)
-train_lst_goals.extend(eval_lst_goals)
-save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
+"""
+# cross dataset for test init
+num_tasks = 8
+task_generator(train=False, num_tasks=num_tasks)
+task_generator(train=False, num_tasks=num_tasks)
+eval_lst_starts, eval_lst_goals = task_generator(train=False, num_tasks=num_tasks)
 save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+"""
+
+# cross dataset test level 1
+num_tasks = 3
+task_generator(train=True, num_tasks=num_tasks)
+task_generator(train=True, num_tasks=num_tasks)
+eval_lst_starts, eval_lst_goals = task_generator(train=True, num_tasks=num_tasks)
+save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
+
+#train_lst_starts, train_lst_goals = task_generator(train=True)
+#train_lst_starts.extend(eval_lst_starts)
+#train_lst_goals.extend(eval_lst_goals)
+#save_dataset(train_lst_starts, train_lst_goals, "train_map0.txt")
+#save_dataset(eval_lst_starts, eval_lst_goals, "val_map0.txt")
 print("..........................")
-print("train dataset num tasks:", len(train_lst_starts))
+#print("train dataset num tasks:", len(train_lst_starts))
 print("eval dataset num tasks:", len(eval_lst_starts))
 print("Success!")

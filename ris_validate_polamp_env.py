@@ -24,7 +24,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_test_level_1") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
     parser.add_argument("--dataset_curriculum",   default=False) # medium dataset -> hard dataset
     parser.add_argument("--dataset_curriculum_treshold", default=0.95, type=float) # medium dataset -> hard dataset
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     # logging
-    parser.add_argument("--using_wandb",        default=False, type=bool)
+    parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
@@ -229,11 +229,20 @@ if __name__ == "__main__":
                                 plot_subgoal_dispertion=True,
                                 plot_lidar_predictor=False,
                                 #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
+                                #video_validate_tasks = [("map0", i) for i in range(15)],
+                                #video_validate_tasks = [("map0", i) for i in range(15, 30)],
+                                #video_validate_tasks = [("map0", i) for i in range(30, 45)],
+                                #video_validate_tasks = [("map0", i) for i in range(45, 60)],
+                                video_validate_tasks = [("map0", 0), ("map0", 30), ("map0", 67), ("map0", 84)],
                                 value_function_angles=["theta_agent", 0, -np.pi/2],
                                 dataset_plot=False,
                                 dataset_validation=args.dataset,
-                                full_validation=True)
+                                full_validation=True,
+                                skip_not_video_tasks=False)
     wandb_log_dict = {}
+    wandb_log_dict[f'validation/val_rate({args.n_eval} episodes)'] = success_rate
+    for val_key in validation_info:
+        wandb_log_dict["validation/"+val_key] = validation_info[val_key]
     for map_name, task_indx, video in validation_info["videos"]:
         wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
     if args.using_wandb:
@@ -241,6 +250,6 @@ if __name__ == "__main__":
     print("validation success rate:", success_rate)
     # print("action info:", validation_info["action_info"])
     print("validation_info:", validation_info)
-    print([task[1] for task in validation_info if task[2] == "success"])
+    #print([task[1] for task in validation_info if task[2] == "success"])
 
     

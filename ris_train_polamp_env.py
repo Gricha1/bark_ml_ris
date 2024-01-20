@@ -113,7 +113,7 @@ def evalPolicy(policy, env,
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
-    if dataset_validation == "cross_dataset_simplified" or dataset_validation == "cross_dataset_balanced":
+    if False and (dataset_validation == "cross_dataset_simplified" or dataset_validation == "cross_dataset_balanced"):
         patern_nums = 12 if dataset_validation == "cross_dataset_simplified" else 2
         task_count = 15
         tasks_per_patern = 1

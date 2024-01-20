@@ -45,6 +45,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            or self.dataset == "hard_dataset_simplified_test" \
            or self.dataset == "cross_dataset_simplified" \
           or self.dataset == "cross_dataset_balanced" \
+          or self.dataset == "cross_dataset_for_test" \
+          or self.dataset == "cross_dataset_for_test_initial" \
+          or self.dataset == "cross_dataset_test_level_1" \
            ,"not impemented other datasets for random sampling"
     assert self.reward_config["clearance"] \
            == self.reward_config["reverse"] \
@@ -112,6 +115,9 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
        self.dataset == "hard_dataset_simplified_test" or \
        self.dataset == "cross_dataset_simplified" or \
        self.dataset == "cross_dataset_balanced" or \
+       self.dataset == "cross_dataset_for_test" or \
+       self.dataset == "cross_dataset_for_test_initial" or \
+       self.dataset == "cross_dataset_test_level_1" or \
        self.dataset == "ris_easy_dataset" or not self.static_env:
       self.dataset_info["min_x"] = -5
       self.dataset_info["max_x"] = 40
