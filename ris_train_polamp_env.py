@@ -627,8 +627,9 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
         cost_batch = (- np.ones_like(done_batch) * 0)
     
     # Scaling
-    # if args.scaling > 0.0:
-    #     reward_batch = reward_batch * args.scaling
+    if args.scaling > 0.0:
+        # if we use scaling the alpha and lambda coefficients should be decrease
+        reward_batch = reward_batch * args.scaling
     # check if (collision == 1) then (done == 1)
     if env.static_env and not env.teleport_back_on_collision:
         assert ( (1.0 - 1.0 * collision_batch) + (1.0 * collision_batch) * (1.0 * done_batch) ).all()
@@ -658,7 +659,8 @@ def train(args=None):
         if args.using_wandb:
             wandb.init(config=args, name="hyperparams_tune_RIS")
             args = wandb.config
-    
+    args.Lambda *= args.scaling
+    args.alpha *= args.scaling
     print("**************")
     print("state_dim:", args.state_dim)
     print("max_timesteps:", args.max_timesteps)
@@ -1042,9 +1044,11 @@ def train(args=None):
                 wandb.log(wandb_log_dict)
                 del wandb_log_dict
      
-            if args.curriculum_high_policy:
-                if train_success_rate >= 0.95:
-                    policy.stop_train_high_policy = True
+            # if args.curriculum_high_policy:
+            # if train_success_rate >= 0.80:
+            #     replay_buffer.fraction_goals_rollout_goals = 1.0
+            #     replay_buffer.fraction_resampled_goals_replay_buffer_goals = 0.0
+                # policy.stop_train_high_policy = True
 
             # stop high policy influence on low policy
             if args.curriculum_alpha:
@@ -1091,7 +1095,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_test_level_1")
+    parser.add_argument("--dataset",              default="cross_dataset_test_level_2")
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
@@ -1107,8 +1111,8 @@ if __name__ == "__main__":
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=42, type=int) # 42
     parser.add_argument("--exp_name",           default="RIS_ant")
-    parser.add_argument("--alpha",              default=1.76, type=float)
-    parser.add_argument("--Lambda",             default=0.29, type=float) # 0.1
+    parser.add_argument("--alpha",              default=0.1, type=float)
+    parser.add_argument("--Lambda",             default=0.1, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=10, type=int) # 10
     parser.add_argument("--use_dubins_filter",  default=False, type=bool) # 10
     parser.add_argument("--h_lr",               default=1e-4, type=float)
@@ -1120,8 +1124,8 @@ if __name__ == "__main__":
     parser.add_argument("--curriculum_alpha_treshold",   default=500000, type=int) # 500000
     parser.add_argument("--curriculum_alpha",        default=False, type=bool)
     parser.add_argument("--curriculum_high_policy",  default=False, type=bool)
-    parser.add_argument("--max_grad_norm",              default=6.0, type=float)
-    parser.add_argument("--scaling",              default=1.0, type=float)
+    parser.add_argument("--max_grad_norm",              default=1.0, type=float)
+    parser.add_argument("--scaling",              default=0.1, type=float)
     parser.add_argument("--lambda_initialization",  default=1.0, type=float)
     
     # her
@@ -1134,7 +1138,7 @@ if __name__ == "__main__":
     parser.add_argument("--state_dim",               default=40, type=int) # 20
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
-    parser.add_argument("--safety",                    default=True, type=bool)
+    parser.add_argument("--safety",                    default=False, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
     

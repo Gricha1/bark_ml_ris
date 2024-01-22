@@ -53,7 +53,7 @@ class RIS(object):
 		self.curriculum_high_policy = curriculum_high_policy
 		self.stop_train_high_policy = False
 		self.max_grad_norm = max_grad_norm
-		self.actor_max_grad_norm = 2.0
+		self.actor_max_grad_norm = 0.1
 		self.additional_debug = False
 		# SAC
 		self.train_ris_with_sac = False
