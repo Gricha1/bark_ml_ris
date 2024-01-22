@@ -113,7 +113,7 @@ def evalPolicy(policy, env,
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
-    if dataset_validation == "cross_dataset_simplified" or dataset_validation == "cross_dataset_balanced":
+    if False and (dataset_validation == "cross_dataset_simplified" or dataset_validation == "cross_dataset_balanced"):
         patern_nums = 12 if dataset_validation == "cross_dataset_simplified" else 2
         task_count = 15
         tasks_per_patern = 1
@@ -1098,7 +1098,7 @@ if __name__ == "__main__":
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
-    parser.add_argument("--dataset",              default="cross_dataset_simplified") # medium_dataset, hard_dataset, ris_easy_dataset, hard_dataset_simplified
+    parser.add_argument("--dataset",              default="cross_dataset_test_level_1")
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
     parser.add_argument("--train_sac",            default=False, type=bool)
