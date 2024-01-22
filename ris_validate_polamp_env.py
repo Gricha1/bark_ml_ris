@@ -184,23 +184,6 @@ def validate(args):
                         plot_subgoal_dispertion=False,
                         plot_lidar_predictor=False,
                         data_to_plot={},
-                        #video_validate_tasks = [("map0", 0), ("map0", 1), ("map1", 0), ("map1", 1)],
-                        #video_validate_tasks = [("map0", 0), ("map0", 1), ("map0", 3), ("map0", 4)],
-                        #video_validate_tasks = [("map0", 10), ("map0", 50), ("map0", 80), ("map0", 150), ("map0", 200)],
-                        #video_validate_tasks = [("map0", 10), ("map0", 20), ("map0", 40), ("map0", 50), ("map0", 80), ("map0", 120), ("map0", 150), ("map0", 190), ("map0", 200), ("map0", 250), ("map0", 300)],
-                        #video_validate_tasks = [("map0", 190)],
-                        #video_validate_tasks = [("map0", 100)],
-                        #video_validate_tasks = [("map0", 75)],
-                        #video_validate_tasks = [("map0", i * 15) for i in range(15)],
-                        #video_validate_tasks = [("map0", i * 15) for i in range(60)],
-                        #video_validate_tasks = [("map0", 13), ("map0", 50), ("map0", 80), ("map0", 100), ("map0", 150)],
-                        #video_validate_tasks = [("map0", 13)],
-                        #video_validate_tasks = [("map0", 50)],
-                        #video_validate_tasks = [("map0", 13)],
-                        #video_validate_tasks = [("map0", 100)],
-                        #video_validate_tasks = [("map0", 150)],
-                        #video_validate_tasks = [],
-                        #video_validate_tasks = [("map0", i) for i in range(150)],
                         #video_validate_tasks = [("map0", i) for i in range(30)],
                         video_validate_tasks = [(args.validate_map, args.validate_task_id)] if args.get_video_validation_task else [],
                         full_validation = True,
@@ -267,11 +250,11 @@ if __name__ == "__main__":
     config["n_range_est_sample"] = int(10)
     # monitor
     config["monitor_max_step_size"] = float(5) # 1
-    config["monitor_search_step_size"] = float(0.01) # 0.1
+    config["monitor_search_step_size"] = float(0.5) # 0.1
     # rrt*
     config["rrt"] = True
-    config["planner_max_iter"] = int(9000) # 9000
-    config["rrt_subgoal_safe_eps"] = float(1.5) # init=1.5, 3.0
+    config["planner_max_iter"] = int(18000) # 9000
+    config["rrt_subgoal_safe_eps"] = float(3.0) # init=1.5, 3.0
     config["rrt_dubins_curve"] = False
     config["results_dir"] = "lyapunov_rrt_results_30"
     config["save_results_to_file"] = True
@@ -287,7 +270,7 @@ if __name__ == "__main__":
     #args.dataset = "cross_dataset_balanced"
     #args.dataset = "cross_dataset_simplified"
     #args.dataset = "cross_dataset_for_test"
-    args.dataset = "cross_dataset_test_level_1"
+    #args.dataset = "cross_dataset_test_level_1"
     #args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
     args.validate_train_dataset = False

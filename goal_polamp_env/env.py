@@ -47,6 +47,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
            or self.dataset == "cross_dataset_for_test" \
            or self.dataset == "without_obst_dataset" \
            or self.dataset == "cross_dataset_test_level_1" \
+           or self.dataset == "cross_dataset_test_level_2" \
            ,"not impemented other datasets for random sampling"
     assert not self.random_train_dataset and not self.uniform_feasible_train_dataset
     assert self.reward_config["clearance"] \
@@ -142,6 +143,7 @@ class GCPOLAMPEnvironment(POLAMPEnvironment):
         self.dataset == "cross_dataset_for_test" or \
         self.dataset == "without_obst_dataset" or \
         self.dataset == "cross_dataset_test_level_1" or \
+        self.dataset == "cross_dataset_test_level_2" or \
         self.dataset == "ris_easy_dataset" or \
         not self.static_env:
       self.dataset_info["min_x"] = -5
