@@ -72,8 +72,9 @@ if __name__ == "__main__":
     parser.add_argument("--safety",                    default=False, type=bool)
     parser.add_argument("--cost_limit",                default=5.0, type=float)
     parser.add_argument("--update_lambda",             default=1000, type=int)
+    parser.add_argument("--risk_bound",                default=0.2, type=float)
     # logging
-    parser.add_argument("--using_wandb",        default=True, type=bool)
+    parser.add_argument("--using_wandb",        default=False, type=bool)
     parser.add_argument("--wandb_project",      default="validate_ris_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
@@ -112,6 +113,7 @@ if __name__ == "__main__":
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
     goal_our_env_config["random_train_dataset"] = args.random_train_dataset
+    goal_our_env_config["risk_bound"] = args.risk_bound
     if not goal_our_env_config["static_env"]:
         maps["map0"] = []
 
