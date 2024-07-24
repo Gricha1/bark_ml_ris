@@ -1,0 +1,1 @@
+python ris_train_polamp_env.py --eval_freq 50000 --exp_name polamp_env_ex_1

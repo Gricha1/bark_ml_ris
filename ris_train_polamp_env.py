@@ -904,7 +904,7 @@ def train(args=None):
             val_state, val_goal, \
             mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
-                                plot_full_env=True,
+                                plot_full_env=not args.not_visual_validation,
                                 plot_subgoals=True,
                                 plot_value_function=False,
                                 render_env=False,
@@ -1088,18 +1088,25 @@ def train(args=None):
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
     parser.add_argument("--dataset",              default="cross_dataset_test_level_1")
     parser.add_argument("--uniform_feasible_train_dataset", default=False)
     parser.add_argument("--random_train_dataset",           default=False)
+
+    # sac
     parser.add_argument("--train_sac",            default=False, type=bool)
+
+    # validate
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument('--not_visual_validation', default=False, action='store_true')
+
     # ris
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
@@ -1128,10 +1135,12 @@ if __name__ == "__main__":
     parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
     parser.add_argument("--fraction_resampled_goals_are_env_goals",  default=0.0, type=float) # 20
     parser.add_argument("--fraction_resampled_goals_are_replay_buffer_goals",  default=0.5, type=float) # 20
+
     # encoder
     parser.add_argument("--use_decoder",             default=True, type=bool)
     parser.add_argument("--use_encoder",             default=True, type=bool)
     parser.add_argument("--state_dim",               default=40, type=int) # 20
+
     # safety
     parser.add_argument("--safety_add_to_high_policy", default=False, type=bool)
     parser.add_argument("--safety",                    default=True, type=bool)
@@ -1140,10 +1149,11 @@ if __name__ == "__main__":
     
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
-    parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
+    parser.add_argument("--wandb_project",      default="safety_ris", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
+
     args = parser.parse_args()
 
     train(args)
