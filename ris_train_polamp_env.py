@@ -202,13 +202,13 @@ def evalPolicy(policy, env,
                 start_plan = time.time()
                 if get_dataset_from_rrt_trajectory:
                     for i_planner_max_iter in [50_000, 100_000, 150_000]:
-                        path = planner.plan(i_planner_max_iter, **planning_algo_kwargs, with_dubins_curve=rrt_dubins_curve)
+                        path = planner.plan(i_planner_max_iter, **planning_algo_kwargs)
                         if len(path) == 0:
                             print("didnt found path for:", (val_key, task_id), "max_iter:", i_planner_max_iter)
                         else:
                             break
                 else:
-                    path = planner.plan(planner_max_iter, **planning_algo_kwargs, with_dubins_curve=rrt_dubins_curve)
+                    path = planner.plan(planner_max_iter, **planning_algo_kwargs)
                 if get_dataset_from_rrt_trajectory and len(path) == 0:
                     print("didnt found path overall, FIND GEOMETRIC PATH")
                     path = planner.plan(9000, **planning_algo_kwargs, with_dubins_curve=False)

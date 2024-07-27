@@ -89,7 +89,7 @@ def validate(args):
                                  env.environment.agent.dynamic_model.max_steer)}
     R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
     curvature = 1 / R
-    max_polamp_steps = env._max_episode_steps
+    max_polamp_steps = env.env._max_episode_steps
     print(f"max_polamp_steps: {max_polamp_steps}")
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
@@ -150,7 +150,8 @@ def validate(args):
             monitor_search_step_size = args.monitor_search_step_size # 0.01
             goal_dim = 5
             frame_stack = 4
-            monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
+            #monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
+            monitor = Monitor(lv_table, goal_dim=goal_dim, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
 
         planning_algo = "rrt*"
         planning_algo_kwargs = {}
