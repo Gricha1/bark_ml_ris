@@ -17,7 +17,7 @@ from gym.envs.registration import register
 from utils.logger import Logger
 from polamp_RIS import RIS
 from polamp_env.lib.utils_operations import generateDataSet
-from ris_train_polamp_env import register_goal_polamp_env, get_config
+from ris_train_polamp_env import register_goal_polamp_env, get_config, get_exp_folder
 from MFNLC_for_polamp_env.mfnlc.monitor.monitor import Monitor, LyapunovValueTable
 from MFNLC_for_polamp_env.mfnlc.plan import Planner
 
@@ -60,7 +60,10 @@ def validate(args):
 
     assert args.dataset_curriculum == False, "didnt implement"
 
-    register_goal_polamp_env(args)
+    added_config = {}
+    if args.static_env:
+        added_config["static_env"] = True
+    register_goal_polamp_env(args, added_config)
     train_env_name = "polamp_env-v0"
     test_env_name = train_env_name
 
@@ -74,9 +77,13 @@ def validate(args):
         state_dim = args.state_dim 
     else:
         state_dim = env_obs_dim
-    folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
-    load_results = os.path.isdir(folder)
 
+    exp_folder = get_exp_folder(args)
+
+    load_folder = "results/{}/RIS/{}/".format(args.env, args.load_folder)
+    assert args.load, "need to load td3"
+    assert os.path.isdir(load_folder)
+    
     # Create logger
     logger = None
     
@@ -106,7 +113,8 @@ def validate(args):
                  Lambda=args.Lambda, epsilon=args.epsilon,
                  h_lr=args.h_lr, q_lr=args.q_lr, pi_lr=args.pi_lr, 
                  n_ensemble=args.n_ensemble,
-                 clip_v_function=args.clip_v_function, max_grad_norm=args.max_grad_norm, lambda_initialization=args.lambda_initialization,
+                 clip_v_function=args.clip_v_function, max_grad_norm=args.max_grad_norm, 
+                 lambda_initialization=args.lambda_initialization,
                  max_episode_steps = max_polamp_steps,
                  device=args.device, logger=logger if args.log_loss else None, 
                  env_obs_dim=env_obs_dim, add_ppo_reward=env.add_ppo_reward,
@@ -143,15 +151,23 @@ def validate(args):
                                         n_radius_est_sample=n_radius_est_sample,
                                         bound_cnst=bound_cnst)
             print("!!!!!!! building lyapunov table")
-            lv_table.build()
-            print("!!!!!!! building is complited")
+            if args.save_v_table:
+                lv_table.build()
+                print("!!!!!!! building is complited")
+                lv_table.save(exp_folder + "v_table.pkl")
+                print("v table is saved!!!")
+                return
+            assert args.load_v_table, "need to load v table"
+            load_v_table_folder = "results/{}/RIS/{}/".format(args.env, args.load_v_table_folder)
+            assert os.path.isdir(load_v_table_folder)
+            lv_table = lv_table.load(load_v_table_folder + "v_table.pkl")
+            print("v table is loaded !!!!!!")
             # monitor initialization
             monitor_max_step_size = args.monitor_max_step_size # 0.2
             monitor_search_step_size = args.monitor_search_step_size # 0.01
             goal_dim = 5
             frame_stack = 4
-            #monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
-            monitor = Monitor(lv_table, goal_dim=goal_dim, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
+            monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
 
         planning_algo = "rrt*"
         planning_algo_kwargs = {}
@@ -164,11 +180,8 @@ def validate(args):
         if add_monitor:
             rrt_data["monitor"] = monitor
 
-    if load_results and not hyperparams_tune:
-        policy.load(folder)
-        print("weights is loaded")
-    else:
-        print("WEIGHTS ISN'T LOADED")
+    policy.load(load_folder)
+    print("weights is loaded")
 
     from ris_train_polamp_env import evalPolicy
 
@@ -176,7 +189,7 @@ def validate(args):
     val_state, val_goal, \
     mean_actions, eval_episode_length, validation_info \
             = evalPolicy(policy, test_env, 
-                        plot_full_env=True,
+                        plot_full_env=not args.not_visual_validation,
                         plot_subgoals=False,
                         plot_value_function=False,
                         render_env=False,
@@ -185,8 +198,7 @@ def validate(args):
                         plot_subgoal_dispertion=False,
                         plot_lidar_predictor=False,
                         data_to_plot={},
-                        #video_validate_tasks = [("map0", i) for i in range(30)],
-                        video_validate_tasks = [(args.validate_map, args.validate_task_id)] if args.get_video_validation_task else [],
+                        video_validate_tasks = [(args.validate_map, args.validate_task_id)],
                         full_validation = True,
                         value_function_angles=["theta_agent", 0, -np.pi/2],
                         dataset_plot=True,
@@ -196,8 +208,8 @@ def validate(args):
                         rrt_data=rrt_data,
                         lyapunov_network_validation=args.lyapunov_rrt,
                         validate_train_dataset=False,
-                        #results_dir=args.results_dir,
-                        validate_one_task_id=(args.validate_map, args.validate_task_id) if (args.validate_certain_task and not args.get_video_validation_task) else None,
+                        validate_one_task_id=(args.validate_map, args.validate_task_id) if (args.validate_certain_task) else None,
+                        log_state_dist=args.log_state_dist,
                         )
     if eval_distance is None:
         print("maps without plan:", eval_episode_length)
@@ -212,13 +224,13 @@ def validate(args):
                 lst_starts.append(path[ind])
                 lst_goals.append(path[ind + 1])
             map_to_save = "rrt_map_train.txt"
-            #map_to_save = "rrt_map_val.txt"
             save_dataset(lst_starts, lst_goals, "rrt_map_train.txt", file_key="w")
             wandb_log_dict = {}
-            for map_name, task_indx, video in mean_actions:
-                cur_step = 0
-                wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
-                    wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
+            if not args.not_visual_validation:
+                for map_name, task_indx, video in mean_actions:
+                    cur_step = 0
+                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
             wandb.log(wandb_log_dict)
             del wandb_log_dict
     else:
@@ -226,13 +238,15 @@ def validate(args):
         for val_key in validation_info:
             wandb_log_dict["validation/"+val_key] = validation_info[val_key]
         if args.using_wandb:
-            for dict_ in val_state + val_goal:
-                for key in dict_:
-                    wandb_log_dict[f"{key}"] = dict_[key]
-            for map_name, task_indx, video in validation_info["videos"]:
-                cur_step = 0
-                wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
-                    wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
+            if args.log_state_dist:
+                for dict_ in val_state + val_goal:
+                    for key in dict_:
+                        wandb_log_dict[f"{key}"] = dict_[key]
+            if not args.not_visual_validation:
+                for map_name, task_indx, video in validation_info["videos"]:
+                    cur_step = 0
+                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
             wandb.log(wandb_log_dict)
             del wandb_log_dict
     if args.save_results_to_file:
@@ -260,22 +274,13 @@ if __name__ == "__main__":
     config["results_dir"] = "lyapunov_rrt_results_30"
     config["save_results_to_file"] = True
     # validate task
-    config["get_video_validation_task"] = True
     config["validate_certain_task"] = True
     config["validate_map"] = "map0"
     config["validate_task_id"] = 13
 
     args = get_config(config)
-    #args.wandb_project = "validate_ris_sac_polamp"
-    args.wandb_project = "validate_ris_polamp"
-    #args.dataset = "cross_dataset_balanced"
-    #args.dataset = "cross_dataset_simplified"
-    #args.dataset = "cross_dataset_for_test"
-    #args.dataset = "cross_dataset_test_level_1"
-    #args.dataset = "without_obst_dataset"
     args.lyapunov_rrt = True
     args.validate_train_dataset = False
-    #args.seed = 42 # 90
     
     validate(args)
 

@@ -27,19 +27,24 @@ seeds=(90 42 50 8 30)
 #    done
 #done
 
-start_val_task=28
-#validate_task_ids=($(seq 0 59))
-validate_task_ids=($(seq 0 95))
-#validate_task_ids=(9 45 70 89)
-#validate_task_ids=(45 70)
+#############-------------------------------
 add_to_run_wandb_name=lyapunov_level_1_
-echo ${validate_task_ids[@]}
 #seeds=(30 50 90 42 8)
 #seeds=(30 50 90)
-seeds=(30)
+
+# environment
+start_val_task=0
+validate_task_ids=($(seq 0 95))
 dataset="cross_dataset_test_level_1"
+#dataset="cross_dataset_test_level_2"
+seeds=(30)
+
+# lyapunov rrt
 rrt_subgoal_safe_eps=3.0
 monitor_search_step_size=0.5
+
+echo ${validate_task_ids[@]}
+
 get_video_validation_task="True"
 for seed in "${seeds[@]}"
 do
@@ -49,7 +54,13 @@ do
         result_dir_name="lyapunov_rrt_results_"$run
         echo "validate_task_id: $validate_task_id"
         if [ $validate_task_id -ge $start_val_task ]; then
-            python ris_validate_polamp_env.py --exp_name lyapunov_ex_90 --seed $seed --validate_task_id $validate_task_id --get_video_validation_task $get_video_validation_task --rrt_subgoal_safe_eps $rrt_subgoal_safe_eps --add_to_run_wandb_name $add_to_run_wandb_name"_"$seed"_" --monitor_search_step_size $monitor_search_step_size --dataset $dataset
+            python ris_validate_polamp_env.py --exp_name lyapunov_ex_90 \
+                                              --seed $seed --validate_task_id $validate_task_id \
+                                              --get_video_validation_task $get_video_validation_task \
+                                              --rrt_subgoal_safe_eps $rrt_subgoal_safe_eps \
+                                              --add_to_run_wandb_name $add_to_run_wandb_name"_"$seed"_" \
+                                              --monitor_search_step_size $monitor_search_step_size \
+                                              --dataset $dataset
         fi
     done
 done

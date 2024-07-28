@@ -49,7 +49,8 @@ def evalPolicy(policy, env,
                lyapunov_network_validation=False,
                validate_train_dataset=False,
                results_dir=None,
-               validate_one_task_id=None):
+               validate_one_task_id=None,
+               log_state_dist=False):
     """
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
@@ -135,12 +136,14 @@ def evalPolicy(policy, env,
         else:
             fig = plt.figure(figsize=[6.4, 4.8])
             ax_states = fig.add_subplot(111)
-    state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
-    goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
-    max_state_vals = {}
-    min_state_vals = {}
-    max_goal_vals = {}
-    min_goal_vals = {}
+            
+    if log_state_dist:
+        state_distrs = {"x": [], "start_x": [], "y": [], "theta": [], "v": [], "steer": []}
+        goal_dists = {"goal_x": [], "goal_y": [], "goal_theta": [], "goal_v": [], "goal_steer": []}
+        max_state_vals = {}
+        min_state_vals = {}
+        max_goal_vals = {}
+        min_goal_vals = {}
     action_info = {"max_linear_acc": None, "max_steer_rate": None, "min_linear_acc": None, "min_steer_rate": None}
     mean_actions = {"a": [], "v_s": []}
     final_distances = []
@@ -282,7 +285,8 @@ def evalPolicy(policy, env,
             acc_cost = 0
             acc_collision = 0
             min_clearance_distances = []
-            state_distrs["start_x"].append(state[0])
+            if log_state_dist:
+                state_distrs["start_x"].append(state[0])
 
             while not done:
                 if plot_full_env and need_to_plot_task:
@@ -656,18 +660,19 @@ def evalPolicy(policy, env,
                         if lyapunov_network_validation:
                             ax_lyapunov.clear()
 
-                state_distrs["x"].append(state[0])
-                state_distrs["y"].append(state[1])
-                state_distrs["theta"].append(state[2])
-                state_distrs["v"].append(state[3])
-                state_distrs["steer"].append(state[4])
+                if log_state_dist:
+                    state_distrs["x"].append(state[0])
+                    state_distrs["y"].append(state[1])
+                    state_distrs["theta"].append(state[2])
+                    state_distrs["v"].append(state[3])
+                    state_distrs["steer"].append(state[4])
 
-                goal_dists["goal_x"].append(goal[0])
-                goal_dists["goal_y"].append(goal[1])
-                goal_dists["goal_theta"].append(goal[2])
-                goal_dists["goal_v"].append(goal[3])
-                goal_dists["goal_steer"].append(goal[4])
-                
+                    goal_dists["goal_x"].append(goal[0])
+                    goal_dists["goal_y"].append(goal[1])
+                    goal_dists["goal_theta"].append(goal[2])
+                    goal_dists["goal_v"].append(goal[3])
+                    goal_dists["goal_steer"].append(goal[4])
+                    
                 if eval_strategy is None:
                     action = policy.select_deterministic_action(state, goal)
                 else:
@@ -816,14 +821,15 @@ def evalPolicy(policy, env,
         eval_min_clearance = np.mean(lst_min_clearance_distances)
         eval_mean_clearance = np.mean(lst_mean_clearance_distances)
 
-    for key in state_distrs:
-        max_state_vals["max_" + str(key)] = np.max(state_distrs[key])
-        min_state_vals["min_" + str(key)] = np.min(state_distrs[key])
-        state_distrs[key] = np.mean(state_distrs[key])
-    for key in goal_dists:
-        max_goal_vals["max_" + str(key)] = np.max(goal_dists[key])
-        min_goal_vals["min_" + str(key)] = np.min(goal_dists[key])
-        goal_dists[key] = np.mean(goal_dists[key])
+    if log_state_dist:
+        for key in state_distrs:
+            max_state_vals["max_" + str(key)] = np.max(state_distrs[key])
+            min_state_vals["min_" + str(key)] = np.min(state_distrs[key])
+            state_distrs[key] = np.mean(state_distrs[key])
+        for key in goal_dists:
+            max_goal_vals["max_" + str(key)] = np.max(goal_dists[key])
+            min_goal_vals["min_" + str(key)] = np.min(goal_dists[key])
+            goal_dists[key] = np.mean(goal_dists[key])
 
     env.close()
     if plot_full_env:
@@ -833,7 +839,8 @@ def evalPolicy(policy, env,
     validation_info["eval_episode_length"] = eval_episode_length
     validation_info["task_statuses"] = task_statuses
     validation_info["unsuccessful_tasks"] = lst_unsuccessful_tasks
-    validation_info["videos"] = videos
+    if plot_full_env or render_env:
+        validation_info["videos"] = videos
     validation_info["action_info"] = action_info
     validation_info["eval_cost"] = eval_cost
     validation_info["eval_collisions"] = eval_collisions
@@ -850,6 +857,14 @@ def evalPolicy(policy, env,
             for line in solved_tasks:
                 f.write(f"{line}\n")
     print("solved_tasks:", solved_tasks)
+
+    if not log_state_dist:
+        state_distrs = None
+        max_state_vals = None
+        min_state_vals = None
+        goal_dists = None
+        max_goal_vals = None
+        min_goal_vals = None
 
     return eval_distance, success_rate, eval_reward, \
            [state_distrs, max_state_vals, min_state_vals], \
@@ -935,6 +950,19 @@ def sample_and_preprocess_batch(replay_buffer, env, batch_size=256, device=torch
 
     return state_batch, action_batch, reward_batch, cost_batch, next_state_batch, done_batch, goal_batch
 
+def get_exp_folder(args):
+    base_folder = "results/{}/RIS/{}".format(args.env, args.exp_name)
+    folder_index = 0
+    folder = f"{base_folder}_{folder_index}"
+    while os.path.exists(folder):
+        folder_index += 1
+        folder = f"{base_folder}_{folder_index}/"
+    os.makedirs(folder)
+    print("*************")
+    print("exp folder:", folder)
+    print("*************")
+    return folder
+
 def train(args=None):   
     # chech if hyperparams tuning
     if args.using_wandb:
@@ -982,8 +1010,12 @@ def train(args=None):
         state_dim = args.state_dim 
     else:
         state_dim = env_obs_dim
-    folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
-    load_results = os.path.isdir(folder)
+
+    exp_folder = get_exp_folder(args)
+    
+    load_folder = "results/{}/RIS/{}/".format(args.env, args.load_folder)
+    if args.load:
+        assert os.path.isdir(load_folder)
 
     # Create logger
     logger = Logger(vars(args), save_git_head_hash=False)
@@ -998,7 +1030,7 @@ def train(args=None):
     R = env.environment.agent.dynamic_model.wheel_base / np.tan(env.environment.agent.dynamic_model.max_steer)
     curvature = 1 / R
     #max_polamp_steps = our_env_config["max_polamp_steps"]
-    max_polamp_steps = env._max_episode_steps
+    max_polamp_steps = env.env._max_episode_steps
     print(f"max_polamp_steps: {max_polamp_steps}")
     policy = RIS(state_dim=state_dim, action_dim=action_dim, 
                  alpha=args.alpha,
@@ -1047,8 +1079,8 @@ def train(args=None):
     )
     path_builder = PathBuilder()
 
-    if load_results and not hyperparams_tune:
-        policy.load(folder)
+    if args.load and not hyperparams_tune:
+        policy.load(load_folder)
         print("weights is loaded")
     else:
         print("WEIGHTS ISN'T LOADED")
@@ -1167,7 +1199,7 @@ def train(args=None):
             val_state, val_goal, \
             mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
-                                plot_full_env=True,
+                                plot_full_env=not args.not_visual_validation,
                                 plot_subgoals=False,
                                 plot_value_function=False,
                                 render_env=False,
@@ -1311,10 +1343,11 @@ def train(args=None):
                 for dict_ in val_state + val_goal:
                     for key in dict_:
                         wandb_log_dict[f"{key}"] = dict_[key]
-                for map_name, task_indx, video in validation_info["videos"]:
-                    cur_step = logger.data["t"][-1]
-                    wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
-                        wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
+                if not args.not_visual_validation:
+                    for map_name, task_indx, video in validation_info["videos"]:
+                        cur_step = logger.data["t"][-1]
+                        wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = \
+                            wandb.Video(video, fps=10, format="gif", caption=f"steps: {cur_step}")
                 wandb.log(wandb_log_dict)
                 del wandb_log_dict
      
@@ -1322,22 +1355,8 @@ def train(args=None):
                 if train_success_rate >= 0.95:
                     policy.stop_train_high_policy = True
 
-            # stop high policy influence on low policy
-            if args.curriculum_alpha:
-                if (t + 1) >= args.curriculum_alpha_treshold:
-                    policy.alpha = args.curriculum_alpha_val
-                    # save results after change alpha
-                    if not saved_final_result:
-                        folder = "results/{}/RIS/{}_final/".format(args.env, args.exp_name)
-                        if not os.path.exists(folder):
-                            os.makedirs(folder)
-                        if not hyperparams_tune:
-                            logger.save(folder + "log.pkl")
-                            policy.save(folder)
-                        saved_final_result = True
-
             # Save (current) results
-            folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "last_"
+            folder = exp_folder + "last_"
             if not os.path.exists(folder):
                 os.makedirs(folder)
             if not hyperparams_tune:
@@ -1347,7 +1366,7 @@ def train(args=None):
             if old_success_rate is None or success_rate >= old_success_rate:
                 old_success_rate = success_rate
                 save_policy_count += 1
-                folder = "results/{}/RIS/{}/".format(args.env, args.exp_name) + "best_"
+                folder = exp_folder + "best_"
                 if not os.path.exists(folder):
                     os.makedirs(folder)
                 if not hyperparams_tune:
@@ -1396,7 +1415,7 @@ def get_config(config=None):
         for arg in config:
             if arg == "n_range_est_sample" or arg == "planner_max_iter" or arg == "n_levels" or arg == "validate_task_id":
                 parser.add_argument(f"--{arg}", default=config[arg], type=int)        
-            elif arg == "rrt_dubins_curve" or arg == "save_results_to_file" or arg == "validate_certain_task" or arg == "get_video_validation_task":
+            elif arg == "rrt_dubins_curve" or arg == "save_results_to_file" or arg == "validate_certain_task":
                 parser.add_argument(f"--{arg}", default=config[arg], type=bool)        
             elif arg == "results_dir" or arg == "validate_map":
                 parser.add_argument(f"--{arg}", default=config[arg], type=str)        
@@ -1422,18 +1441,18 @@ def get_config(config=None):
     parser.add_argument("--lyapunov_actor_loss_steps", default=800_000) # 800_000
     parser.add_argument("--lyapunov_add_steps", default=False) # False
     parser.add_argument("--tclf_input_amplifier", default=None)
-    # ris
+    parser.add_argument("--static_env", action='store_true', default=False)
+
+    # td3
     parser.add_argument("--epsilon",            default=1e-16, type=float)
     parser.add_argument("--n_critic",           default=2, type=int) # 1
     parser.add_argument("--start_timesteps",    default=1e4, type=int) 
-    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
     parser.add_argument("--max_timesteps",      default=5e6, type=int)
     parser.add_argument("--batch_size",         default=2048, type=int)
     parser.add_argument("--replay_buffer_size", default=5e5, type=int) # 5e5
     parser.add_argument("--n_eval",             default=5, type=int)
     parser.add_argument("--device",             default="cuda")
     parser.add_argument("--seed",               default=90, type=int) # 42
-    parser.add_argument("--exp_name",           default="RIS_ant")
     parser.add_argument("--alpha",              default=0.29, type=float)
     parser.add_argument("--Lambda",             default=1.76, type=float) # 0.1
     parser.add_argument("--n_ensemble",         default=10, type=int) # 10
@@ -1450,6 +1469,21 @@ def get_config(config=None):
     parser.add_argument("--max_grad_norm",              default=6.0, type=float)
     parser.add_argument("--scaling",              default=1.0, type=float)
     parser.add_argument("--lambda_initialization",  default=0.1, type=float)
+
+    # validation
+    parser.add_argument('--not_visual_validation',  default=False, action='store_true')
+    parser.add_argument("--eval_freq",          default=int(3e4), type=int) # 3e4
+    parser.add_argument('--log_state_dist',  default=False, action='store_true')
+
+    # load
+    parser.add_argument("--load", default=False, action='store_true')
+    parser.add_argument("--exp_name",           default="RIS_ant")
+    parser.add_argument("--load_folder",        default="RIS_ant")
+
+    # lyapunov rrt
+    parser.add_argument("--load_v_table", default=False, action='store_true')
+    parser.add_argument("--load_v_table_folder", default="RIS_ant")
+    parser.add_argument("--save_v_table", default=False, action='store_true')
     
     # her
     parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20
@@ -1469,7 +1503,7 @@ def get_config(config=None):
     # logging
     parser.add_argument("--using_wandb",        default=True, type=bool)
     parser.add_argument("--add_to_run_wandb_name",      default="", type=str)
-    parser.add_argument("--wandb_project",      default="train_ris_sac_polamp", type=str)
+    parser.add_argument("--wandb_project",      default="lyapunov_rrt_polamp", type=str)
     parser.add_argument('--log_loss', dest='log_loss', action='store_true')
     parser.add_argument('--no-log_loss', dest='log_loss', action='store_false')
     parser.set_defaults(log_loss=True)
@@ -1477,7 +1511,7 @@ def get_config(config=None):
 
     return args
 
-def register_goal_polamp_env(args):
+def register_goal_polamp_env(args, added_config={}):
     with open("goal_polamp_env/goal_environment_configs.json", 'r') as f:
         goal_our_env_config = json.load(f)
     with open("polamp_env/configs/train_configs.json", 'r') as f:
@@ -1488,6 +1522,19 @@ def register_goal_polamp_env(args):
         reward_config = json.load(f)
     with open("polamp_env/configs/car_configs.json", 'r') as f:
         car_config = json.load(f)
+
+    # rewrite configs
+    for key_ in added_config:
+        if key_ in goal_our_env_config:
+            goal_our_env_config[key_] = added_config[key_]
+        if key_ in train_config:
+            train_config[key_] = added_config[key_]
+        if key_ in our_env_config:
+            our_env_config[key_] = added_config[key_]
+        if key_ in reward_config:
+            reward_config[key_] = added_config[key_]
+        if key_ in car_config:
+            car_config[key_] = added_config[key_]
 
     if args.dataset == "medium_dataset":
         total_maps = 12
