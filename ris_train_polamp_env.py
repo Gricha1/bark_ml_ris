@@ -22,7 +22,6 @@ from polamp_HER import HERReplayBuffer, PathBuilder
 from polamp_env.lib.utils_operations import generateDataSet
 from polamp_env.lib.structures import State
 from MFNLC_for_polamp_env.mfnlc.plan import Planner
-#from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner
 
 
 def evalPolicy(policy, env, 
@@ -72,6 +71,7 @@ def evalPolicy(policy, env,
         planner_max_iter = rrt_data["planner_max_iter"]
         rrt_dubins_curve = rrt_data["rrt_dubins_curve"]
         planning_algo = rrt_data["planning_algo"]
+        with_dubins_curve = rrt_data["with_dubins_curve"]
         if rrt_data["add_monitor"]:
             monitor = rrt_data["monitor"]
             debug_moninor_radius_subgoal = True
@@ -154,9 +154,12 @@ def evalPolicy(policy, env,
     episode_lengths = []
     task_statuses = []
     solved_tasks = []
+    plan_times = []
+    plan_sucesses = []
     lst_min_clearance_distances = []
     lst_mean_clearance_distances = []
     lst_unsuccessful_tasks = []
+
     if validate_train_dataset:
         val_tasks = env.trainTasks
         env.valTasks = env.trainTasks
@@ -173,12 +176,7 @@ def evalPolicy(policy, env,
             video_validate_tasks = []
             for i in range(patern_nums):
                 j = i * task_count
-                #validation_tasks.append(("map0", j))
-                #validation_tasks.append(("map0", j+1))
-                #validation_tasks.append(("map0", j+2))
                 video_validate_tasks.append(("map0", j))
-        # video_validate_tasks = [validation_tasks[np.random.randint(len(validation_tasks))], 
-        #                         validation_tasks[np.random.randint(len(validation_tasks))]]
     dataset_plot_is_already_visualized = False
     for val_key in env.maps.keys():
         eval_tasks = len(val_tasks[val_key])
@@ -190,8 +188,6 @@ def evalPolicy(policy, env,
             if not (validate_one_task_id is None):
                 if validate_one_task_id != (val_key, task_id):
                     continue
-            #if dataset_validation == "cross_dataset_simplified" or dataset_validation == "without_obst_dataset" and (val_key, task_id) not in validation_tasks:
-            #    continue
             if need_to_plot_task:
                 images = []
             print(f"map={val_key}", f"task={task_id}", end=" ")
@@ -201,7 +197,7 @@ def evalPolicy(policy, env,
                 lyapunov_network_values[(val_key, task_id)] = []
             obs = env.reset(id=task_id, val_key=val_key)
             if rrt:
-                planner = Planner(env, planning_algo)
+                planner = Planner(env, planning_algo, with_dubins_curve)
                 start_plan = time.time()
                 if get_dataset_from_rrt_trajectory:
                     for i_planner_max_iter in [50_000, 100_000, 150_000]:
@@ -223,7 +219,14 @@ def evalPolicy(policy, env,
                 elif get_dataset_from_rrt_trajectory:
                     map_plans[(val_key, task_id)] = copy.deepcopy(path)
                 end_plan = time.time()
-                print("plan time:", end_plan - start_plan)
+                plan_time = end_plan - start_plan
+                plan_times.append(plan_time)
+                print("plan time:", plan_time)
+                if len(path) == 0:
+                    plan_sucesses.append(0)
+                else:
+                    plan_sucesses.append(1)
+
                 if get_dataset_from_rrt_trajectory:
                     if debug_rrt_path and len(path) != 0:
                         ax_states.plot([subgoal_[0] for subgoal_ in path], [subgoal_[1] for subgoal_ in path], color="orange", linewidth=1)
@@ -590,9 +593,6 @@ def evalPolicy(policy, env,
                                     y_subgoal = path_subgoal[1]
                                     theta_subgoal = path_subgoal[2]
                                     ax_states.scatter([x_subgoal], [y_subgoal], color="red", s=5)
-                                    #ax_states.scatter([np.linspace(x_subgoal, x_subgoal + car_length*np.cos(theta_subgoal), 100)], 
-                                    #                  [np.linspace(y_subgoal, y_subgoal + car_length*np.sin(theta_subgoal), 100)], 
-                                    #                  color="red", s=5)
                             elif debug_rrt_path:
                                 ax_states.text(x_agent + 0.05, y_agent + 0.05, "NO PATH")
                             if debug_rrt_tree:
@@ -729,12 +729,12 @@ def evalPolicy(policy, env,
                         rrt_subgoal = lyapunov_subgoal
                     env.set_new_goal(rrt_subgoal)
 
-                if rrt and rrt_data["add_monitor"] and len(path) != 0 and subgoal_index <= len(path) - 1:
-                    print("step:", t)
+                print("step:", t)
+                if plot_full_env and rrt and rrt_data["add_monitor"] and len(path) != 0 and subgoal_index <= len(path) - 1:
                     ax_states.text(path[subgoal_index][0] + 0.1, 
                                 path[subgoal_index][1] + 0.1, f"{subgoal_index}")
 
-                if rrt and rrt_data["add_monitor"] and debug_moninor_radius_subgoal and len(path) != 0:
+                if plot_full_env and rrt and rrt_data["add_monitor"] and debug_moninor_radius_subgoal and len(path) != 0:
                     color = "yellow"
                     if collision_happend:
                         color = "red"
@@ -804,6 +804,9 @@ def evalPolicy(policy, env,
     eval_cost = np.mean(acc_costs)
     eval_collisions = np.mean(acc_collisions)
     eval_episode_length = np.mean(episode_lengths)
+    if rrt:
+        eval_plan_times = np.mean(plan_times)
+        eval_plan_sucesses = np.mean(plan_sucesses)
     eval_min_clearance = 0
     eval_mean_clearance = 0
     if lyapunov_network_validation:
@@ -850,6 +853,9 @@ def evalPolicy(policy, env,
     validation_info["lyapunov_network_value"] = eval_lyapunov_network_value if lyapunov_network_validation else 0
     validation_info["eval_lyapunov_decrease"] = eval_lyapunov_decrease if lyapunov_network_validation else 0
     validation_info["solved_tasks"] = solved_tasks
+    if rrt:
+        validation_info["eval_plan_times"] = eval_plan_times
+        validation_info["eval_plan_sucesses"] = eval_plan_sucesses
     if not(results_dir is None):
         if not os.path.exists(results_dir):
                 os.makedirs(results_dir)
@@ -965,6 +971,13 @@ def get_exp_folder(args):
 
 def train(args=None):   
     # chech if hyperparams tuning
+    # get exp_folder
+    exp_folder = get_exp_folder(args)
+    load_folder = "results/{}/RIS/{}/".format(args.env, args.load_folder)
+    if args.load:
+        assert os.path.isdir(load_folder)
+    args.exp_folder = exp_folder
+
     if args.using_wandb:
         if type(args) == type(argparse.Namespace()):
             hyperparams_tune = False
@@ -1010,12 +1023,6 @@ def train(args=None):
         state_dim = args.state_dim 
     else:
         state_dim = env_obs_dim
-
-    exp_folder = get_exp_folder(args)
-    
-    load_folder = "results/{}/RIS/{}/".format(args.env, args.load_folder)
-    if args.load:
-        assert os.path.isdir(load_folder)
 
     # Create logger
     logger = Logger(vars(args), save_git_head_hash=False)
@@ -1220,7 +1227,8 @@ def train(args=None):
                                 dataset_plot=True,
                                 skip_not_video_tasks=False,
                                 dataset_validation=args.dataset,
-                                lyapunov_network_validation=args.lyapunov_rrt)
+                                lyapunov_network_validation=args.lyapunov_rrt,
+                                log_state_dist=args.log_state_dist)
             train_success_rate = sum(logger.data["train_rate"]) / len(logger.data["train_rate"])
             train_collision_rate = sum(logger.data["collision_rate"]) / len(logger.data["collision_rate"])
             wandb_log_dict = {
@@ -1340,9 +1348,10 @@ def train(args=None):
                      #'extra/train_subgoal_data_y_mean': sum(logger.data["train_subgoal_data_y_mean"][-args.eval_freq:]) / args.eval_freq,
                     } if args.using_wandb else {}
             if args.using_wandb:
-                for dict_ in val_state + val_goal:
-                    for key in dict_:
-                        wandb_log_dict[f"{key}"] = dict_[key]
+                if args.log_state_dist:
+                    for dict_ in val_state + val_goal:
+                        for key in dict_:
+                            wandb_log_dict[f"{key}"] = dict_[key]
                 if not args.not_visual_validation:
                     for map_name, task_indx, video in validation_info["videos"]:
                         cur_step = logger.data["t"][-1]
@@ -1484,6 +1493,8 @@ def get_config(config=None):
     parser.add_argument("--load_v_table", default=False, action='store_true')
     parser.add_argument("--load_v_table_folder", default="RIS_ant")
     parser.add_argument("--save_v_table", default=False, action='store_true')
+    parser.add_argument("--with_dubins_curve", default=False, action='store_true')
+    parser.add_argument("--planner_max_iter",             default=9000, type=int) # 18000
     
     # her
     parser.add_argument("--fraction_goals_are_rollout_goals",  default=0.2, type=float) # 20

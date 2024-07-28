@@ -1,5 +1,30 @@
 #!/bin/bash
 
+
+validate_task_ids=($(seq 0 95))
+seeds=(30)
+
+dataset="cross_dataset_test_level_1"
+
+add_to_run_wandb_name=dataset_1_exps_1
+
+for seed in "${seeds[@]}"
+do
+    for validate_task_id in "${validate_task_ids[@]}"
+    do
+        echo "------------------- EXP -------------------"
+        echo "------------------------------------------"
+        echo "validate_task_id: $validate_task_id"
+        sh validate_lyapunov_rrt.sh $validate_task_id $seed $dataset $add_to_run_wandb_name
+        echo "------------------------------------------"
+        echo "------------------------------------------"
+    done
+done
+
+
+
+
+"""
 # HyperParams
 #run=1
 #start_run=9
@@ -64,3 +89,4 @@ do
         fi
     done
 done
+"""

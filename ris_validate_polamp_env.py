@@ -174,6 +174,7 @@ def validate(args):
         rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
         rrt_data["planner_max_iter"] = args.planner_max_iter
         rrt_data["planning_algo"] = planning_algo
+        rrt_data["with_dubins_curve"] = args.with_dubins_curve
         rrt_data["rrt_subgoal_safe_eps"] = args.rrt_subgoal_safe_eps
         rrt_data["rrt_dubins_curve"] = args.rrt_dubins_curve
         rrt_data["add_monitor"] = add_monitor
@@ -202,7 +203,7 @@ def validate(args):
                         full_validation = True,
                         value_function_angles=["theta_agent", 0, -np.pi/2],
                         dataset_plot=True,
-                        skip_not_video_tasks=args.validate_certain_task,
+                        skip_not_video_tasks=False,
                         dataset_validation=args.dataset,
                         rrt=args.rrt,
                         rrt_data=rrt_data,
@@ -268,7 +269,7 @@ if __name__ == "__main__":
     config["monitor_search_step_size"] = float(0.5) # 0.1
     # rrt*
     config["rrt"] = True
-    config["planner_max_iter"] = int(18000) # 9000
+    #config["planner_max_iter"] = int(18000) # 9000
     config["rrt_subgoal_safe_eps"] = float(3.0) # init=1.5, 3.0
     config["rrt_dubins_curve"] = False
     config["results_dir"] = "lyapunov_rrt_results_30"
