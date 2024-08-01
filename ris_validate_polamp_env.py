@@ -21,6 +21,10 @@ from polamp_env.lib.utils_operations import generateDataSet
 
 if __name__ == "__main__":	
     parser = argparse.ArgumentParser()
+
+    # validation
+    parser.add_argument('--not_visual_validation', default=False, action='store_true')
+
     # environment
     parser.add_argument("--env",                  default="polamp_env")
     parser.add_argument("--test_env",             default="polamp_env")
@@ -152,8 +156,9 @@ if __name__ == "__main__":
     else:
         state_dim = env_obs_dim
 
-    folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
-    load_results = os.path.isdir(folder)
+    load_folder = "results/{}/RIS/{}/".format(args.env, args.exp_name)
+    load_results = os.path.isdir(load_folder)
+    print("weights folder:", load_folder)
 
     # Create logger
     # TODO: save_git_head_hash = True by default, change it if neccesary
@@ -195,7 +200,7 @@ if __name__ == "__main__":
     )
 
     if load_results:
-        policy.load(folder, old_version=False)
+        policy.load(load_folder, old_version=False)
         print("weights is loaded")
     else:
         print("WEIGHTS ISN'T LOADED")
@@ -220,7 +225,7 @@ if __name__ == "__main__":
     val_state, val_goal, \
     mean_actions, eval_episode_length, validation_info \
                     = evalPolicy(policy, test_env, 
-                                plot_full_env=True,
+                                plot_full_env=not args.not_visual_validation,
                                 plot_subgoals=True,
                                 plot_value_function=False,
                                 render_env=False,
@@ -243,8 +248,9 @@ if __name__ == "__main__":
     wandb_log_dict[f'validation/val_rate({args.n_eval} episodes)'] = success_rate
     for val_key in validation_info:
         wandb_log_dict["validation/"+val_key] = validation_info[val_key]
-    for map_name, task_indx, video in validation_info["videos"]:
-        wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
+    if not args.not_visual_validation:
+        for map_name, task_indx, video in validation_info["videos"]:
+            wandb_log_dict["validation_video"+"_"+map_name+"_"+f"{task_indx}"] = wandb.Video(video, fps=10, format="gif")
     if args.using_wandb:
         run.log(wandb_log_dict)
     print("validation success rate:", success_rate)

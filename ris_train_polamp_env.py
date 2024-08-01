@@ -47,7 +47,7 @@ def evalPolicy(policy, env,
         medium dataset: video_validate_tasks = [("map4", 8), ("map4", 13), ("map6", 5), ("map6", 18), ("map7", 19), ("map5", 7)]
         hard dataset: video_validate_tasks = [("map0", 2), ("map0", 5), ("map0", 10), ("map0", 15)]
     """
-    assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
+    #assert 1.0 * plot_full_env + 1.0 * render_env >= 1, "didnt implement other"
     assert type(video_validate_tasks) == type(list())
     assert not plot_subgoals or (plot_subgoals and policy.use_encoder and policy.use_decoder) or (plot_subgoals and not policy.use_encoder)
     assert (plot_decoder_agent_states and policy.use_decoder) or not plot_decoder_agent_states
@@ -553,7 +553,8 @@ def evalPolicy(policy, env,
         videos = [(map_name, task_indx, np.transpose(np.array(video), axes=[0, 3, 1, 2])) for map_name, task_indx, video in videos]
     validation_info["task_statuses"] = task_statuses
     validation_info["unsuccessful_tasks"] = lst_unsuccessful_tasks
-    validation_info["videos"] = videos
+    if plot_full_env or render_env:
+        validation_info["videos"] = videos
     validation_info["action_info"] = action_info
     validation_info["eval_cost"] = eval_cost
     validation_info["eval_collisions"] = eval_collisions
