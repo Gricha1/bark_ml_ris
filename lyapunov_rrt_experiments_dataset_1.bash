@@ -6,7 +6,10 @@ seeds=(30)
 
 dataset="cross_dataset_test_level_1"
 
-add_to_run_wandb_name=dataset_1_exps_1
+add_to_run_wandb_name=dataset_1_exps_8_64k_steps_turn_0.5_
+
+# plan config
+planner_max_iter=64000
 
 for seed in "${seeds[@]}"
 do
@@ -15,7 +18,7 @@ do
         echo "------------------- EXP -------------------"
         echo "------------------------------------------"
         echo "validate_task_id: $validate_task_id"
-        sh validate_lyapunov_rrt.sh $validate_task_id $seed $dataset $add_to_run_wandb_name
+        sh validate_lyapunov_rrt.sh $validate_task_id $seed $dataset $add_to_run_wandb_name $planner_max_iter
         echo "------------------------------------------"
         echo "------------------------------------------"
     done

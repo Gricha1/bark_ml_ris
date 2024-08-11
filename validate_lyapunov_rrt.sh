@@ -1,6 +1,9 @@
 # $1 = val_task
 # $2 = seed
 # $3 = dataset
+# $4 = wandb name
+# $5 = max plan steps
+
 if [ -z "$1" ]; then
     validate_task_id=0
 else
@@ -25,13 +28,12 @@ else
     add_to_run_wandb_name=$4
 fi
 
-if [ "$dataset" = "cross_dataset_test_level_1" ]; then
-  # Действие, если условие выполнено
-  planner_max_iter=18000
+if [ -z "$5" ]; then
+    planner_max_iter=64000
 else
-  # Действие, если условие не выполнено
-  planner_max_iter=36000
+    planner_max_iter=$5
 fi
+
 
 # lyapunov rrt
 rrt_subgoal_safe_eps=3.0
@@ -53,6 +55,6 @@ python ris_validate_polamp_env.py --exp_name lyapunov_ex \
                                   --add_to_run_wandb_name $add_to_run_wandb_name"_"$seed"_" \
                                   --monitor_search_step_size $monitor_search_step_size \
                                   --dataset $dataset \
-                                  --with_dubins_curve \
                                   --load_v_table --load_v_table_folder lyapunov_ex_14 \
+                                  --with_dubins_curve \
                                   --not_visual_validation 

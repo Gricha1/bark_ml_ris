@@ -169,7 +169,8 @@ def validate(args):
             frame_stack = 4
             monitor = Monitor(lv_table, goal_dim=goal_dim, frame_stack=frame_stack, max_step_size=monitor_max_step_size, search_step_size=monitor_search_step_size)
 
-        planning_algo = "rrt*"
+        #planning_algo = "rrt*"
+        planning_algo = "rrt"
         planning_algo_kwargs = {}
         rrt_data["planning_algo_kwargs"] = planning_algo_kwargs
         rrt_data["planner_max_iter"] = args.planner_max_iter
@@ -255,6 +256,16 @@ def validate(args):
             os.makedirs(args.results_dir)
             with open(args.results_dir + "/results.txt", "w") as output:
                 output.write("seed" + " " + str(args.seed) + " " + "success_rate" + " " + str(success_rate) + " " + "eval_cost" + " " + str(validation_info["eval_cost"]) + " " + "eval_episode_length" + " " + str(eval_episode_length))
+
+     # log test metrics
+    wandb_log_dict = {}
+    wandb_log_dict["test/success rate"] = success_rate
+    wandb_log_dict["test/collision rate"] = validation_info["eval_collisions"]
+    wandb_log_dict["test/cost"] = validation_info["eval_cost"]
+    wandb_log_dict["test/execution time"] = validation_info["execution_time"]
+    wandb_log_dict["test/time to reach"] = validation_info["eval_episode_length"]
+    wandb_log_dict["test/success rate(budged)"] = validation_info["execution_time"]
+    wandb.log(wandb_log_dict)
 
 
 if __name__ == "__main__":	

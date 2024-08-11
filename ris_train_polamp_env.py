@@ -152,6 +152,7 @@ def evalPolicy(policy, env,
     acc_costs = []
     acc_collisions = []
     episode_lengths = []
+    execution_times = []
     task_statuses = []
     solved_tasks = []
     plan_times = []
@@ -674,7 +675,10 @@ def evalPolicy(policy, env,
                     goal_dists["goal_steer"].append(goal[4])
                     
                 if eval_strategy is None:
+                    start_time = time.time()
                     action = policy.select_deterministic_action(state, goal)
+                    end_time = time.time()
+                    execution_time = end_time - start_time
                 else:
                     print("EVAL ACTION = ", eval_strategy)
                     action = eval_strategy
@@ -781,6 +785,7 @@ def evalPolicy(policy, env,
             acc_rewards.append(acc_reward)
             acc_collisions.append(acc_collision)
             acc_costs.append(acc_cost)
+            execution_times.append(execution_time)
             task_statuses.append((val_key, task_id, task_status))
             if full_validation:
                 lst_min_clearance_distances.append(np.min(min_clearance_distances))
@@ -803,6 +808,7 @@ def evalPolicy(policy, env,
     eval_reward = np.mean(acc_rewards)
     eval_cost = np.mean(acc_costs)
     eval_collisions = np.mean(acc_collisions)
+    execution_time = np.mean(execution_times)
     eval_episode_length = np.mean(episode_lengths)
     if rrt:
         eval_plan_times = np.mean(plan_times)
@@ -847,6 +853,7 @@ def evalPolicy(policy, env,
     validation_info["action_info"] = action_info
     validation_info["eval_cost"] = eval_cost
     validation_info["eval_collisions"] = eval_collisions
+    validation_info["execution_time"] = execution_time
     validation_info["eval_min_clearance"] = eval_min_clearance
     validation_info["eval_mean_clearance"] = eval_mean_clearance
     validation_info["lyapunov_sink"] = eval_lyapunov_sink if lyapunov_network_validation else 0
