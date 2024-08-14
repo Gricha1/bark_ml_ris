@@ -6,10 +6,10 @@ seeds=(30)
 
 dataset="cross_dataset_test_level_2"
 
-add_to_run_wandb_name=dataset_2_exps_9_30k_steps_turn_0.5_
+add_to_run_wandb_name=dataset_2_exps_10_rrt
 
 # plan config
-planner_max_iter=30000
+planner_max_iter=128000
 
 for seed in "${seeds[@]}"
 do

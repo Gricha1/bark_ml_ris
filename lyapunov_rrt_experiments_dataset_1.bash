@@ -6,7 +6,7 @@ seeds=(30)
 
 dataset="cross_dataset_test_level_1"
 
-add_to_run_wandb_name=dataset_1_exps_8_64k_steps_turn_0.5_
+add_to_run_wandb_name=dataset_1_exps_9_rrt
 
 # plan config
 planner_max_iter=64000
