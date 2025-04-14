@@ -255,7 +255,7 @@ if __name__ == "__main__":
         run.log(wandb_log_dict)
     print("validation success rate:", success_rate)
     # print("action info:", validation_info["action_info"])
-    print("validation_info:", validation_info)
+    #print("validation_info:", validation_info)
     #print([task[1] for task in validation_info if task[2] == "success"])
 
     
