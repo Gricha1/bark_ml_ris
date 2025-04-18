@@ -686,7 +686,7 @@ def train(args=None):
         total_maps = 2
     else:
         total_maps = 1
-    dataSet = generateDataSet(our_env_config, name_folder=args.dataset, total_maps=total_maps, dynamic=False)
+    dataSet = generateDataSet(our_env_config, name_folder="goal_polamp_env/"+args.dataset, total_maps=total_maps, dynamic=False)
     maps, trainTask, valTasks = dataSet["obstacles"]
     goal_our_env_config["dataset"] = args.dataset
     goal_our_env_config["uniform_feasible_train_dataset"] = args.uniform_feasible_train_dataset
