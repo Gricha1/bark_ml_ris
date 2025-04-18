@@ -1,3 +1,11 @@
+
+python main.py --cuda --env Unicycle --cbf_mode baseline --max_episodes 200 --seed 12345
+
+
+
+
+
+
 # SAC-RCBF 
 
 Repository containing the code for the paper ["Safe Reinforcement Learning using Robust Control Barrier Functions"](https://arxiv.org/abs/2110.05415). Specifically, an implementation of SAC + Robust Control Barrier Functions (RCBFs) for safe reinforcement learning in multiple custom environments.

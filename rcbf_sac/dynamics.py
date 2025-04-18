@@ -21,8 +21,13 @@ A few things to note:
 
 DYNAMICS_MODE = {'Unicycle': {'n_s': 3, 'n_u': 2},   # state = [x y θ]
                  'SimulatedCars': {'n_s': 10, 'n_u': 1},  # state = [x y θ v ω]
-                 'Pvtol': {'n_s': 6, 'n_u': 2}}  # state = [x y θ v_x v_y thrust]
-MAX_STD = {'Unicycle': [2e-1, 2e-1, 2e-1], 'SimulatedCars': [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2],  'Pvtol': [0, 0, 0, 0, 0, 0]}
+                 'Pvtol': {'n_s': 6, 'n_u': 2}, # state = [x y θ v_x v_y thrust]
+                 'Polamp': {'n_s': 5, 'n_u': 2} # state = [x y θ v steer]
+                 } 
+MAX_STD = {'Unicycle': [2e-1, 2e-1, 2e-1], 
+           'SimulatedCars': [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2],  
+           'Pvtol': [0, 0, 0, 0, 0, 0],
+           'Polamp': [2e-1, 2e-1, 2e-1, 2e-1, 2e-1]}
 
 
 class DynamicsModel:
@@ -202,6 +207,30 @@ class DynamicsModel:
                 g_x[:, 5, 0] = 1.0
                 return g_x
 
+        elif self.env.dynamics_mode == 'Polamp':
+            def get_f(state_batch, t_batch=None):
+                """Drift dynamics for Polamp: f(x) = [v*cos(θ), v*sin(θ), ω, 0, 0]"""
+                theta = state_batch[:, 2]
+                v = state_batch[:, 3]
+                steer = state_batch[:, 4]
+                f_x = np.zeros_like(state_batch)
+
+                f_x[:, 0] = v * np.cos(theta + steer) / self.env.resolution
+                f_x[:, 1] = v * np.sin(theta + steer) / self.env.resolution
+                f_x[:, 2] = v * np.sin(steer) / self.env.L  # θ_dot
+        
+                # Для v и steer drift-компоненты нулевые (управление через g(x))
+                f_x[:, 3] = 0.0  # v_dot
+                f_x[:, 4] = 0.0  # steer_dot
+                return f_x
+
+            def get_g(state_batch, t_batch=None):
+                """Control matrix for Polamp: g(x) = [[0, 0], [0, 0], [0, 0], [1, 0], [0, 1]]"""
+                g_x = np.zeros((state_batch.shape[0], 5, 2))
+                g_x[:, 3, 0] = self.env.dt # dv/dt = u1 (acceleration)
+                g_x[:, 4, 1] = self.env.dt  # dδ/dt = u2 (steering rate)
+                return g_x
+
         else:
             raise Exception('Unknown Dynamics mode.')
 
@@ -252,6 +281,9 @@ class DynamicsModel:
             state_batch[:, 3] = obs[:, 4]
             state_batch[:, 4] = obs[:, 5]
             state_batch[:, 5] = obs[:, 6]
+        elif self.env.dynamics_mode == 'Polamp':
+            state_batch = np.zeros((obs.shape[0], 5))
+            state_batch[:, :5] = obs[:, :5]
         else:
             raise Exception('Unknown dynamics')
 
@@ -294,6 +326,9 @@ class DynamicsModel:
             obs[:, 4] = state_batch[:, 4]
             obs[:, 5] = state_batch[:, 5]
             obs[:, 6] = state_batch[:, 6]
+        elif self.env.dynamics_mode == 'Polamp':
+            # TODO
+            assert 1 == 0
         else:
             raise Exception('Unknown dynamics')
         return obs

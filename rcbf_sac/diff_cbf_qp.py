@@ -546,6 +546,125 @@ class CBFQPLayer:
             # Let's also build the cost matrices, vectors to minimize control effort and penalize slack
             P = torch.diag(torch.tensor([0.1, 1e1])).repeat(batch_size, 1, 1).to(self.device)
             q = torch.zeros((batch_size, n_u + 1)).to(self.device)
+        
+            """
+            elif self.env.dynamics_mode == 'Polamp':
+                # Параметры CBF
+                gamma_b = self.gamma_b
+                #print("obsts:", self.env.get_obstacles())
+                #for i, obstacle in enumerate(self.get_obstacles()):
+                #    print("obst len:", len(obstacle))
+                #    print("x:", obstacle[0][0].x)
+                #    print("y:", obstacle[0][0].y)
+                #assert 1 == 0
+                num_cbfs = len(self.env.environment.obstacle_segments)  # Количество препятствий
+                n_u = action_batch.shape[1]  # Размерность управления (2)
+                num_constraints = num_cbfs + 2 * n_u  # CBF + ограничения управления
+
+                # Матрицы для QP
+                P = torch.diag(torch.tensor([1.0, 1.0, 1e5])).repeat(batch_size, 1, 1).to(self.device)  # Веса для [u1, u2, slack]
+                q = torch.zeros((batch_size, n_u + 1)).to(self.device)  # Линейная часть стоимости
+                G = torch.zeros((batch_size, num_constraints, n_u + 1)).to(self.device)  # Неравенства
+                h = torch.zeros((batch_size, num_constraints)).to(self.device)  # Вектор ограничений
+
+                # Текущее состояние
+                x = state_batch[:, 0, 0]
+                y = state_batch[:, 1, 0]
+                theta = state_batch[:, 2, 0]
+                v = state_batch[:, 3, 0]
+                steer = state_batch[:, 4, 0]
+
+                # CBF для препятствий (круговые)
+                for i, obstacle in enumerate(self.env.get_obstacles()):
+                    #obs_x, obs_y, obs_r = obstacle[['x']], obstacle['y'], obstacle['radius']
+                    obs_x, obs_y, obs_r = obstacle[0], obstacle[1], obstacle[3]
+                    #print("obs_x:", obs_x)
+                    #print("obs_y:", obs_y)
+                    #print("obs_r:", obs_r)
+                    dist_sq = (x - obs_x)**2 + (y - obs_y)**2 - (obs_r + 0.5)**2  # h(x) = расстояние^2 - (r + buffer)^2
+                    dh_dx = torch.stack([2*(x - obs_x), 2*(y - obs_y), torch.zeros_like(x), torch.zeros_like(x), torch.zeros_like(x)], dim=1)
+                    
+                    # Условие CBF: dh/dx * (f + g*u) ≥ -γ h^3
+                    G[:, i, :2] = -dh_dx[:, 3:5]  # Только управляемые части (v, steer)
+                    G[:, i, 2] = -1.0  # Slack variable
+                    h[:, i] = gamma_b * (dist_sq**3) + (dh_dx[:, 0] * v * torch.cos(theta) + 
+                            dh_dx[:, 1] * v * torch.sin(theta))
+
+                # Ограничения управления
+                G[:, num_cbfs:num_cbfs+n_u, :n_u] = torch.eye(n_u).repeat(batch_size, 1, 1)  # u ≤ u_max
+                h[:, num_cbfs:num_cbfs+n_u] = self.u_max - action_batch.squeeze()
+                G[:, num_cbfs+n_u:, :n_u] = -torch.eye(n_u).repeat(batch_size, 1, 1)  # u ≥ u_min
+                h[:, num_cbfs+n_u:] = -self.u_min + action_batch.squeeze()
+
+                return P, q, G, h
+            """
+
+        elif self.env.dynamics_mode == 'Polamp':
+            gamma_b = self.gamma_b
+            num_cbfs = len(self.env.get_obstacles())  # Количество препятствий
+            n_u = action_batch.shape[1]  # Размерность управления (2)
+            num_constraints = num_cbfs + 2 * n_u  # CBF + ограничения управления
+
+            # Матрицы для QP
+            P = torch.diag(torch.tensor([1.0, 1.0, 1e5])).repeat(batch_size, 1, 1).to(self.device)
+            q = torch.zeros((batch_size, n_u + 1)).to(self.device)
+            G = torch.zeros((batch_size, num_constraints, n_u + 1)).to(self.device)
+            h = torch.zeros((batch_size, num_constraints)).to(self.device)
+
+            # Текущее состояние
+            x = state_batch[:, 0, 0]
+            y = state_batch[:, 1, 0]
+            theta_agent = state_batch[:, 2, 0]
+            v = state_batch[:, 3, 0]
+            steer = state_batch[:, 4, 0]
+
+            # CBF для прямоугольных препятствий
+            for i, obstacle in enumerate(self.env.get_obstacles()):
+                obs_x, obs_y, obs_theta, obs_w, obs_h = obstacle
+
+                # Преобразуем obs_theta в тензор PyTorch
+                obs_theta_tensor = torch.tensor(obs_theta, device=self.device).repeat(batch_size)
+                
+                # Преобразование координат агента в систему отсчета препятствия
+                dx = x - obs_x
+                dy = y - obs_y
+                rotated_x = dx * torch.cos(-obs_theta_tensor) - dy * torch.sin(-obs_theta_tensor)
+                rotated_y = dx * torch.sin(-obs_theta_tensor) + dy * torch.cos(-obs_theta_tensor)
+                
+                # Расстояние до ближайшей точки прямоугольника (аппроксимация)
+                dist_x = torch.abs(rotated_x) - obs_w / 2
+                dist_y = torch.abs(rotated_y) - obs_h / 2
+                # Более безопасный расчет расстояния
+                h_dist = torch.sqrt(
+                    torch.where(dist_x > 0, dist_x**2, torch.zeros_like(dist_x)) + 
+                    torch.where(dist_y > 0, dist_y**2, torch.zeros_like(dist_y)))
+                
+                # Градиент с правильной размерностью
+                dh_dx_rotated = torch.zeros(batch_size, 5, device=self.device)
+                safe_dist = h_dist + 1e-6  # Избегаем деления на ноль
+                
+                dh_dx_rotated[:, 0] = torch.where(dist_x > 0, rotated_x / safe_dist, 0)
+                dh_dx_rotated[:, 1] = torch.where(dist_y > 0, rotated_y / safe_dist, 0)
+                
+                # Поворот градиента обратно
+                dh_dx = dh_dx_rotated.clone()
+                dh_dx[:, 0] = dh_dx_rotated[:, 0] * torch.cos(obs_theta_tensor) - dh_dx_rotated[:, 1] * torch.sin(obs_theta_tensor)
+                dh_dx[:, 1] = dh_dx_rotated[:, 0] * torch.sin(obs_theta_tensor) + dh_dx_rotated[:, 1] * torch.cos(obs_theta_tensor)
+
+                # Правильное присвоение с учетом размерностей
+                G[:, i, :2] = -dh_dx[:, 3:5].view(batch_size, 2)  # Явное преобразование размерности
+                G[:, i, 2] = -1.0
+                h[:, i] = gamma_b * (h_dist**3) + (dh_dx[:, 0] * v * torch.cos(theta_agent) + 
+                        dh_dx[:, 1] * v * torch.sin(theta_agent))
+
+            # Ограничения управления
+            eye_mat = torch.eye(n_u, device=self.device).repeat(batch_size, 1, 1)
+            G[:, num_cbfs:num_cbfs+n_u, :n_u] = eye_mat  # u ≤ u_max
+            h[:, num_cbfs:num_cbfs+n_u] = self.u_max - action_batch.squeeze()
+            G[:, num_cbfs+n_u:, :n_u] = -eye_mat  # u ≥ u_min
+            h[:, num_cbfs+n_u:] = -self.u_min + action_batch.squeeze()
+
+            return P, q, G, h
 
         else:
             raise Exception('Dynamics mode unknown!')

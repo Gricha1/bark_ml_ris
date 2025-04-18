@@ -1,0 +1,14 @@
+{
+    "teleport_back_on_collision": false,
+    "teleport_back_steps": 4,
+    "inside_obstacles_movement": false,
+    "add_frame_stack": true,
+    "static_env": true,
+    "add_ppo_reward": false,
+    "add_collision_reward": true,
+    "use_lidar_data": true,
+    "is_terminal_dist": true,
+    "is_terminal_angle": false,
+    "use_velocity_constraint_cost": false,
+    "risk_agent_velocity": 0.5
+}

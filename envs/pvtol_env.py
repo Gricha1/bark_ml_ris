@@ -66,6 +66,10 @@ class PvtolEnv(gym.Env):
         self.viewer = None
 
 
+    def seed(self, seed):
+        pass
+
+
     def step(self, action):
         """Organize the observation to understand what's going on
 
